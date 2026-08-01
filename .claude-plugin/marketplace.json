@@ -9,7 +9,7 @@
     {
       "name": "issue-flow",
       "source": "./issue-flow",
-      "version": "0.9.0",
+      "version": "0.9.1",
       "category": "workflow",
       "description": "Autonomous development loop driven by GitHub Issues: spec → issues → batched builds → one CI run per batch → browser-verified deploy → user-viewpoint review.",
       "keywords": [

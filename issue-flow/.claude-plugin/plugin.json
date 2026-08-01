@@ -1,6 +1,6 @@
 {
   "name": "issue-flow",
-  "version": "0.9.0",
+  "version": "0.9.1",
   "description": "Autonomous development loop driven by GitHub Issues: plan a spec, decompose it into epics and sub-issues, build them with background worker agents on batched integration branches (one CI run per batch), verify the deploy in a real browser, then user-test the result and file what it finds. Four skills, six agents. Everything it writes — specs, issues, comments, manual pages and code comments — follows a Simplified Technical English standard.",
   "keywords": [
     "github",
