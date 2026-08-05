@@ -15,9 +15,13 @@ Work out the forge once, in Phase 0, and record it.
 
 1. **A `forge` block in `.issue-flow.json` wins.** It is explicit, so never override it.
 2. **Otherwise read the remote.** `git remote get-url <remote>`. A `github.com` host is
-   GitHub. Any other host is a Gitea candidate.
+   GitHub. Any other host is a Gitea candidate. **GitHub Enterprise is GitHub**, even
+   though its host is not `github.com` — the version probe and the ask below still catch
+   a wrong guess.
 3. **Confirm a Gitea candidate** before you rely on it: `curl -s <scheme>://<host>/api/v1/version`
-   returns a version, or `tea logins list` shows a login for that host.
+   returns a version, or `tea logins list` shows a login for that host. **An SSH remote**
+   (`git@host:owner/repo.git`) has no scheme and no port, so you cannot form the `curl`
+   probe from it directly — use the `tea logins list` check instead.
 4. **Ambiguous means ask.** A host you cannot confirm, or two plausible answers, is an
    `AskUserQuestion` — never a guess. Defaulting silently to GitHub against a Gitea
    remote produces a session of failing commands.
@@ -58,11 +62,21 @@ for anything this table does not cover, and add the row when you do.
 | `forge.repo.create` | `gh repo create <name> --private --source=. --push` | `tea repos create --name <name> --private` | `create_repo` |
 | `forge.api.raw` | `gh api <path>` | `tea api <path>` | n/a |
 
+**A token on the command line lands in shell history and the process list.** Phase 0
+already has the user run `forge.auth.login` themselves, through `!`, so this is a
+documentation caution, not a plugin behavior.
+
 **`tea repos list` has no default-branch field.** Its `--fields` option covers
 `description,forks,id,name,owner,stars,ssh,updated,url,permission,type` only, and Phase 0
 needs the default branch to work out `live` and to check whether `Closes #` auto-closes a
 member issue at batch merge. Use `tea api /repos/{owner}/{repo}`, which returns the full
 repository object including `default_branch`.
+
+**`tea api` expands `{owner}` and `{repo}` from the current repository's remote, and only
+inside a checkout.** Run it outside a checkout and the same command returns a 404. Phase 0
+and workers both run inside a checkout, so `forge.repo.view`, `forge.pr.view` and
+`forge.pr.diff` work as written. Outside a checkout, substitute the owner and repository
+name literally.
 
 ### Labels
 
@@ -88,7 +102,7 @@ does not error — it silently creates a second label with that name, exit 0. Ch
 | `forge.issue.list` | `gh issue list --state open --json number,title,labels,assignees,updatedAt` | `tea issues list --state open --output json --fields index,title,labels,assignees,updated` | `list_issues(state: "open")` |
 | `forge.issue.list.since` | `gh issue list --state all --search "updated:>=<ts>"` | `tea issues list --state all --from <ts> --output json` | `list_issues(since: "<ts>")` |
 | `forge.pr.list.since` | `gh pr list --state open --search "updated:>=<ts>"` | `tea issues list --kind pulls --state open --from <ts> --output json` | `list_issues(type: "pulls", since: "<ts>")` |
-| `forge.issue.view` | `gh issue view <n> --comments` | `tea issues list --output json` plus `tea comments <n>` | `issue_read` |
+| `forge.issue.view` | `gh issue view <n> --comments` | `tea api /repos/{owner}/{repo}/issues/<n>` plus `tea comments <n>` | `issue_read` |
 | `forge.issue.create` | `gh issue create --title "<t>" --body "<b>" --label "<l>"` | `tea issues create --title "<t>" --description "<b>" --labels "<l>"` | `issue_write(method: "create")` |
 | `forge.issue.label.add` | `gh issue edit <n> --add-label "<l>"` | `tea issues edit <n> --add-labels "<l>"` | `issue_write(method: "add_labels")` — **IDs** |
 | `forge.issue.label.remove` | `gh issue edit <n> --remove-label "<l>"` | `tea issues edit <n> --remove-labels "<l>"` | `issue_write(method: "remove_label")` — **ID** |
@@ -96,6 +110,10 @@ does not error — it silently creates a second label with that name, exit 0. Ch
 | `forge.issue.comment` | `gh issue comment <n> --body "<b>"` | `tea comments <n> "<b>"` | `issue_write(method: "add_comment")` |
 | `forge.issue.edit.body` | `gh issue edit <n> --body "<b>"` | `tea issues edit <n> --description "<b>"` | `issue_write(method: "update", body)` |
 | `forge.issue.close` | `gh issue close <n>` | `tea issues close <n>` | `issue_write(method: "update", state: "closed")` |
+
+**`forge.issue.view` reads one issue, not the whole tracker.** `tea api
+/repos/{owner}/{repo}/issues/<n>` returns one issue, and its cost does not grow with
+backlog size. `tea issues <n>` does not exist.
 
 **`tea` has no `@me`.** Resolve your own login with `forge.user.login` first and pass it
 literally.
@@ -115,7 +133,7 @@ the correct behavior for a claim lock, but it will displace any pre-existing ass
 | `forge.pr.view` | `gh pr view <pr> --json state,reviews,mergeable` | `tea pr list --output json`, or `tea api /repos/{owner}/{repo}/pulls/<pr>` | `pull_request_read` |
 | `forge.pr.diff` | `gh pr diff <pr>` | `tea api /repos/{owner}/{repo}/pulls/<pr>.diff` | `pull_request_read` |
 | `forge.pr.reviewer.add` | `gh pr edit <pr> --add-reviewer <user>` | `tea pr edit <pr> --add-reviewers <user>` | `pull_request_write(method: "add_reviewers")` |
-| `forge.pr.thread.resolve` | not scriptable | `tea pr resolve <comment-id>` | `pull_request_review_write(method: "resolve_thread")` |
+| `forge.pr.thread.resolve` | `gh api graphql` with the `resolveReviewThread` mutation | `tea pr resolve <comment-id>` | `pull_request_review_write(method: "resolve_thread")` |
 | `forge.pr.merge.squash` | `gh pr merge <pr> --squash --delete-branch` | `tea pr merge <pr> --style squash`, then `forge.branch.delete` | `pull_request_write(method: "merge", merge_style: "squash", delete_branch: true)` |
 | `forge.pr.merge.commit` | `gh pr merge <pr> --merge --delete-branch` | `tea pr merge <pr> --style merge`, then `forge.branch.delete` | `pull_request_write(method: "merge", merge_style: "merge", delete_branch: true)` |
 | `forge.branch.delete` | folded into `--delete-branch` | `tea pr clean <pr>`, or `git push <remote> --delete <branch>` | `delete_branch` |
@@ -139,10 +157,13 @@ it before the batch lands. The worker enforces this rule for both forges.
 
 | Operation | GitHub (`gh`) | Gitea (`tea`) | Gitea MCP |
 |---|---|---|---|
-| `forge.run.list` | `gh run list --branch <b> --json databaseId,status,conclusion` | `tea actions runs list --output json` | `actions_run_read(method: "list_runs")` |
+| `forge.run.list` | `gh run list --branch <b> --json databaseId,status,conclusion` | `tea actions runs list --branch <b> --output json` | `actions_run_read(method: "list_runs")` |
 | `forge.run.view` | `gh run view <id>` | `tea actions runs view <id>` | `actions_run_read(method: "get_run")` |
 | `forge.run.log` | `gh run view <id> --log-failed` | `tea actions runs logs <id>` | `actions_run_read(method: "get_job_log_preview", max_bytes, tail_lines)` — **preferred** |
-| `forge.pr.checks` | `gh pr checks <pr> --watch` | poll `forge.run.list` filtered to the head branch | `actions_run_read(method: "list_runs")` |
+| `forge.pr.checks` | `gh pr checks <pr> --watch` | poll `forge.run.list` with `--branch <b>` set to the head branch | `actions_run_read(method: "list_runs")` |
+
+**`tea actions runs list` filters by branch.** `--branch <b>` narrows the list to one
+branch, and `--status`, `--event`, `--actor`, `--since` and `--until` narrow it further.
 
 **Gitea has no `--watch`.** Poll `forge.run.list` on an interval instead of blocking, and
 keep the polling in a subagent so the log volume never reaches the PM.

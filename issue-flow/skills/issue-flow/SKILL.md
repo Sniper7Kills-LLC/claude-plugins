@@ -115,7 +115,8 @@ dev ◄────────────────────────�
    - Not a git repo → ask the user to initialize; if yes, `git init` + initial commit.
    - Git repo, no forge remote → ask whether to create one, then `forge.repo.create`
      (confirm public/private first — outward-facing).
-   - Read the repo with `forge.repo.view` to get the owner, name and default branch.
+   - Get the owner and repository name from `git remote get-url <remote>` first, then
+     read the repo with `forge.repo.view` to get the default branch.
    - CLI not authenticated (`forge.auth.check`) → tell the user to run `! gh auth login`
      or `! tea logins add`, whichever this forge needs, and stop until done.
    - **Record `forge.type`, `forge.host`, `forge.owner` and `forge.repo`** in the run
