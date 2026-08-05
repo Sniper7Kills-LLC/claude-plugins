@@ -1,11 +1,11 @@
 ---
 name: spec-to-issues
-description: Turn an approved project-planner spec into GitHub epics and sub-issues shaped for the issue-flow loop. Use when the user says "/spec-to-issues", "create issues from the spec", "push the spec to GitHub", optionally with a spec path. Reads docs/specs/spec.md plus docs/specs/features/*.md, verifies approval and that the spec is committed and pushed, then decomposes each epic into labeled, linked, dependency-annotated sub-issues sized for issue-flow's batch model.
+description: Turn an approved project-planner spec into tracker epics and sub-issues (GitHub or Gitea) shaped for the issue-flow loop. Use when the user says "/spec-to-issues", "create issues from the spec", "push the spec to GitHub", "push the spec to Gitea", optionally with a spec path. Reads docs/specs/spec.md plus docs/specs/features/*.md, verifies approval and that the spec is committed and pushed, then decomposes each epic into labeled, linked, dependency-annotated sub-issues sized for issue-flow's batch model.
 ---
 
 # Spec → Issues — materialize an approved spec on the tracker
 
-Input: the spec package produced by `project-planner`. Output: GitHub epics + sub-issues
+Input: the spec package produced by `project-planner`. Output: tracker epics + sub-issues
 that `issue-flow` can pick up with zero re-interpretation. You create issues; you never
 implement, and you never invent scope that isn't in the spec.
 
@@ -52,12 +52,14 @@ patterns for each. Two rules carry the most weight here:
   rest of the pipeline depends on. If a greenfield spec has no foundation epic, stop and
   send the user back to the planner; do not file feature issues into an empty repo.
 
-## 2 — Preflight GitHub
+## 2 — Preflight
 
-- `gh auth status`; `gh repo view --json nameWithOwner` (no repo/remote → same bootstrap
-  flow as issue-flow Phase 0: offer `git init` / `gh repo create`, confirm
-  public/private). Write the resolved `owner/name` back to `spec.md`'s `repo:`
-  front-matter field.
+This skill runs on GitHub or Gitea. Tracker commands are named as abstract operations and
+resolved in [../../references/forge.md](../../references/forge.md).
+
+- `forge.auth.check`; `forge.repo.view` (no repo/remote → same bootstrap flow as
+  issue-flow Phase 0: offer `git init` / `forge.repo.create`, confirm public/private).
+  Write the resolved `owner/name` back to `spec.md`'s `repo:` front-matter field.
 - **The spec must be committed and pushed.** Issue bodies link `docs/specs/...` paths,
   and issue-flow's workers run in git worktrees that contain tracked files only — an
   unpushed spec means dead links and blind workers. Check for uncommitted or unpushed
@@ -65,14 +67,16 @@ patterns for each. Two rules carry the most weight here:
   `git log origin/<default>..HEAD -- docs/specs`). If anything is outstanding, stop and
   offer to commit and push it before creating a single issue.
 - **Label bootstrap** — run issue-flow's idempotent label block (see the issue-flow
-  skill's `references/labels.md`; the same `gh label create ... --force` set).
+  skill's `references/labels.md`; same label set, created with `forge.label.create`).
+  On Gitea, `forge.label.create` is not idempotent on its own — check
+  `forge.label.list` first and create only what is missing, exactly as `labels.md`
+  documents.
 - **Dedup check — on ids, not titles.** Every issue this skill creates carries a marker
   naming its feature id: `<!-- spec:<slug> feature:<feature-id> -->`. Search existing
-  issue bodies for that marker before creating anything
-  (`gh issue list --state all --search "feature:<id> in:body"`, plus a title search as a
-  secondary signal). Titles get renamed between planning waves; ids do not, which is why
-  they are the dedup key. Skip or update duplicates instead of double-creating; report
-  what was skipped.
+  issue bodies for that marker before creating anything (`forge.issue.list` filtered on
+  `feature:<id>` in the body, plus a title search as a secondary signal). Titles get
+  renamed between planning waves; ids do not, which is why they are the dedup key. Skip
+  or update duplicates instead of double-creating; report what was skipped.
 
 ## 3 — Decompose each epic into sub-issues
 
@@ -109,7 +113,7 @@ vs needs-feedback, detected dependencies, FR coverage — and confirm once
    them), spec pointers (`docs/specs/spec.md` + the feature files it covers), and the
    marker `<!-- spec:<slug> feature:<feature-id> -->` (the epic's marker names the first
    feature it covers).
-2. **Sub-issues.** For each, `gh issue create` with body:
+2. **Sub-issues.** For each, `forge.issue.create` with body:
    - Context: the FR texts it satisfies (quote them — workers shouldn't need the spec
      open), plus links to its `docs/specs/features/NN-*.md` and any relevant
      `docs/specs/mockups/*.html`.
@@ -121,9 +125,10 @@ vs needs-feedback, detected dependencies, FR coverage — and confirm once
      `<!-- spec:<slug> feature:<feature-id> -->`.
    - Label `status:ready` — or `status:needs-feedback` (+ the open question as a
      comment) if a product question is still open on this slice.
-   - Link as a real GitHub **sub-issue** of the epic (`mcp__github__sub_issue_write` or
-     the `gh api` sub-issues endpoint); fall back to the `Part of #` convention if
-     sub-issue linking is unavailable.
+   - Link as a real **sub-issue** of the epic where the forge supports it — GitHub does;
+     Gitea does not (see the capability gap in
+     [../../references/forge.md](../../references/forge.md)) — falling back to the
+     `Part of #` convention wherever native sub-issue linking is unavailable.
 3. **Priorities.** First milestone's epic children get `priority:high` if the user wants
    a fast first demo (ask in the confirm step); otherwise leave normal.
 4. Tick the epic's checklist with the created numbers.

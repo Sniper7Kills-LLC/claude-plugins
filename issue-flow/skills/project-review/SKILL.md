@@ -8,7 +8,7 @@ description: >
   E2E tests, fans out browser-driving ux-explorer agents that click through the app as
   end users (screenshots + manual-ready walkthroughs), and a code-auditor that sweeps
   for TODOs, stubs, and acceptance-criteria gaps. Nothing is fixed — the PM gathers
-  every sub-agent report, files one GitHub issue per finding, lands a manual +
+  every sub-agent report, files one tracker issue per finding, lands a manual +
   E2E-test PR via a review-scribe, then confirms launching issue-flow to work the new
   backlog.
 ---
@@ -19,7 +19,7 @@ This is the QA + documentation pass that follows building: exercise the project 
 end user** in a **sandbox**, capture how it really behaves, and turn what you learn into
 three deliverables:
 
-1. **GitHub issues** — every bug, UX problem, gap, missing implementation, and code TODO
+1. **Tracker issues** — every bug, UX problem, gap, missing implementation, and code TODO
    found becomes an issue, filed **by the PM**, shaped for the issue-flow loop.
 2. **A user manual** — per-flow walkthrough pages with screenshots, from the explorers'
    real sessions, landed via a docs PR.
@@ -46,7 +46,10 @@ how a review ends.
   prepend its brief with the corresponding contract — "you are a decision-free
   <role>; never edit product code; never file issues; return the verdict JSON".)
 
-All GitHub interaction goes through `gh` (or GitHub MCP tools if `gh` is unavailable).
+This skill runs on **GitHub or Gitea**. All tracker interaction goes through the forge's
+CLI — `gh` or `tea` — falling back to that forge's MCP server when the CLI is
+unavailable. Every command is named as an abstract operation and resolved in
+[../../references/forge.md](../../references/forge.md). Never hardcode `gh`.
 
 **Every issue you file is Simplified Technical English** — the standard is
 [`../../references/ste.md`](../../references/ste.md), and a planned project carries it at
@@ -62,9 +65,8 @@ have damaged.
 # Phase 0 — Preflight
 
 1. **Repo check.** Same as issue-flow: `git rev-parse --is-inside-work-tree`,
-   `gh repo view --json nameWithOwner,defaultBranchRef`, `gh auth status`. Detect the
-   remote name and the dev-vs-live branch model (review branches fork off dev when it
-   exists, else the default branch).
+   `forge.repo.view`, `forge.auth.check`. Detect the remote name and the dev-vs-live
+   branch model (review branches fork off dev when it exists, else the default branch).
 2. **Browser check.** `ToolSearch("playwright browser navigate")` /
    `ToolSearch("chrome devtools")`. No browser MCP → tell the user the interactive half
    degrades badly (explorers fall back to WebFetch-level checks) and suggest:
@@ -85,22 +87,22 @@ have damaged.
    the repo has a seed script; note any seeded credentials for the explorer briefs.
 4. **Scope — what shipped recently.** The review focuses on recent issue-flow output,
    plus a first-run pass:
-   - Find the last review marker: `gh issue list --state all --search "project-review run"`
+   - Find the last review marker: `forge.issue.list` filtered on `project-review run`
      and bodies containing `<!-- project-review:`. Recent = closed issues / merged batch
      PRs since then (else since the user-given range, else ~the last 30 days).
-   - `gh issue list --state closed --json number,title,closedAt,labels` + merged
-     `Epic/Batch` PRs → group into **user-facing flows** (auth, core object CRUD,
-     settings, etc.). Pull each issue's **acceptance criteria** — they become explorer
-     `expectations` and auditor `recentWork`.
+   - `forge.issue.list` with `state: closed` + merged `Epic/Batch` PRs → group into
+     **user-facing flows** (auth, core object CRUD, settings, etc.). Pull each issue's
+     **acceptance criteria** — they become explorer `expectations` and auditor
+     `recentWork`.
    - Always add one **"first-run user"** flow (land cold, figure the app out, reach the
      core action) even if nothing recent maps to it.
    - Cap at `MAX_FLOWS` (default 6; user-tunable) — prefer flows touching the most
      recent work; list anything skipped in the digest, never skip silently.
 5. **Labels.** Bootstrap issue-flow's standard labels (its `references/labels.md`
-   block), plus the review label:
-   ```bash
-   gh label create "review:finding" --color F9D0C4 --description "Found by a project-review run" --force
-   ```
+   block, which already includes `review:finding`), created with `forge.label.create`.
+   On Gitea, `forge.label.create` is not idempotent on its own — check
+   `forge.label.list` first and create only what is missing, exactly as `labels.md`
+   documents.
 6. **Review workspace.** `RUN_ID = <YYYY-MM-DD>-<short-slug>`. Create branch
    `review/<RUN_ID>` off dev in its own worktree at
    **`.claude/worktrees/review-<RUN_ID>`** — inside the checkout, already gitignored, and
@@ -156,11 +158,10 @@ Sub-agents **report**; only the PM files. On all verdicts collected:
 
 1. **Merge findings** from every explorer, the auditor, and the Phase 1 E2E failures.
 2. **Dedup** — within the run (two explorers hitting the same broken API → one issue
-   listing both flows) and against the tracker
-   (`gh issue list --state open --search "<title keywords>"`, plus bodies carrying
-   `<!-- project-review:` from prior runs). Update/comment an existing issue instead of
-   double-filing.
-3. **File one issue per finding** (`gh issue create`):
+   listing both flows) and against the tracker (`forge.issue.list` filtered on
+   `<title keywords>`, plus bodies carrying `<!-- project-review:` from prior runs).
+   Update/comment an existing issue instead of double-filing.
+3. **File one issue per finding** (`forge.issue.create`):
    - **Title:** user-language, from the finding (`Sign-up form loses data on validation error`).
    - **Body:** what happened (steps to reproduce, expected vs actual), **evidence**
      (screenshot reference, console/server-log excerpt, `path:line` for code findings),
@@ -174,7 +175,7 @@ Sub-agents **report**; only the PM files. On all verdicts collected:
      with the findings as its checklist, and let issue-flow decompose it.
    - Screenshots referenced in issue bodies must be durable: they land in the docs PR
      (Phase 4) — link the repo path; until that PR merges, attach the image to the
-     issue (`gh issue create` body upload or a comment) so the evidence stands alone.
+     issue (`forge.issue.create` body upload or a comment) so the evidence stands alone.
 4. Keep a run ledger (finding → issue #) for the digest and the summary issue.
 
 # Phase 4 — Deliverables PR (manual + E2E tests)
@@ -227,7 +228,7 @@ Sub-agents **report**; only the PM files. On all verdicts collected:
 
 - **Find, never fix.** No product code changes during a review — by the PM or any
   sub-agent. The only writes are screenshots, walkthrough notes, manual pages, E2E
-  tests, and GitHub issues/comments. A broken sandbox or failing flow is a finding,
+  tests, and tracker issues/comments. A broken sandbox or failing flow is a finding,
   not a repair task.
 - **One browser-driving agent at a time.** The browser MCP is a single shared session;
   ux-explorers run sequentially, and no other browser user (e.g. a deploy-verifier)
