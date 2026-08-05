@@ -136,7 +136,7 @@ const FINDINGS = {
     },
   },
 }
-// args = { diff: "<unified diff or `gh pr diff` text>", lenses: ["correctness","security","frontend","backend"] }
+// args = { diff: "<unified diff, from `forge.pr.diff`>", lenses: ["correctness","security","frontend","backend"] }
 phase('Review')
 const reviews = await parallel(args.lenses.map(lens => () =>
   agent(

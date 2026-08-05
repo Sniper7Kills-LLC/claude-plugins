@@ -1,6 +1,6 @@
 # Standard label taxonomy
 
-Status labels form the state machine. An issue carries **at most one** `status:` label at a time. Create missing labels with `gh label create <name> --color <hex> --description "<desc>"`.
+Status labels form the state machine. An issue carries **at most one** `status:` label at a time. Create missing labels with `forge.label.create`.
 
 ## Status (required set)
 
@@ -77,6 +77,8 @@ Every transition gets a comment explaining it. Labels say *what* state; comments
 
 ## Bootstrap command
 
+**GitHub — `gh`:**
+
 ```bash
 gh label create "status:ready"          --color 0E8A16 --description "Triaged and available to work" --force
 gh label create "status:in-progress"    --color 1D76DB --description "Agent actively working" --force
@@ -98,3 +100,27 @@ gh label create "priority:low"          --color C2E0C6 --description "Pick last"
 ```
 
 (`--force` makes the command idempotent — it updates color/description if the label exists.)
+
+**Gitea — `tea`:**
+
+```bash
+tea labels create --name "status:ready"          --color "#0E8A16" --description "Triaged and available to work"
+tea labels create --name "status:in-progress"    --color "#1D76DB" --description "Agent actively working"
+tea labels create --name "status:in-review"      --color "#5319E7" --description "Sub-PR open, review in flight"
+tea labels create --name "status:batched"        --color "#BFD4F2" --description "Sub-merged to integration branch, awaiting batch PR"
+tea labels create --name "status:deploying"      --color "#0052CC" --description "Merged; deployment being monitored"
+tea labels create --name "status:deploy-failed"  --color "#B60205" --description "Deployment failed; see comment"
+tea labels create --name "status:awaiting-review" --color "#FEF2C0" --description "Awaiting a human approving review before merge"
+tea labels create --name "status:blocked"        --color "#D93F0B" --description "Blocked; see comment for blocker"
+tea labels create --name "status:needs-feedback" --color "#FBCA04" --description "Awaiting user decision"
+tea labels create --name "type:epic"             --color "#5319E7" --description "Decomposed into sub-issues; epic batch"
+tea labels create --name "type:batch"            --color "#C5DEF5" --description "Loose-issue batch tracking issue"
+tea labels create --name "type:hotfix"           --color "#B60205" --description "Deploy hotfix; bypasses batching"
+tea labels create --name "type:spec-update"      --color "#D4C5F9" --description "Spec diverged from shipped behaviour; edits docs/specs only"
+tea labels create --name "review:finding"        --color "#F9D0C4" --description "Found by a project-review run"
+tea labels create --name "flow:status"           --color "#EDEDED" --description "Session status issue; not schedulable"
+tea labels create --name "priority:high"         --color "#B60205" --description "Pick first"
+tea labels create --name "priority:low"          --color "#C2E0C6" --description "Pick last"
+```
+
+(`tea labels create` has no `--force`; re-running errors on an existing label instead of updating it.)

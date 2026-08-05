@@ -7,7 +7,7 @@ work an issue someone else owns**.
 
 ## 1 — Identity and the status issue
 
-- `gh api user --jq .login` → `<me>`. Everything the PM owns is namespaced by it.
+- `forge.user.login` → `<me>`. Everything the PM owns is namespaced by it.
 - The session status issue is **per operator**: title
   `issue-flow: session status — @<me>`, label `flow:status`. Find-or-create it.
   - A legacy `issue-flow: session status` with no `— @…` suffix is adopted only if its
@@ -44,12 +44,12 @@ Rules:
 Track `LAST_SWEEP` (an ISO timestamp, initialized at Phase 0, refreshed after every
 sweep) and keep it in your status-issue block so it survives a restart.
 
-```bash
-gh issue list --state all --search "updated:>=<LAST_SWEEP>" --json number,title,labels,updatedAt
-gh pr   list --state open  --search "updated:>=<LAST_SWEEP>" --json number,title,updatedAt
+```
+forge.issue.list.since <LAST_SWEEP>
+forge.pr.list.since <LAST_SWEEP>
 # then, only for those numbers:
-gh issue view <n> --json comments --jq '.comments[] | select(.createdAt >= "<LAST_SWEEP>")'
-gh pr view <n> --json comments,reviews
+forge.issue.view <n>
+forge.pr.view <n>
 ```
 
 Fetch comments **only** for items the search returned — never sweep the whole tracker.
@@ -98,7 +98,7 @@ detector across operators:
 1. Re-read labels **and** assignees immediately before swapping labels.
 2. Assigned to anyone other than `<me>` → abandon, pick the next issue.
 3. Otherwise remove `status:ready`, add `status:in-progress`,
-   `gh issue edit <n> --add-assignee @me`, then **re-read once more**. If someone else's
+   `forge.issue.assign`, then **re-read once more**. If someone else's
    assignee also landed, the earlier `createdAt` on the claim comment wins — yours
    loses, so unassign and move on.
 4. Every claim leaves a comment naming the session, so a human can see who has what.

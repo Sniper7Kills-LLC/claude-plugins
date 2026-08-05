@@ -91,7 +91,7 @@ The worker returns exactly this object as its final message:
 
 | outcome | PM action (the gate) |
 |---|---|
-| `ready-to-merge` | Verify threads resolved + `localChecks` green (or CI green when `ci: run`) + **every acceptance criterion in `criteria` met and evidenced** (missing/unmet/unevidenced → back to the worker; disputed → `needs-feedback`); resolve any conflict vs the integration branch; `gh pr ready && gh pr merge --squash --delete-branch`; label `status:batched`, tick the tracking checklist, tear down the worktree, launch any sequenced successor. When the batch completes → batch gate (Stage C2). Standalone/hotfix: merge to dev, Stage D directly. |
+| `ready-to-merge` | Verify threads resolved + `localChecks` green (or CI green when `ci: run`) + **every acceptance criterion in `criteria` met and evidenced** (missing/unmet/unevidenced → back to the worker; disputed → `needs-feedback`); resolve any conflict vs the integration branch; `forge.pr.ready` then `forge.pr.merge.squash`; label `status:batched`, tick the tracking checklist, tear down the worktree, launch any sequenced successor. When the batch completes → batch gate (Stage C2). Standalone/hotfix: merge to dev, Stage D directly. |
 | `needs-feedback` | Label `status:needs-feedback`, post `question` as an issue comment, park per the feedback policy (notify; ask interactively only when it gates work). Free the slot. |
 | `blocked` | Label `status:blocked`, comment naming `blocker`. Free the slot. |
 

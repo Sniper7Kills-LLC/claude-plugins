@@ -13,11 +13,12 @@ Look for, in order:
    whose hosting is connected to the deploy branch. Confirm/obtain the **app id** and the
    **branch name** (ask the user if not discoverable). AWS access is via the `aws` CLI or
    the `mcp__aws-api` tools (`call_aws`, `suggest_aws_commands`).
-2. **GitHub Actions deploy job** — a workflow that deploys on push to the deploy branch.
-   Then deploy status *is* a check run — watch it like CI via `gh run`.
+2. **GitHub Actions / Gitea Actions deploy job** — a workflow that deploys on push to the
+   deploy branch. Then deploy status *is* a check run — watch it like CI via
+   `forge.run.list`.
 3. **Vercel / Netlify** — their GitHub app posts a deployment status / commit status;
-   read it via `gh api repos/{owner}/{repo}/deployments` and `.../statuses`, or the
-   provider CLI if authenticated.
+   read it via `forge.api.raw` (`repos/{owner}/{repo}/deployments` and `.../statuses`),
+   or the provider CLI if authenticated.
 4. **User-supplied** — a deploy-status command or health-check URL the user gives.
 
 If none is found, **skip Stage D** and note that to the user once.
@@ -40,6 +41,18 @@ Correlate the job's `commitId` with the merge commit so you watch the right depl
 `FAILED`, pull the step logs (the `get-job` response lists steps with `logUrl`; fetch the
 build/deploy step log) and extract the failing step + error. The same calls work through
 `mcp__aws-api` `call_aws` if the CLI isn't directly available.
+
+### Gitea Actions
+
+A workflow under `.gitea/workflows/` or `.github/workflows/` on a Gitea remote, running
+on a self-hosted `act_runner`. Query it with `forge.run.list` filtered to the deploy
+branch, and read a failure with `forge.run.log`.
+
+There is no `--watch`. The deploy-watcher polls `forge.run.list` on an interval and
+returns one terminal deployment per run, exactly as it does for the other providers.
+
+Because the runner is the operator's own hardware, there is no minute budget to protect.
+The batch model still applies — it exists for merge hygiene as much as for cost.
 
 ## The deploy-watcher companion
 

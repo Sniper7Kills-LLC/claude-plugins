@@ -75,9 +75,9 @@ unchanged.
 2. Behind/conflicting with the integration branch (a sibling landed) → update the
    branch; mechanical conflicts resolved directly or by a short-lived worker with both
    issues' context; **semantic** conflicts → `status:needs-feedback` on both issues.
-3. `gh pr ready <pr> && gh pr merge <pr> --squash --delete-branch` — one clean squashed
-   commit per member on the integration branch. Head commit carries `[skip ci]`, so this
-   stays CI-free.
+3. `forge.pr.ready` then `forge.pr.merge.squash`, then `forge.branch.delete` on Gitea —
+   one clean squashed commit per member on the integration branch. Head commit carries
+   `[skip ci]`, so this stays CI-free.
 4. Member → `status:batched`; tick the tracking checklist; tear down the worktree;
    launch any sequenced successor.
 
