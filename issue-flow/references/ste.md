@@ -1,6 +1,6 @@
 # STE — the writing standard for everything this plugin produces
 
-Every document and every GitHub issue this plugin writes uses **Simplified Technical
+Every document and every tracker issue this plugin writes uses **Simplified Technical
 English (STE)**. This file is the standard. Load it before you write a spec, a feature
 file, an issue body, a `CLAUDE.md`, a project rule, or a user manual page.
 
@@ -25,7 +25,7 @@ reads two ways gets built two ways.
 | `docs/specs/spec.md` and every `docs/specs/features/*.md` | project-planner |
 | `docs/specs/spec.html` prose | project-planner |
 | `CLAUDE.md`, `.claude/rules/*.md`, `.claude/skills/*/SKILL.md` | project-planner |
-| Every GitHub issue title and body (epic, sub-issue, hotfix, spec-update, review finding) | spec-to-issues, issue-flow PM, project-review PM |
+| Every tracker issue title and body (epic, sub-issue, hotfix, spec-update, review finding) | spec-to-issues, issue-flow PM, project-review PM |
 | Issue comments that state a decision, a plan, or a question | issue-flow PM |
 | Spec `## Changelog` lines | issue-flow PM |
 | `docs/manual/*.md` user manual pages | review-scribe |

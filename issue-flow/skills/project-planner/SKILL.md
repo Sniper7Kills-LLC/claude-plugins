@@ -1,6 +1,6 @@
 ---
 name: project-planner
-description: Interactive project planning that produces a reviewable spec package plus a ready-to-work project scaffold. Use when the user says "/project-planner", "plan a project", "spec out <idea>", "design a project", or wants a new project/feature-set defined before any code. Interviews the user, writes a detailed multi-file spec (docs/specs/), self-contained HTML mockups, a browsable spec.html, CLAUDE.md, .claude/ (settings + permissions, hooks, rules, project skills/commands) and .gitignore, runs a user review cycle until the spec is approved — then hands off to spec-to-issues, which creates the GitHub epics/sub-issues that issue-flow builds.
+description: Interactive project planning that produces a reviewable spec package plus a ready-to-work project scaffold. Use when the user says "/project-planner", "plan a project", "spec out <idea>", "design a project", or wants a new project/feature-set defined before any code. Interviews the user, writes a detailed multi-file spec (docs/specs/), self-contained HTML mockups, a browsable spec.html, CLAUDE.md, .claude/ (settings + permissions, hooks, rules, project skills/commands) and .gitignore, runs a user review cycle until the spec is approved — then hands off to spec-to-issues, which creates the tracker epics/sub-issues that issue-flow builds.
 ---
 
 # Project Planner — spec first, scaffold second, issues later, code last
@@ -10,11 +10,11 @@ project scaffold on disk** — not issues, not application code. The pipeline is
 
 ```
 /project-planner  →  docs/specs/ + CLAUDE.md + .claude/ + .gitignore  (review → approved)
-/spec-to-issues   →  GitHub epics + sub-issues
+/spec-to-issues   →  tracker epics + sub-issues
 /issue-flow       →  built, PR'd, merged, deployed
 ```
 
-You never create GitHub issues (that's `spec-to-issues`) and you never implement the
+You never create tracker issues (that's `spec-to-issues`) and you never implement the
 product (that's `issue-flow`). Do not skip the user review cycle — an unapproved spec
 never moves forward.
 
@@ -189,7 +189,7 @@ workers see only **tracked, pushed** files. So before handing off, state plainly
 Then give the next commands:
 
 ```
-/spec-to-issues        # create the GitHub epics + sub-issues from docs/specs/
+/spec-to-issues        # create the tracker epics + sub-issues from docs/specs/
 /issue-flow            # build it autonomously
 ```
 

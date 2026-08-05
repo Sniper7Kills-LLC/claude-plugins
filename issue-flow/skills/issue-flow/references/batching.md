@@ -45,10 +45,11 @@ Two mechanisms, layered:
 
 1. **`[skip ci]` in the head commit message.** GitHub Actions natively skips `push` and
    `pull_request` triggered workflows when the head commit message contains `[skip ci]`
-   (or `[ci skip]`). Workers append it to **every pushed head commit**; that keeps the
-   draft PR CI-free through readying and merging too.
+   (or `[ci skip]`); Gitea Actions does the same from Gitea 1.20. Workers append it to
+   **every pushed head commit**; that keeps the draft PR CI-free through readying and
+   merging too.
 2. **Draft PRs.** Sub-PRs open as drafts — signals "not for dev" to humans and to any
-   bot keyed on ready state. (Draft alone does **not** stop GitHub Actions — `[skip ci]`
+   bot keyed on ready state. (Draft alone does **not** stop either provider — `[skip ci]`
    does the work.)
 
 Phase 0 sanity-checks that the project's CI honors `[skip ci]`. If it can't (other

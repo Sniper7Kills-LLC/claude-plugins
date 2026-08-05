@@ -32,7 +32,7 @@ service.
 Use the most authoritative source available, in this order:
 
 1. **The tool's own machine-readable interface.** `aws <service> <command> help`,
-   `<cli> --help`, `gh api --help`, an OpenAPI or GraphQL schema, TypeScript types shipped
+   `<cli> --help`, `forge.api.raw` (`gh api --help` / `tea api --help`), an OpenAPI or GraphQL schema, TypeScript types shipped
    with the package, the MCP server's own tool schema (load it with `ToolSearch` and read
    the parameters).
 2. **The official documentation**, fetched now with `WebFetch` — the vendor's own docs

@@ -157,12 +157,12 @@ user at startup ([session-config.md](session-config.md)) — is a *scope and cos
 ceiling.
 
 What actually extends the session is **context discipline** (next section) plus the
-fact that **all durable state lives in GitHub**, not in context. Labels, comments, and
+fact that **all durable state lives on the forge**, not in context. Labels, comments, and
 PRs are the source of truth. So when the harness compacts context, or you start a
-fresh session, **Phase 0 state recovery rebuilds everything from GitHub** and the loop
+fresh session, **Phase 0 state recovery rebuilds everything from the tracker** and the loop
 continues. A "session" can therefore span many context compactions and process far
 more than any single context window could hold — provided each issue leaves a clean
-trail on GitHub and consumes little main-thread context.
+trail on the tracker and consumes little main-thread context.
 
 Stop conditions are: the session's `runLength` limit is reached, no workable issues
 remain, the user says stop, everything left is `status:blocked` /
@@ -183,9 +183,9 @@ fills no matter how much you parallelize. So:
   point.
 - **Hold pointers, not payloads.** The main thread's per-issue footprint should be a
   handful of lines: issue number, branch/worktree path, PR number, current phase, open
-  decisions. Everything reconstructable from GitHub stays *in* GitHub.
-- **Leave a complete GitHub trail every phase** (label + comment). This is also your
+  decisions. Everything reconstructable from the tracker stays *on* the tracker.
+- **Leave a complete tracker trail every phase** (label + comment). This is also your
   crash-recovery: if context is compacted mid-flight, Phase 0 reads the trail back.
 - **Drop finished issues from working memory.** Once merged and the worktree is torn
-  down, the issue is fully recorded on GitHub — carry nothing forward but the running
+  down, the issue is fully recorded on the tracker — carry nothing forward but the running
   session summary (counts + blocked/needs-feedback list).

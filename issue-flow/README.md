@@ -1,6 +1,6 @@
 # issue-flow
 
-A Claude Code plugin. It drives an autonomous development loop from GitHub Issues:
+A Claude Code plugin. It drives an autonomous development loop from tracker issues:
 
 ```
 spec → issues → batched builds → one CI run per batch → verified deploy → user review
@@ -8,8 +8,19 @@ spec → issues → batched builds → one CI run per batch → verified deploy 
 
 The review files new issues, and the loop runs them next.
 
-GitHub Issues are the single source of truth. Labels hold the state. Comments hold the
-audit trail. All durable state lives on GitHub, so the loop survives a restart.
+Tracker issues are the single source of truth. Labels hold the state. Comments hold the
+audit trail. All durable state lives on the forge, so the loop survives a restart.
+
+## Which forge
+
+This plugin runs on **GitHub** or on **Gitea** (1.20 or later). It detects which from
+your git remote at startup and uses that forge's CLI — `gh` or `tea` — falling back to
+that forge's MCP server. Nothing else about the loop changes.
+
+Gitea support exists because GitHub bills Actions minutes on private repositories. A
+self-hosted Gitea with its own runner has no such ceiling.
+
+The full operation mapping is in [references/forge.md](references/forge.md).
 
 ## The four skills
 
@@ -31,7 +42,7 @@ relative.
 
 ### `/spec-to-issues`
 
-Turns an approved spec into GitHub epics and sub-issues. Each one is labeled, linked to
+Turns an approved spec into tracker epics and sub-issues. Each one is labeled, linked to
 its dependencies, and sized so that one epic is one batch.
 
 - It **decomposes** the feature specs into engineering slices. It does not transcribe a
@@ -66,7 +77,7 @@ the E2E tests, and starts three kinds of sub-agent:
 - `issue-flow:review-scribe` turns the walkthroughs into a user manual and E2E tests, on
   a documentation PR.
 
-**The review fixes nothing.** The PM collects every report, files one GitHub issue per
+**The review fixes nothing.** The PM collects every report, files one tracker issue per
 finding (`review:finding`), and then asks you to launch `/issue-flow` on the new backlog.
 
 ## Two standards for everything the plugin writes
@@ -213,14 +224,15 @@ After a build wave, start the review with `/project-review`, "review the project
 
 Required:
 
-- The `gh` CLI, installed and authenticated (`gh auth login`), with the `repo` and
-  `workflow` scopes.
+- The provider's CLI, installed and authenticated: `gh auth login` (GitHub) or
+  `tea logins add` (Gitea), with the `repo` and `workflow` scopes.
 - `git` 2.5 or later, for worktrees. The plugin creates each per-issue worktree **inside
   the checkout**, at `.claude/worktrees/` (gitignored), so a sandboxed Bash tool can write
   to it.
-- CI that honors `[skip ci]`. GitHub Actions honors it natively. If your provider does
-  not, the PM proposes a one-time workflow filter for the `epic/**` and `batch/**`
-  branches, or falls back to local sub-merges with no sub-PRs.
+- CI that honors `[skip ci]`. GitHub Actions honors it natively; Gitea Actions does the
+  same from Gitea 1.20. If your provider does not, the PM proposes a one-time workflow
+  filter for the `epic/**` and `batch/**` branches, or falls back to local sub-merges with
+  no sub-PRs.
 
 Optional:
 
@@ -295,10 +307,10 @@ keeps that flat:
 
 - The PM delegates every token-heavy read — diffs, CI logs, file maps — to a sub-agent
   that returns a short summary.
-- Durable state lives in GitHub: labels, comments, PRs and the status issue.
+- Durable state lives on the forge: labels, comments, PRs and the status issue.
 - The PM drops each finished issue and batch from working memory.
 
-If the harness compacts the context, preflight rebuilds the state from GitHub and the loop
+If the harness compacts the context, preflight rebuilds the state from the tracker and the loop
 continues. One session can therefore clear far more issues than a single context window
 holds.
 

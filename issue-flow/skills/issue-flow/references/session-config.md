@@ -120,7 +120,7 @@ Rules:
 - When approval is required, the PM labels the tracking issue `status:awaiting-review`,
   requests review (`forge.pr.reviewer.add`, or comments naming the reviewers when no
   reviewer can be set), notifies once, and **moves on to other work** — it never blocks.
-- The PM merges only on an actual GitHub **approving review** from a human other than
+- The PM merges only on an actual **approving review** on the forge from a human other than
   itself, plus green checks and no unresolved threads. A thumbs-up reaction or a
   "looks good" comment is not an approval; a comment that says "approved, merge it" from
   a repo collaborator counts only if the PM records it as the authorization in a PR

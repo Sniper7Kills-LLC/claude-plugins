@@ -3,10 +3,10 @@ name: issue-flow
 description: Issue-tracker-driven autonomous development loop, on GitHub or Gitea. Use when the user says "work the issues", "pick up the next issue", "issue-driven mode", "/issue-flow", or asks the agent to plan and build autonomously from the issue tracker. A main-thread PM triages the tracker, groups issues into epic/batch integration branches, and hands each issue to a background worker; sub-issue PRs are CI-free drafts into the integration branch and a single batch PR runs CI once. The PM resolves conflicts, merges, monitors deployment, and posts periodic status digests — looping autonomously for as long as there is workable backlog.
 ---
 
-# Issue Flow — autonomous development driven by GitHub Issues
+# Issue Flow — autonomous development driven by issues
 
-**GitHub Issues are the single source of truth** for what to build; **labels are the
-state machine**; **comments are the audit trail.** All durable state lives on GitHub, so
+**Tracker issues are the single source of truth** for what to build; **labels are the
+state machine**; **comments are the audit trail.** All durable state lives on the forge, so
 the loop survives context compaction and restarts — Phase 0 recovery rebuilds from it.
 
 This loop runs on **GitHub or Gitea**. All tracker interaction goes through the forge's
@@ -15,7 +15,7 @@ unavailable. Every command is named as an abstract operation (`forge.issue.list`
 `forge.pr.merge.squash`) and resolved in
 [../../references/forge.md](../../references/forge.md). Never hardcode `gh`.
 
-**Everything you write on GitHub is Simplified Technical English** — issue bodies you
+**Everything you write on the tracker is Simplified Technical English** — issue bodies you
 author (epic decompositions, hotfix issues, `type:spec-update` issues), the plan comments,
 the decision and question comments, the status digests, and the spec `## Changelog` lines.
 The standard is [`../../references/ste.md`](../../references/ste.md); a planned project
@@ -103,8 +103,8 @@ dev ◄────────────────────────�
    token-heavy read (diffs, CI logs, deploy logs, file maps) is delegated to a subagent
    that returns a short summary. This — not any counter — sets how many issues a session
    can clear. See [references/parallelism.md](references/parallelism.md).
-6. **Every state change leaves a GitHub trace** (label + comment). Someone reading only
-   GitHub can reconstruct what happened — and so can Phase 0 recovery.
+6. **Every state change leaves a tracker trace** (label + comment). Someone reading only
+   the tracker can reconstruct what happened — and so can Phase 0 recovery.
 
 ---
 
@@ -462,7 +462,7 @@ merely succeeds.
 ## Stage E — Loop, report, stop
 
 Each handled verdict frees a slot → return to Stage A/B and refill. **Drop finished
-issues and batches from working memory** (fully recorded on GitHub); keep only the running
+issues and batches from working memory** (fully recorded on the tracker); keep only the running
 session summary so context stays flat as the count grows. If context is compacted
 mid-loop, re-run Phase 0 recovery and continue.
 
@@ -535,7 +535,7 @@ business.
 - **One worktree per issue.** Different issues may touch the same files (separate worktrees, PM resolves conflicts at sub-merge); never two writers in one worktree on overlapping paths.
 - **Decisions and gates are the PM's.** Workers/Workflows are decision-free; one hitting a judgment call returns `needs-feedback`. Sub-merge, batch merge, ship-partial, conflict semantics, deploy-failure cause, and epic scope are PM decisions.
 - **Anything needing human input is labeled `status:needs-feedback`** with a comment stating exactly what's needed — carried in every digest, never left to sit silently.
-- **Everything you author on GitHub is STE** (`references/ste.md`), written from the spec's `## Terms` vocabulary when the project has one. Evidence and other people's words are quoted verbatim, never reworded.
+- **Everything you author on the tracker is STE** (`references/ste.md`), written from the spec's `## Terms` vocabulary when the project has one. Evidence and other people's words are quoted verbatim, never reworded.
 - **External interfaces are read from their documentation, never assumed** (`references/external-apis.md`). This binds you as well as the workers: a plan, a verdict, or a deploy diagnosis that rests on an assumed AWS or third-party behaviour goes back — "it should support that" is not a source. Anything that creates, deletes or changes a cloud resource is confirmed with the user first.
 - **Sweep, then triage, runs first on every load** and recurs on every backlog change (worker/watcher completion, new issues, new comments). It is the entry point of the loop, and it runs again before every merge gate.
 - **The run configuration is confirmed with the user every session** — saved defaults are presented, never applied silently. `prAuthority` decides what the PM may merge; the default requires a human approving review on the batch PR, and promotion to live is never autonomous under any setting.
@@ -552,4 +552,4 @@ business.
 - Never force-push shared branches; never push directly to live/dev **or to an integration branch** — everything lands via PR (sub-PRs into the integration branch, one batch PR into dev). Never merge with red checks or unresolved threads.
 - **Epics with no sub-issues are decomposed, not implemented.** Generate the sub-issues first; park anything ambiguous as `status:needs-feedback`.
 - **A merge isn't done until the deploy is confirmed** when a deploy target exists. A failed deploy spins up a hotfix issue (standalone, CI on) or a `needs-feedback`/`blocked` label — it is never ignored.
-- Every state change leaves a GitHub trace (label + comment), and every milestone leaves a digest (terminal + status issue + push notification).
+- Every state change leaves a tracker trace (label + comment), and every milestone leaves a digest (terminal + status issue + push notification).
