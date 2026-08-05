@@ -1,6 +1,6 @@
 ---
 name: issue-flow
-description: GitHub Issues-driven autonomous development loop. Use when the user says "work the issues", "pick up the next issue", "issue-driven mode", "/issue-flow", or asks the agent to plan and build autonomously from the GitHub issue tracker. A main-thread PM triages the tracker, groups issues into epic/batch integration branches, and hands each issue to a background worker; sub-issue PRs are CI-free drafts into the integration branch and a single batch PR runs CI once. The PM resolves conflicts, merges, monitors deployment, and posts periodic status digests — looping autonomously for as long as there is workable backlog.
+description: Issue-tracker-driven autonomous development loop, on GitHub or Gitea. Use when the user says "work the issues", "pick up the next issue", "issue-driven mode", "/issue-flow", or asks the agent to plan and build autonomously from the issue tracker. A main-thread PM triages the tracker, groups issues into epic/batch integration branches, and hands each issue to a background worker; sub-issue PRs are CI-free drafts into the integration branch and a single batch PR runs CI once. The PM resolves conflicts, merges, monitors deployment, and posts periodic status digests — looping autonomously for as long as there is workable backlog.
 ---
 
 # Issue Flow — autonomous development driven by GitHub Issues
@@ -9,8 +9,11 @@ description: GitHub Issues-driven autonomous development loop. Use when the user
 state machine**; **comments are the audit trail.** All durable state lives on GitHub, so
 the loop survives context compaction and restarts — Phase 0 recovery rebuilds from it.
 
-All GitHub interaction goes through the `gh` CLI (or the GitHub MCP tools if `gh` is
-unavailable).
+This loop runs on **GitHub or Gitea**. All tracker interaction goes through the forge's
+CLI — `gh` or `tea` — falling back to that forge's MCP server when the CLI is
+unavailable. Every command is named as an abstract operation (`forge.issue.list`,
+`forge.pr.merge.squash`) and resolved in
+[../../references/forge.md](../../references/forge.md). Never hardcode `gh`.
 
 **Everything you write on GitHub is Simplified Technical English** — issue bodies you
 author (epic decompositions, hotfix issues, `type:spec-update` issues), the plan comments,
@@ -282,8 +285,8 @@ another person may be running their own issue-flow session on this repo. Before 
 read what they did since `LAST_SWEEP`. Full playbook —
 [references/collaboration.md](references/collaboration.md).
 
-1. **Find what moved.** `gh issue list --state all --search "updated:>=<LAST_SWEEP>"` and
-   `gh pr list --state open --search "updated:>=<LAST_SWEEP>"`; fetch comments **only**
+1. **Find what moved.** `forge.issue.list.since <LAST_SWEEP>` and
+   `forge.pr.list.since <LAST_SWEEP>`; fetch comments **only**
    for those numbers (delegate long threads to a subagent). Refresh `LAST_SWEEP` and keep
    it in your status-issue block.
 2. **Apply what humans said.** Answers to parked questions → record, apply, clear
@@ -312,14 +315,16 @@ Run this immediately after the Stage A0 sweep — on load, at the top of every l
 iteration, and on every worker/watcher completion. It is cheap (a list + label/comment
 pass) and it keeps the queue correct as the tracker churns.
 
-1. `gh issue list --state open --json number,title,labels,assignees,updatedAt` and triage:
+1. `forge.issue.list` and triage:
    - **Skip** `status:blocked` / `status:needs-feedback` (but re-check, step 4) and `flow:status`.
    - **Prefer** `status:ready`; among those `priority:high` first, then oldest.
    - **Untriaged** (no status label): read it. Clear and actionable → `status:ready`. Unclear → `status:needs-feedback` + comment the specific questions.
    - **Dependencies:** an issue whose body says `Depends on #<n>` with `#<n>` still open is not independently schedulable — either put it **in the same batch as its dependency, sequenced after it** (preferred when both are ready), or label `status:blocked` naming the dependency. When a dependency closes, unblock its dependents (step 3).
 2. **Epics → sub-issues.** If an actionable-looking item is actually an **epic** (labeled `type:epic`, or a large item whose body is a checklist of work rather than a single change) **and it has no sub-issues yet**, it is a roadblock — do **not** try to implement it. Decompose it instead:
    - Draft the breakdown (you may delegate the *drafting* to a planning subagent that returns proposed sub-issues; the PM reviews and creates them).
-   - Create each sub-issue (`gh issue create`), link it to the epic as a GitHub **sub-issue** (or `Part of #<epic>` + a task-list checkbox in the epic body). Label each `status:ready` if actionable, else `status:needs-feedback` with the open questions.
+   - Create each sub-issue (`forge.issue.create`), link it to the epic as a native **sub-issue** where the forge has them (GitHub does;
+     Gitea does not — see [../../references/forge.md](../../references/forge.md)), else
+     `Part of #<epic>` + a task-list checkbox in the epic body. Label each `status:ready` if actionable, else `status:needs-feedback` with the open questions.
    - Label the epic `type:epic` and `status:blocked` (blocked on its children); comment listing the sub-issues created. The epic closes when its children do.
    - If the decomposition itself needs product decisions (scope/priorities unclear), label the epic `status:needs-feedback`, ask, and do **not** invent scope.
 3. **Unblock.** Re-check `status:blocked` issues: if the named blocker is resolved (e.g. a depended-on issue merged), relabel `status:ready`.
@@ -354,7 +359,7 @@ pass) and it keeps the queue correct as the tracker churns.
    - **Locate (read-only, parallel):** fan out `Agent` calls (Explore / cavecrew-investigator) to map the files/call-sites the issue touches; take back a short summary.
    - **If the issue calls an external service, confirm the interface before you plan it.** Delegate a read of the vendor's current documentation (or the CLI's own `help`) and put the doc URL + pinned version in the plan. Never plan against a remembered API shape — see [references/external-apis.md](../../references/external-apis.md). Cannot confirm it → `status:needs-feedback`, not a guess.
    - Comment a short plan on the issue (approach, files, out-of-scope).
-   - **Claim with compare-and-set:** immediately before swapping labels, re-read the issue's labels/assignees; if another worker already took it, abandon and pick the next. Else remove `status:ready`, add `status:in-progress`, `gh issue edit <n> --add-assignee @me` (assignee = lock).
+   - **Claim with compare-and-set:** immediately before swapping labels, re-read the issue's labels/assignees; if another worker already took it, abandon and pick the next. Else remove `status:ready`, add `status:in-progress`, `forge.issue.assign` (assignee = lock; on Gitea resolve your login with `forge.user.login` first — `tea` has no `@me`).
    - If planning surfaces a user-only decision, don't guess: comment the question, label `status:needs-feedback`, drop the claim, pick different work.
 4. **Hand off to a worker.** Launch with `Agent`, `agentType: "issue-flow:issue-worker"`, `run_in_background: true`, passing only the handoff brief (issue number, worktree path, branch, **base = the integration branch**, `ci: skip`, batch ref, remote, the plan you commented, conventions, the session's **`practices` block** — TDD/DDD/E2E/coverage/commit style/docs, which are part of the worker's definition of done — and **`steRule`**, the path to the writing standard the worker's comments, docstrings, test names and PR body must follow: `.claude/rules/ste.md` when the project has one, else this plugin's `references/ste.md`) — its runbook is self-contained. The brief format is in [references/issue-worker.md](references/issue-worker.md). Sequenced members launch **after** their predecessor sub-merges (their branch then forks the updated integration branch). Return to orchestrating. (If the agent type can't be resolved, fall back to `general-purpose` and prepend the worker brief with: "You are a decision-free issue-worker; never merge; return the verdict JSON.")
 
@@ -371,7 +376,7 @@ Triggered by a worker's completion notification. Act on its `outcome`:
   1b. **Acceptance criteria gate.** The worker returns `criteria: [{text, met, evidence}]` — one entry per acceptance criterion in the issue body. Check the list is **complete** (every criterion in the issue appears) and that each `met: true` carries real evidence (a test name, a command output, a file:line). Any criterion `met: false`, missing, or evidenced only by "implemented" goes **back to the worker** with the specific criterion quoted; a criterion the worker argues is wrong or unbuildable is a product question → `status:needs-feedback`, not a waiver. Acceptance criteria are the definition of done that `spec-to-issues` wrote down — this is where they are enforced, not months later in `project-review`.
   2. **Conflict vs the integration branch** (a sibling just sub-merged): mechanical → resolve directly or via a short-lived worker; **semantic** (two intents on the same logic) → `status:needs-feedback` on both issues, park, do not guess.
   3. **Authority gate.** If `prAuthority` is `review-all` or `propose-only`, do **not** merge: ready the PR, request review, label the issue `status:awaiting-review`, notify once, and go schedule other work. Merge only after a human approving review lands (a reaction or a vague "looks good" is not one). Under `autonomous`/`batch-review`, sub-merges are yours.
-  4. Sweep for new comments on the PR (Stage A0) — a "hold this" posted a minute ago outranks your gate — then merge the sub-PR: `gh pr ready <pr> && gh pr merge <pr> --squash --delete-branch` (head commit already carries `[skip ci]`, so readying/merging stays CI-free).
+  4. Sweep for new comments on the PR (Stage A0) — a "hold this" posted a minute ago outranks your gate — then merge the sub-PR: `forge.pr.ready` then `forge.pr.merge.squash` (on Gitea, follow with `forge.branch.delete` — `tea pr merge` does not remove the branch) (head commit already carries `[skip ci]`, so readying/merging stays CI-free).
   5. Label the member `status:batched`, tick its checkbox on the epic/batch tracking issue (edit only your own marker block — see [collaboration.md](references/collaboration.md)), tear down its worktree. Launch any member that was sequenced behind it. Free the slot → Stage A/B.
 
 ### C2 — Batch gate (when a batch completes)
@@ -393,7 +398,7 @@ parked work is entangled. That call is the PM's.
    Only `autonomous` lets you merge a batch PR yourself. Branch protection always wins
    over this setting; never route around it and never admin-merge. Sweep for comments
    (Stage A0) immediately before merging.
-5. Merge: `gh pr merge --merge --delete-branch` for batch PRs (preserves the per-issue squashed commits; use `--squash` only if the project's visible style demands it). Standalone/hotfix PRs: `--squash`.
+5. Merge: `forge.pr.merge.commit` (plus `forge.branch.delete` on Gitea) for batch PRs (preserves the per-issue squashed commits; use `--squash` only if the project's visible style demands it). Standalone/hotfix PRs: `--squash`.
 6. **Close member issues.** If dev is the default branch, `Closes #` handles it; if not, close each member manually with a comment linking the batch PR. Close the batch tracking issue; the epic closes when its last child does. Clear lingering status labels.
 7. Tear down: remove any remaining member worktrees, `git worktree prune`; delete the integration branch (the merge did if `--delete-branch`).
 8. **Keep the spec honest** (when the project has one — see [spec-maintenance.md](references/spec-maintenance.md)): append a dated line to `docs/specs/spec.md` § Changelog for every scope decision this batch involved (ship-partial, an answered product question, a hotfix that changed behaviour), advance any fully-closed feature to `status: built`, and file a `type:spec-update` issue when a feature's **documented behaviour** actually diverged from its `features/*.md`. Commit it with the batch.
