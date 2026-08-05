@@ -69,6 +69,12 @@ for anything this table does not cover, and add the row when you do.
 **Gitea MCP takes numeric label IDs, never names** — resolve names through `label_read`
 first. `tea` takes names, which is one more reason it is the primary interface.
 
+**`tea labels create` is not idempotent.** `gh label create --force` updates an existing
+label; `tea labels create` has no such flag, and running it twice with the same name
+does not error — it silently creates a second label with that name, exit 0. Check
+`tea labels list --output json` for the name first, and create only when it is missing
+(see the bootstrap block in [labels.md](../skills/issue-flow/references/labels.md)).
+
 ### Issues
 
 | Operation | GitHub (`gh`) | Gitea (`tea`) | Gitea MCP |
