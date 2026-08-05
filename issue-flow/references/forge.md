@@ -54,9 +54,15 @@ for anything this table does not cover, and add the row when you do.
 | `forge.auth.check` | `gh auth status` | `tea logins list` | `get_me` |
 | `forge.auth.login` | `gh auth login` | `tea logins add --name <n> --url <url> --token <t>` | n/a |
 | `forge.user.login` | `gh api user --jq .login` | `tea whoami` | `get_me` |
-| `forge.repo.view` | `gh repo view --json nameWithOwner,defaultBranchRef` | `tea repos list --output json` | `search_repos` |
+| `forge.repo.view` | `gh repo view --json nameWithOwner,defaultBranchRef` | `tea api /repos/{owner}/{repo}` | `search_repos` |
 | `forge.repo.create` | `gh repo create <name> --private --source=. --push` | `tea repos create --name <name> --private` | `create_repo` |
 | `forge.api.raw` | `gh api <path>` | `tea api <path>` | n/a |
+
+**`tea repos list` has no default-branch field.** Its `--fields` option covers
+`description,forks,id,name,owner,stars,ssh,updated,url,permission,type` only, and Phase 0
+needs the default branch to work out `live` and to check whether `Closes #` auto-closes a
+member issue at batch merge. Use `tea api /repos/{owner}/{repo}`, which returns the full
+repository object including `default_branch`.
 
 ### Labels
 
@@ -104,7 +110,7 @@ literally.
 | `forge.pr.view` | `gh pr view <pr> --json state,reviews,mergeable` | `tea pr list --output json`, or `tea api /repos/{owner}/{repo}/pulls/<pr>` | `pull_request_read` |
 | `forge.pr.diff` | `gh pr diff <pr>` | `tea api /repos/{owner}/{repo}/pulls/<pr>.diff` | `pull_request_read` |
 | `forge.pr.reviewer.add` | `gh pr edit <pr> --add-reviewer <user>` | `tea pr edit <pr> --add-reviewers <user>` | `pull_request_write(method: "add_reviewers")` |
-| `forge.pr.thread.resolve` | not scriptable | `tea pr resolve <pr> <comment-id>` | `pull_request_review_write(method: "resolve_thread")` |
+| `forge.pr.thread.resolve` | not scriptable | `tea pr resolve <comment-id>` | `pull_request_review_write(method: "resolve_thread")` |
 | `forge.pr.merge.squash` | `gh pr merge <pr> --squash --delete-branch` | `tea pr merge <pr> --style squash`, then `forge.branch.delete` | `pull_request_write(method: "merge", merge_style: "squash", delete_branch: true)` |
 | `forge.pr.merge.commit` | `gh pr merge <pr> --merge --delete-branch` | `tea pr merge <pr> --style merge`, then `forge.branch.delete` | `pull_request_write(method: "merge", merge_style: "merge", delete_branch: true)` |
 | `forge.branch.delete` | folded into `--delete-branch` | `tea pr clean <pr>`, or `git push <remote> --delete <branch>` | `delete_branch` |
