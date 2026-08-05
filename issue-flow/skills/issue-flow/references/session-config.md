@@ -28,6 +28,13 @@ locally. Write the session's answers to the local file when a co-operator is act
 ```json
 {
   "version": 1,
+  "forge": {
+    "type": "gitea",
+    "host": "http://gitea.example:3000",
+    "owner": "acme",
+    "repo": "widgets",
+    "interface": "cli"
+  },
   "concurrency": 3,
   "batchSize": 4,
   "runLength": { "mode": "issues", "value": 25 },
@@ -53,6 +60,20 @@ practices block. Say which defaults came from the spec when you present them.
 
 If the file is missing, malformed, or from a newer `version`, fall back to the built-in
 defaults below and say so. Never crash the session over config.
+
+## forge — which tracker this project uses
+
+`type` is `github` or `gitea`. `interface` is `cli` or `mcp` and selects the primary
+interface; the other stays available as the fallback. `host`, `owner` and `repo` are
+recorded by Phase 0 rather than typed by the user.
+
+**The block is optional.** When it is absent, Phase 0 detects the forge from the remote
+and defaults to `github`, so every configuration file written before this field existed
+keeps working untouched.
+
+It is **not** one of the startup questions. Phase 0 detects it, states what it found in
+the first digest, and asks only when detection is ambiguous. The mechanics are in
+[../../../references/forge.md](../../../references/forge.md).
 
 ## The startup prompt (Phase 0)
 
@@ -97,7 +118,7 @@ Rules:
 
 - **Promotion to live is never autonomous**, whatever this is set to.
 - When approval is required, the PM labels the tracking issue `status:awaiting-review`,
-  requests review (`gh pr edit --add-reviewer`, or comments naming the reviewers when no
+  requests review (`forge.pr.reviewer.add`, or comments naming the reviewers when no
   reviewer can be set), notifies once, and **moves on to other work** — it never blocks.
 - The PM merges only on an actual GitHub **approving review** from a human other than
   itself, plus green checks and no unresolved threads. A thumbs-up reaction or a

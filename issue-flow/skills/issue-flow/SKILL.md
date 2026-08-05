@@ -107,12 +107,19 @@ dev ◄────────────────────────�
 
 # Phase 0 — Preflight (run once per session)
 
-1. **Repo check.** `git rev-parse --is-inside-work-tree` and `gh repo view --json nameWithOwner,defaultBranchRef`.
+1. **Repo and forge check.** `git rev-parse --is-inside-work-tree`, then work out which
+   forge this repo lives on — see [../../references/forge.md](../../references/forge.md).
    - Not a git repo → ask the user to initialize; if yes, `git init` + initial commit.
-   - Git repo, no GitHub remote → ask whether to create one, then `gh repo create <name> --private --source=. --push` (confirm public/private first — outward-facing).
-   - `gh` not authenticated → tell the user to run `! gh auth login` and stop until done.
+   - Git repo, no forge remote → ask whether to create one, then `forge.repo.create`
+     (confirm public/private first — outward-facing).
+   - Read the repo with `forge.repo.view` to get the owner, name and default branch.
+   - CLI not authenticated (`forge.auth.check`) → tell the user to run `! gh auth login`
+     or `! tea logins add`, whichever this forge needs, and stop until done.
+   - **Record `forge.type`, `forge.host`, `forge.owner` and `forge.repo`** in the run
+     configuration now. The MCP interfaces need owner and repo on every call, and a
+     worker that has them never has to re-derive them.
 2. **Detect the remote name.** `git remote` — use the actual name (usually `origin`, never hardcode) for all fetch/branch/push. Call it `<remote>`.
-3. **Label bootstrap.** Ensure the standard labels exist (idempotent). See [references/labels.md](references/labels.md). Create missing ones; never delete/rename labels the project already uses.
+3. **Label bootstrap.** Ensure the standard labels exist (idempotent). See [references/labels.md](references/labels.md). Create missing ones with `forge.label.create`; never delete/rename labels the project already uses.
 4. **Foundation check — is there a project to build in?** Before anything else, look at
    what the repo actually contains: any commits, a package manifest / build file, a test
    command, a CI workflow. A repo with none of these cannot support a feature issue —
@@ -145,7 +152,9 @@ dev ◄────────────────────────�
    queries and detail: [references/deploy.md](references/deploy.md).
    1. **Detect the provider.** Look for AWS Amplify (`amplify.yml`, or an Amplify app
       connected to the deploy branch), then a GitHub Actions deploy job, then
-      Vercel/Netlify, then a deploy-status command or health URL the user supplies.
+      Vercel/Netlify, then **Gitea Actions** (a workflow under `.gitea/workflows/` or
+      `.github/workflows/` on a Gitea remote), then a deploy-status command or health URL
+      the user supplies.
    2. **Capture the deployed URL.** Record the production (default-branch) URL. Record the
       PR-preview URL pattern too, when the platform builds previews. Stage D cannot
       browser-verify a deployment without this.
@@ -167,7 +176,7 @@ dev ◄────────────────────────�
      worktree of the integration branch, the project's test/lint/typecheck/build commands,
      delegated to a subagent that returns a short pass/fail summary. That independent run
      — not a worker's self-reported `localChecks` — is the batch gate.
-   - **Does the CI honor `[skip ci]`?** (GitHub Actions does natively for push and pull_request events, keyed on the head commit message.) If the provider doesn't (or workflows use `workflow_dispatch`/schedule triggers that don't care), fall back to the alternatives in [references/batching.md](references/batching.md) (path filters, branch filters excluding `epic/**`+`batch/**` — proposing that workflow edit to the user once).
+   - **Does the CI honor `[skip ci]`?** (GitHub Actions does natively; Gitea Actions does natively from Gitea 1.20. Both key on the head commit message.) If the provider doesn't (or workflows use `workflow_dispatch`/schedule triggers that don't care), fall back to the alternatives in [references/batching.md](references/batching.md) (path filters, branch filters excluding `epic/**`+`batch/**` — proposing that workflow edit to the user once).
 8. **Documentation access — offer the MCP servers (and marketplaces) that provide it.** Workers must
    read real API docs rather than assume ([references/external-apis.md](../../references/external-apis.md)),
    and a connected documentation MCP server is far better at that than `WebFetch`. So
@@ -229,7 +238,7 @@ dev ◄────────────────────────�
    `.claude/settings.json` allow-list. If a worker returns `blocked` on a permission
    prompt, that is a settings gap: surface the exact command to the user, get it
    allow-listed, and re-run the issue rather than retrying blindly.
-10. **Identity & session status issue.** `gh api user --jq .login` → `<me>`.
+10. **Identity & session status issue.** `forge.user.login` → `<me>`.
    Find-or-create an open issue titled `issue-flow: session status — @<me>` labeled
    `flow:status`. The PM keeps its **body** updated with the current digest (shipped /
    in-flight / blocked / awaiting-feedback / active config) at every milestone — readable
