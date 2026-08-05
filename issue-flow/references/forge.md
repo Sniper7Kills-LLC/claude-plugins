@@ -92,13 +92,18 @@ does not error — it silently creates a second label with that name, exit 0. Ch
 | `forge.issue.create` | `gh issue create --title "<t>" --body "<b>" --label "<l>"` | `tea issues create --title "<t>" --description "<b>" --labels "<l>"` | `issue_write(method: "create")` |
 | `forge.issue.label.add` | `gh issue edit <n> --add-label "<l>"` | `tea issues edit <n> --add-labels "<l>"` | `issue_write(method: "add_labels")` — **IDs** |
 | `forge.issue.label.remove` | `gh issue edit <n> --remove-label "<l>"` | `tea issues edit <n> --remove-labels "<l>"` | `issue_write(method: "remove_label")` — **ID** |
-| `forge.issue.assign` | `gh issue edit <n> --add-assignee @me` | `tea issues edit <n> --add-assignees <me>` | `issue_write(method: "update", assignees)` |
+| `forge.issue.assign` | `gh issue edit <n> --add-assignee @me` | `tea issues edit <n> --set-assignees <me>` | `issue_write(method: "update", assignees)` |
 | `forge.issue.comment` | `gh issue comment <n> --body "<b>"` | `tea comments <n> "<b>"` | `issue_write(method: "add_comment")` |
 | `forge.issue.edit.body` | `gh issue edit <n> --body "<b>"` | `tea issues edit <n> --description "<b>"` | `issue_write(method: "update", body)` |
 | `forge.issue.close` | `gh issue close <n>` | `tea issues close <n>` | `issue_write(method: "update", state: "closed")` |
 
 **`tea` has no `@me`.** Resolve your own login with `forge.user.login` first and pass it
 literally.
+
+**`--add-assignees` does not work on Gitea.** The `tea issues edit --add-assignees` form makes
+a POST to a nonexistent endpoint and fails with a 404; the assignment is silent. Use `--set-assignees`
+instead. Note that `--set-assignees` replaces the entire assignee list, not append — this is
+the correct behavior for a claim lock, but it will displace any pre-existing assignee.
 
 ### Pull requests
 
