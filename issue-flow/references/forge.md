@@ -129,6 +129,12 @@ CI-free draft sub-pull-request model therefore works unchanged.
 teardown is a separate `forge.branch.delete` step. Do not skip it — an undeleted
 integration branch is re-adopted as live work by Phase 0 state recovery.
 
+**`Closes #<n>` works differently on each forge.** On GitHub, it closes the linked
+issue only when the pull request merges into the default branch. On Gitea, it closes
+when the pull request merges into any branch. The plugin requires sub-pull-requests to
+omit closing keywords because a sub-pull-request that closes an issue on Gitea closes
+it before the batch lands. The worker enforces this rule for both forges.
+
 ### Actions and CI
 
 | Operation | GitHub (`gh`) | Gitea (`tea`) | Gitea MCP |
