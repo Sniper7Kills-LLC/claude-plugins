@@ -5,7 +5,7 @@ the labels are identical on both. Only the commands that reach the tracker diffe
 this file is the single place that records them.
 
 **Supported versions.** GitHub through the `gh` CLI, any current version. Gitea **1.20 or
-later** — 1.20 is the release that honours `[skip ci]` natively, which the batch model
+later** — 1.20 is the release that honors `[skip ci]` natively, which the batch model
 depends on. Verified against Gitea **1.25.3**, `tea` **0.15.1**, and Gitea MCP server
 **v1.6.0**.
 
@@ -65,7 +65,7 @@ for anything this table does not cover, and add the row when you do.
 | `forge.label.list` | `gh label list` | `tea labels list --output json` | `label_read` |
 | `forge.label.create` | `gh label create "<name>" --color <hex> --description "<d>"` | `tea labels create --name "<name>" --color "#<hex>" --description "<d>"` | `label_write(method: "create_repo_label")` |
 
-**Two differences.** `tea` wants a leading `#` on the colour; `gh` does not. And the
+**Two differences.** `tea` wants a leading `#` on the color; `gh` does not. And the
 **Gitea MCP takes numeric label IDs, never names** — resolve names through `label_read`
 first. `tea` takes names, which is one more reason it is the primary interface.
 
@@ -124,7 +124,7 @@ integration branch is re-adopted as live work by Phase 0 state recovery.
 **Gitea has no `--watch`.** Poll `forge.run.list` on an interval instead of blocking, and
 keep the polling in a subagent so the log volume never reaches the PM.
 
-**`[skip ci]` is native on both.** Gitea Actions honours `[skip ci]`, `[ci skip]`,
+**`[skip ci]` is native on both.** Gitea Actions honors `[skip ci]`, `[ci skip]`,
 `[no ci]`, `[skip actions]` and `[actions skip]` in the head commit message from 1.20
 onward. The "CI runs once per batch" invariant needs no Gitea-specific workaround.
 
@@ -134,7 +134,7 @@ onward. The "CI runs once per batch" invariant needs no Gitea-specific workaroun
 exposes `dependencies` and `blocks`, but no `sub_issues`. Epic decomposition on Gitea
 therefore uses the fallback this plugin already documents for GitHub — a `Part of #<n>`
 line in each child body plus a task-list checkbox in the epic body. No new concept, and
-no behaviour change.
+no behavior change.
 
 **Gitea has issue dependencies that GitHub does not.** `/issues/{index}/dependencies` and
 `/issues/{index}/blocks` model the `Depends on #<n>` relationship natively. This plugin
