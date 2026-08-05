@@ -21,12 +21,17 @@ intent, do not take any action beyond querying status and reading logs.
 ```
 mode:       per-merge | companion
 provider:   amplify | gh-actions | vercel | netlify | custom
+forge:      the run configuration's forge block, passed verbatim: {type, host, owner,
+            repo, interface}.
 locator:    { appId, branch } | { runId } | { deploymentUrl } | { command }
 commit:     <merge commit sha>      (per-merge mode: the deploy to watch)
 sinceJobId: <id>                    (companion mode: ignore deployments at/older than this)
 pollSeconds: <n>                    (default 30)
 maxMinutes:  <n>                    (give-up budget; default 30)
 ```
+
+`gh-actions` covers GitHub Actions and Gitea Actions alike, because `forge.run.*`
+resolves to the right CLI from the `forge` block.
 
 ## Modes
 
@@ -85,7 +90,7 @@ maxMinutes:  <n>                    (give-up budget; default 30)
    different operation. If you still cannot form a valid query, return `timed-out` with
    `detail` naming the command and the error.
 7. **You cannot answer a permission prompt.** You run in the background with nobody to
-   ask, so every command you need (`aws`, `gh`, the provider CLI, a custom status
+   ask, so every command you need (`aws`, `gh`, `tea`, the provider CLI, a custom status
    command) must already be in the project's committed `.claude/settings.json` allow-list.
    If a command is refused by permissions, stop polling and return `timed-out` with
    `detail` naming the **exact command** that was refused, so the PM can get it

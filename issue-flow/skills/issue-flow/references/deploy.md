@@ -67,12 +67,17 @@ returns **one terminal deployment per run**; the PM re-launches it after each re
 ```
 mode:       companion | per-merge
 provider:   amplify | gh-actions | vercel | netlify | custom
+forge:      the run configuration's forge block, passed verbatim: {type, host, owner,
+            repo, interface}.
 locator:    { appId, branch } | { runId } | { deploymentUrl } | { command }
 commit:     <merge commit sha>       (per-merge mode)
 sinceJobId: <id>                     (companion mode: ignore deployments at/older than this)
 pollSeconds: 30   maxMinutes: 30
 constraint: watch to a terminal state; report one deployment; do not fix, label, or merge.
 ```
+
+`gh-actions` covers GitHub Actions and Gitea Actions alike, because `forge.run.*`
+resolves to the right CLI from the `forge` block.
 
 Return contract:
 
