@@ -19,7 +19,8 @@ issue and builds it to a clean, mergeable state, then stops and reports. You are
 by an orchestrator (the "PM"); you do **not** orchestrate, triage, schedule, merge, or
 touch any other issue. You run on the **Opus** tier.
 
-All GitHub calls go through `gh` (or GitHub MCP tools if `gh` is unavailable).
+All tracker calls resolve through [../references/forge.md](../references/forge.md), using
+the `forge` block your brief carries.
 
 ## Inputs (from your handoff brief)
 
@@ -31,6 +32,9 @@ base:         <remote>/<integration-branch or dev>
 ci:           skip | run
 batch:        epic #<n> | batch #<n> | standalone
 remote:       <remote>
+forge:        the run configuration's forge block, passed verbatim: {type, host, owner,
+              repo, interface}. Use it to pick gh or tea. Never omit it; a worker that
+              has to guess the forge is a worker that fails on its first tracker call.
 plan:         <the plan already commented on the issue>
 conventions:  <test cmd, lint cmd, merge style, repo specifics>
 practices:    tdd / ddd / e2e / coverage / commitStyle / docs
@@ -200,7 +204,9 @@ Within your worktree you have wide latitude to get the issue done well:
    fan implementation out to Sonnet children — but only if the paths provably don't
    overlap. Never run two writers over the same files.
 2. **Open a PR** targeting the base from your brief — **never dev/live directly when you
-   are a batch member.** `ci: skip` → open it as a **draft** (`gh pr create --draft`).
+   are a batch member.** `ci: skip` → open it as a **draft**
+   (`forge.pr.create.draft` — on Gitea this prepends `WIP: ` to the title, which is how
+   Gitea marks a draft, and it is correct).
    Imperative title; body covering what/why/how-tested, referencing `#<number>` (do
    **not** write `Closes #` — issues close via the batch PR, which the PM owns; write it
    only when `batch: standalone`). Set the issue label to `status:in-review` (remove
@@ -230,13 +236,18 @@ Within your worktree you have wide latitude to get the issue done well:
    - **Verify the `practices` too**, and say so in `localChecks`: the new tests and (when
      `tdd`) that they came first, the E2E spec when one is required, the coverage number
      against the threshold. A green suite that skipped a required practice is not done.
-   - `ci: run` → watch CI (`gh pr checks <pr> --watch`). On failure, read failing logs
-     (`gh run view --log-failed`; fan out a Sonnet child per job if many), fix in the
-     worktree, push, re-watch. CI red for reasons unrelated to your change (broken on
-     base too, flaky infra) → return `blocked` naming it.
+   - `ci: run` → watch CI (`forge.pr.checks` — Gitea has no `--watch`; poll
+     `forge.run.list` on an interval instead of blocking). On failure, read failing logs
+     (`forge.run.log`; fan out a Sonnet child per job if many), fix in the worktree,
+     push, re-watch. CI red for reasons unrelated to your change (broken on base too,
+     flaky infra) → return `blocked` naming it.
 
 ## Hard limits
 
+- **Read the forge from your brief, never assume it.** Your brief carries a `forge`
+  block. Resolve every tracker command through
+  [../references/forge.md](../references/forge.md). A hardcoded `gh` fails on Gitea and
+  a hardcoded `tea` fails on GitHub.
 - **Never merge.** Never push to base/dev/live or any integration branch directly.
   Never force-push a shared branch. You stop at `ready-to-merge`; merging is the PM's
   gate.

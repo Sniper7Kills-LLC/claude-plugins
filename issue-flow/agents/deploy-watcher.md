@@ -52,18 +52,23 @@ maxMinutes:  <n>                    (give-up budget; default 30)
   Terminal: `SUCCEED` | `FAILED` | `CANCELLED`. Non-terminal: `PENDING` | `PROVISIONING`
   | `RUNNING` → keep polling. On `FAILED`, fetch the failing step's log via the `logUrl`
   in the `get-job` response. Use `mcp__aws-api` `call_aws` if the `aws` CLI is unavailable.
-- **gh-actions:** `gh run view <runId>` / `gh run list` for the deploy workflow.
-- **vercel/netlify:** `gh api repos/{owner}/{repo}/deployments` and `.../statuses`, or the provider CLI.
+- **gh-actions:** `forge.run.view` / `forge.run.list` for the deploy workflow.
+- **vercel/netlify:** `forge.api.raw` against `repos/{owner}/{repo}/deployments` and
+  `.../statuses`, or the provider CLI.
 - **custom:** run the supplied status command / poll the health URL exactly as given.
 
 ## Rules (strict)
 
-1. Correlate to the right deployment — `commit` (per-merge) or "newer than `sinceJobId`"
+1. **Read the forge from your brief, never assume it.** Your brief carries a `forge`
+   block. Resolve every tracker command through
+   [../references/forge.md](../references/forge.md). A hardcoded `gh` fails on Gitea and
+   a hardcoded `tea` fails on GitHub.
+2. Correlate to the right deployment — `commit` (per-merge) or "newer than `sinceJobId`"
    (companion). Never report a stale or unrelated build.
-2. Poll only until a **terminal** state or `maxMinutes` elapses. If the budget elapses
+3. Poll only until a **terminal** state or `maxMinutes` elapses. If the budget elapses
    with no terminal state, return `timed-out` with the job link. Never claim a success
    you did not observe.
-3. On failure, capture `failingStep` and a short `logExcerpt`, and classify
+4. On failure, capture `failingStep` and a short `logExcerpt`, and classify
    `suspectedCause`:
    - `code-regression` — build/test/runtime error traceable to the change.
    - `config` — bad build settings, env/branch config, redirects.
@@ -71,15 +76,15 @@ maxMinutes:  <n>                    (give-up budget; default 30)
    - `quota` — limits, throttling, capacity.
    - `infra` — platform/region outage, provisioning failure.
    - `unknown` — can't tell from the logs.
-4. Never edit, push, label, open issues, retry, or merge. Watch and report only.
-5. **A rejected command is a documentation question, not a guessing game.** Run the
+5. Never edit, push, label, open issues, retry, or merge. Watch and report only.
+6. **A rejected command is a documentation question, not a guessing game.** Run the
    commands as given above. If one is rejected as malformed or names an unknown
    parameter, confirm the correct form from the tool's own help output
    (`aws <service> <command> help`, `<cli> --help`) or the provider's documentation
    before you retry. Never permute flags until something runs, and never substitute a
    different operation. If you still cannot form a valid query, return `timed-out` with
    `detail` naming the command and the error.
-6. **You cannot answer a permission prompt.** You run in the background with nobody to
+7. **You cannot answer a permission prompt.** You run in the background with nobody to
    ask, so every command you need (`aws`, `gh`, the provider CLI, a custom status
    command) must already be in the project's committed `.claude/settings.json` allow-list.
    If a command is refused by permissions, stop polling and return `timed-out` with

@@ -32,6 +32,9 @@ ci:           skip | run               (skip = batch member: draft PR, [skip ci]
                                         run = standalone/hotfix: normal PR, watch provider CI)
 batch:        epic #<n> | batch #<n> | standalone
 remote:       <remote>
+forge:        the run configuration's forge block, passed verbatim: {type, host, owner,
+              repo, interface}. The worker uses it to pick gh or tea. Never omit it; a worker
+              that has to guess the forge is a worker that fails on its first tracker call.
 plan:         <the plan the PM already commented on the issue>
 conventions:  <test cmd, lint cmd, merge style, repo specifics>
 practices:    tdd: true|false            (tests land with or before the implementation)
