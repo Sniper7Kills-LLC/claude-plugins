@@ -36,11 +36,27 @@ git fetch <remote>
 git checkout -B issue/<m>-<slug> <remote>/epic/<n>-<slug>
 ```
 
+On a **re-spawn for rework** the branch already exists and carries the PR's commits, so
+the base is the branch itself — `git checkout -B issue/<m>-<slug> <remote>/issue/<m>-<slug>`.
+The worker checks for the published branch before falling back to the integration branch;
+pointing an existing member branch at the integration branch would discard its commits.
+
 Sequenced members (dependency chains) launch only after their predecessor sub-merges,
 so they fork the **updated** integration branch and never conflict with it.
 
 Teardown: member branches are deleted at sub-merge (`--delete-branch`); the integration
-branch is deleted at batch merge. Worktrees removed at sub-merge; `git worktree prune`.
+branch is deleted at batch merge. A worker's worktree always holds commits, so the harness
+never auto-removes it — the PM removes the path from the worker's verdict at sub-merge
+(`git worktree remove --force`) and sweeps `git worktree list --porcelain` at batch merge,
+then `git worktree prune`.
+
+**"An integration-branch worktree" below always means one of two things**, never
+`EnterWorktree`: for the PM's own sequential work (local sub-merges, the empty CI commit)
+a plain `git worktree add .claude/worktrees/<integration-branch>` driven with
+`git -C <path>` — measured safe from the PM, which stays unpinned; for delegated work
+(suite runs, fix workers) a subagent spawned with `isolation: "worktree"` and
+`base: <remote>/<integration-branch>`, which lands there via its own
+`git checkout -B <integration-branch> <remote>/<integration-branch>`.
 
 ## Keeping sub-issue PRs CI-free
 
@@ -82,8 +98,10 @@ unchanged.
 3. `forge.pr.ready` then `forge.pr.merge.squash`, then `forge.branch.delete` on Gitea —
    one clean squashed commit per member on the integration branch. Head commit carries
    `[skip ci]`, so this stays CI-free.
-4. Member → `status:batched`; tick the tracking checklist; tear down the worktree;
-   launch any sequenced successor.
+4. Member → `status:batched`; tick the tracking checklist; `git worktree remove --force`
+   the path from the worker's verdict; launch any sequenced successor. Anything sent back
+   to the worker instead goes by `SendMessage` — see
+   [issue-worker.md](issue-worker.md#rework-message-the-same-worker-dont-spawn-a-new-one).
 
 ## Batch gate checklist (PM, per batch — Stage C2)
 
@@ -101,7 +119,7 @@ Batch complete = every member `status:batched` or terminally parked.
 3. Optional **batch review**: one subagent reviews the whole integration→dev diff for
    cross-member integration problems (interface drift between members, duplicate
    migrations, conflicting config). Cheap — no CI involved.
-4. CI failure → fix worker on an integration-branch worktree; interim commits may
+4. CI failure → fix worker, `isolation: "worktree"` with `base: <remote>/<integration-branch>`; interim commits may
    `[skip ci]`; final push re-runs CI. CI red for pre-existing/base reasons → `blocked`.
 5. Conflict vs dev (another batch landed first) → resolve once here; semantic → park.
 6. Merge `--merge` (preserves per-member squashed commits; `--squash` only if the

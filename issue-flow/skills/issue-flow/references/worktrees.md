@@ -8,9 +8,16 @@ harness models it, and the failure mode that made this rule necessary.
 
 - The PM launches every worker with `isolation: "worktree"` and passes **no worktree path**.
 - Nobody in the run calls `EnterWorktree` or `ExitWorktree` — not the PM, not a worker,
-  not a worker's child.
+  not a worker's child. Plain `git worktree add` is a different thing and stays fine.
 - A worker's children are spawned with **no `isolation` parameter**; they inherit the
   worker's worktree.
+- Rework goes back to the **same** worker by `SendMessage`, not a new spawn — see
+  [Rework](#rework-and-re-spawn) below.
+- The PM removes each worktree at sub-merge, from the path in the worker's verdict — see
+  [Teardown](#teardown-is-still-the-pms-job).
+
+All harness behavior recorded here was measured on **Claude Code 2.1.224**; re-verify
+against the running version if something reads as stale.
 
 ## Why: two different pins
 
@@ -51,8 +58,9 @@ Renaming worktrees does not help: the pin is on the session, not on the path.
 
 Verified by direct measurement on 2.1.224, with two workers running concurrently:
 
-- Each agent gets its own worktree at `.claude/worktrees/agent-<id>`, created, `locked`,
-  and cleaned up by the harness.
+- Each agent gets its own worktree at `.claude/worktrees/agent-<id>`, created and `locked`
+  by the harness. The harness removes it again **only if it is unchanged** — see
+  [Teardown](#teardown-is-still-the-pms-job).
 - Neither agent's directory moved when the other started or finished.
 - The PM's working directory never moved, and `git -C <checkout>` from the PM returned
   exit 0 throughout — including compound commands.
@@ -75,9 +83,62 @@ git checkout -B issue/<number>-<slug> <base>
 
 This was verified to succeed inside a harness-created worktree.
 
+`-B` **resets** the branch to `<base>`, which is right on a first attempt and destructive
+on a second one, so the worker checks for a published branch of the same name first and
+continues that instead (`agents/issue-worker.md`). `isolation` takes no base parameter —
+the brief is the only place the base can be chosen, which is why the PM has to get it
+right on a re-spawn.
+
+## Rework and re-spawn
+
+A gate that sends an issue back to the worker has two mechanisms, and they behave
+differently:
+
+| | what it is | worktree | branch |
+|---|---|---|---|
+| `SendMessage` to the same worker | the same agent, context intact | **its own**, still pinned | already checked out |
+| a new `Agent` call | a fresh agent | a **new empty** one | default branch until it checks out |
+
+So rework goes back by `SendMessage` (name workers `worker-<issue>` at launch to keep them
+addressable). Re-spawn is the fallback for when the worker is gone — after a session
+restart, for instance — and it needs `base: <remote>/issue/<number>-<slug>` in the brief so
+the new worker continues the published branch rather than resetting it.
+
+This also means a leftover worktree from a previous session **cannot be resumed in place**:
+no new agent can be placed into it, and its own agent is gone. Adopt that work from the
+branch and the PR, then remove the directory.
+
+## Teardown is still the PM's job
+
+The harness auto-removes an isolated worktree only when it is **unchanged**; a worker's
+holds commits, so it survives the agent. Its own removal path refuses outright while
+commits or dirty files are present (`Removing will discard this work permanently`), which
+is the right default and also means nothing cleans up behind a worker but the PM.
+
+The worker therefore returns `worktree` (its `pwd`) in its verdict — the PM's only handle,
+since the PM no longer passes a path in:
+
+```bash
+git worktree remove --force <worktree from the verdict>   # at sub-merge
+git worktree list --porcelain                            # sweep for earlier sessions' leftovers
+git worktree prune
+```
+
+## What the PM may still do itself
+
+The banned tool is `EnterWorktree`, not the git command. The PM stays unpinned, and a
+`git -C <path>` from the PM into any checkout was measured as exit 0 throughout — so for
+its own sequential integration-branch work (local sub-merges, the empty commit that
+re-triggers CI) the PM may `git worktree add .claude/worktrees/<integration-branch>` and
+drive it with `git -C`. It just never *enters* it. Delegated integration-branch work
+(suite runs, fix workers) goes to a subagent with `isolation: "worktree"` and
+`base: <remote>/<integration-branch>` instead.
+
 ## Related settings
 
-Project `.claude/settings.json`:
+Project `.claude/settings.json` (names as of 2.1.224 — `worktree.sparsePaths` and the
+`.worktreeinclude` copy are visible in the shipped bundle; confirm the others against the
+version you are on before relying on them):
 
 - `worktree.baseRef` — `fresh` (default, branches from `origin/<default-branch>`) or
   `head` (branches from local HEAD, carrying unpushed work).

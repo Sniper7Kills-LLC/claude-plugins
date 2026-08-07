@@ -61,16 +61,23 @@ git fetch <remote>
 git checkout -B issue/<number>-<slug> <remote>/epic/<n>-<slug>
 ```
 
+On a re-spawn for rework the base is the issue's **own published branch** instead
+(`<remote>/issue/<number>-<slug>`) — the worker checks for it before falling back, so a
+second attempt cannot reset away the first attempt's commits.
+
 - `<remote>` is detected in preflight (`git remote` — usually `origin` but never
   hardcode it).
 - Each worktree is a fully independent checkout: build, test, commit, push there.
 - The main thread owns the loop and the gates; it may launch a background implement
   Workflow per issue and react to each `<task-notification>` as issues complete.
 
-Cleanup on merge (or abandonment):
+Cleanup on merge (or abandonment) — the harness auto-removes an isolated worktree only if
+it is *unchanged*, and a worker's is never unchanged, so the PM removes it. Use the path
+from the worker's verdict, and sweep for leftovers from earlier sessions:
 
 ```bash
-git worktree remove .claude/worktrees/issue-<number> --force   # after the branch is merged/deleted
+git worktree remove --force <worktree from the worker's verdict>   # after the branch is merged/deleted
+git worktree list --porcelain                                      # leftovers on issue/* branches
 git worktree prune
 ```
 

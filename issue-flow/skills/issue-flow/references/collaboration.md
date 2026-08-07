@@ -77,8 +77,9 @@ even when the author is a collaborator.
 
 The same sweep reconciles what changed underneath you:
 
-- **An in-flight issue was closed or reassigned by a human** → stop its worker, tear
-  down the worktree, comment what was completed, free the slot.
+- **An in-flight issue was closed or reassigned by a human** → stop its worker, remove its
+  worktree (path from the verdict when it returned one, otherwise the `issue/<n>-<slug>`
+  entry in `git worktree list --porcelain`), comment what was completed, free the slot.
 - **Someone pushed to your integration branch** → fetch before every sub-merge; treat
   their commits as part of the base and resolve conflicts against the updated branch.
   Never force-push, never revert someone else's commit without asking.
