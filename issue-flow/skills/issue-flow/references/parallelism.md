@@ -73,11 +73,14 @@ second attempt cannot reset away the first attempt's commits.
 
 Cleanup on merge (or abandonment) — the harness auto-removes an isolated worktree only if
 it is *unchanged*, and a worker's is never unchanged, so the PM removes it. Use the path
-from the worker's verdict, and sweep for leftovers from earlier sessions:
+from the worker's completion notification (`worktreePath`) or its verdict, and sweep for
+leftovers from earlier sessions:
 
 ```bash
-git worktree remove --force <worktree from the worker's verdict>   # after the branch is merged/deleted
-git worktree list --porcelain                                      # leftovers on issue/* branches
+git worktree remove --force <path from the completion notification>  # after the branch is merged/deleted
+git branch -D worktree-agent-<id>                                   # the harness branch the removal leaves
+git worktree list --porcelain                                       # leftovers on issue/* branches
+git worktree remove -f -f <leftover>                                # -f -f: a killed session leaves the lock
 git worktree prune
 ```
 

@@ -63,8 +63,10 @@ and does not waive them there.
 
 **Do not create the worktree.** `isolation: "worktree"` makes the harness create it under
 `.claude/worktrees/`, pin the worker to it, and copy the project's `.worktreeinclude`
-matches in. The worker reports the path back as `worktree` in its verdict — that is the
-PM's only handle on it, so the PM never needs (and never passes) a path. The PM's job is
+matches in. The PM learns the path from the worker's **completion notification** (a
+`<worktree>` block carrying `worktreePath` and `worktreeBranch`); the worker also reports
+its `pwd` as `worktree` in its verdict as the fallback source. Either way the PM never
+needs (and never passes) a path in. The PM's job is
 to keep `.worktreeinclude` accurate — a worktree is a fresh checkout of *tracked* files,
 so `.env` and local secrets are otherwise missing and env-dependent suites fail as
 `blocked`. And remember the worker **cannot answer a permission prompt**: every command
@@ -101,7 +103,7 @@ The worker returns exactly this object as its final message:
   "properties": {
     "issue":      { "type": "number" },
     "branch":     { "type": "string" },
-    "worktree":   { "type": "string", "description": "the worker's own worktree path — the PM's only handle for teardown" },
+    "worktree":   { "type": "string", "description": "the worker's own worktree path (its pwd) — the PM's fallback handle for teardown when the completion notification is unavailable" },
     "prNumber":   { "type": "number" },
     "outcome":    { "type": "string", "enum": ["ready-to-merge", "needs-feedback", "blocked"] },
     "detail":     { "type": "string" },

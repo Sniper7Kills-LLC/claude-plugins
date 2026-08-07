@@ -46,9 +46,11 @@ so they fork the **updated** integration branch and never conflict with it.
 
 Teardown: member branches are deleted at sub-merge (`--delete-branch`); the integration
 branch is deleted at batch merge. A worker's worktree always holds commits, so the harness
-never auto-removes it — the PM removes the path from the worker's verdict at sub-merge
-(`git worktree remove --force`) and sweeps `git worktree list --porcelain` at batch merge,
-then `git worktree prune`.
+never auto-removes it — the PM removes the path from the worker's completion notification
+(`worktreePath`, or its verdict) at sub-merge (`git worktree remove --force`, plus
+`git branch -D worktree-agent-<id>` for the branch the removal leaves) and sweeps
+`git worktree list --porcelain` at batch merge, removing leftovers with `-f -f` because a
+killed session leaves them locked, then `git worktree prune`.
 
 **"An integration-branch worktree" below always means one of two things**, never
 `EnterWorktree`: for the PM's own sequential work (local sub-merges, the empty CI commit)
@@ -99,7 +101,8 @@ unchanged.
    one clean squashed commit per member on the integration branch. Head commit carries
    `[skip ci]`, so this stays CI-free.
 4. Member → `status:batched`; tick the tracking checklist; `git worktree remove --force`
-   the path from the worker's verdict; launch any sequenced successor. Anything sent back
+   the path from the worker's completion notification (or its verdict) and `git branch -D`
+   its `worktree-agent-<id>`; launch any sequenced successor. Anything sent back
    to the worker instead goes by `SendMessage` — see
    [issue-worker.md](issue-worker.md#rework-message-the-same-worker-dont-spawn-a-new-one).
 

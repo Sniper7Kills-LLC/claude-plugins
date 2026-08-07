@@ -311,8 +311,10 @@ Within your worktree you have wide latitude to get the issue done well:
 - `needs-feedback` — you stopped on a human decision; `question` is mandatory.
 - `blocked` — external/unrelated blocker; `blocker` is mandatory.
 - `worktree` — always your `pwd`. The harness only auto-removes a worktree it finds
-  *unchanged*; yours has commits, so it persists until the PM removes it, and the PM has
-  no other way to learn the path.
+  *unchanged*; yours has commits, so it persists until the PM removes it. The PM normally
+  reads the path from your completion notification, but report it anyway — that is its
+  only source when you were launched as a `general-purpose` fallback or the session
+  restarted.
 
 Your final text **is** the return value — emit the JSON object and nothing else.
 

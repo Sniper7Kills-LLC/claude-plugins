@@ -58,9 +58,20 @@ Renaming worktrees does not help: the pin is on the session, not on the path.
 
 Verified by direct measurement on 2.1.224, with two workers running concurrently:
 
-- Each agent gets its own worktree at `.claude/worktrees/agent-<id>`, created and `locked`
-  by the harness. The harness removes it again **only if it is unchanged** — see
-  [Teardown](#teardown-is-still-the-pms-job).
+- Each agent gets its own worktree at `.claude/worktrees/agent-<id>`, on a harness-made
+  branch `worktree-agent-<id>` cut from the **default branch** — not from the branch the
+  session has checked out. The harness removes the worktree again **only if it is
+  unchanged** — see [Teardown](#teardown-is-still-the-pms-job).
+- The worktree is `locked` **only while the agent is running**; the lock is released when
+  it returns, and re-taken if it is resumed. This matters for teardown: see below.
+- The worktree and its commits **survive the agent returning**. Verified: an agent
+  committed, returned, and its tree and commit were still there afterwards.
+- The completion notification carries the path: a `<worktree>` block with `worktreePath`
+  and `worktreeBranch`. The PM does not have to be told the path by the worker.
+- `SendMessage` to an **already-completed** worker resumes it with its context, its
+  worktree, and its branch intact, and its earlier commits still in place. This is what
+  makes the rework path below safe.
+- `run_in_background: true` and `isolation: "worktree"` compose — both take.
 - Neither agent's directory moved when the other started or finished.
 - The PM's working directory never moved, and `git -C <checkout>` from the PM returned
   exit 0 throughout — including compound commands.
@@ -115,14 +126,28 @@ holds commits, so it survives the agent. Its own removal path refuses outright w
 commits or dirty files are present (`Removing will discard this work permanently`), which
 is the right default and also means nothing cleans up behind a worker but the PM.
 
-The worker therefore returns `worktree` (its `pwd`) in its verdict — the PM's only handle,
-since the PM no longer passes a path in:
+The path comes from the worker's **completion notification** (`<worktree><worktreePath>`),
+with the `worktree` field of its verdict as the fallback source. The PM passes no path in
+either way.
 
 ```bash
-git worktree remove --force <worktree from the verdict>   # at sub-merge
-git worktree list --porcelain                            # sweep for earlier sessions' leftovers
+git worktree remove --force <path>          # at sub-merge, after the worker returned
+git branch -D worktree-agent-<id>           # the harness branch it left behind
+git worktree list --porcelain               # sweep for earlier sessions' leftovers
 git worktree prune
 ```
+
+Two things measured on git 2.53 that the plain `--force` form gets wrong:
+
+- **`--force` alone fails on a *locked* worktree** — `fatal: cannot remove a locked
+  working tree; use 'remove -f -f' to override or unlock first`. A worker's tree is locked
+  only while it runs, so sub-merge teardown is fine, but **stopping a live worker**
+  (`collaboration.md`) or cleaning up after a session that was killed mid-run hits a
+  locked tree. Use `git worktree remove -f -f <path>` there, or `git worktree unlock`
+  first.
+- **Removing the worktree leaves the branch.** The harness's `worktree-agent-<id>` branch
+  survives teardown and accumulates one dead ref per worker. Delete it with the worktree.
+  The worker's own `issue/<n>-<slug>` branch is deleted by the sub-merge instead.
 
 ## What the PM may still do itself
 
@@ -136,9 +161,10 @@ drive it with `git -C`. It just never *enters* it. Delegated integration-branch 
 
 ## Related settings
 
-Project `.claude/settings.json` (names as of 2.1.224 — `worktree.sparsePaths` and the
-`.worktreeinclude` copy are visible in the shipped bundle; confirm the others against the
-version you are on before relying on them):
+Project `.claude/settings.json`. All four names below were confirmed present in the
+2.1.224 CLI. To re-check on another version, note the CLI ships as a **compiled binary** —
+`grep` over it finds nothing and that is not evidence of absence; use
+`strings -a "$(readlink -f "$(which claude)")" | grep baseRef`:
 
 - `worktree.baseRef` — `fresh` (default, branches from `origin/<default-branch>`) or
   `head` (branches from local HEAD, carrying unpushed work).
