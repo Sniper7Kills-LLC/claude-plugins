@@ -171,7 +171,10 @@ order, chain them with `&&` in one `Bash` call rather than taking a turn each.
   call, not three.
 - Reading the four files the plan named — one message, four `Read` blocks.
 - Test, lint, and typecheck when you expect them green — `cmd1 && cmd2 && cmd3`, one call.
-  Split them only after something fails and you need to isolate which.
+  Split them only after something fails and you need to isolate which. Note the trade:
+  `&&` short-circuits, so a failure hides the later results and costs you back the round
+  trip. When you actually want all three verdicts, use `;` and read the whole output —
+  still one call.
 - Never spend a turn on `cd`, `pwd`, `ls`, `cat`, or `echo` alone. Fold them into the
   command that needed them. (The one exception is the `pwd` that establishes your worktree
   root at startup.)
@@ -238,8 +241,14 @@ order, chain them with `&&` in one `Bash` call rather than taking a turn each.
    If the issue splits into **disjoint** paths (e.g. `frontend/` vs `backend/`), you may
    fan implementation out to Sonnet children — but only if the paths provably don't
    overlap. Never run two writers over the same files.
-2. **Open a PR** targeting the base from your brief — **never dev/live directly when you
-   are a batch member.** `ci: skip` → open it as a **draft**
+2. **Open a PR — unless one is already open.** You are routinely a *replacement* worker
+   continuing a checkpointed branch, so check first: look for an open PR whose head is
+   `issue/<number>-<slug>` (`forge.pr.view` — it takes a branch name as well as a PR
+   number). If one exists, adopt it — update its body if the scope moved, leave the
+   label alone, and skip to step 3.
+   Opening a second PR for the same branch is the failure mode here.
+   Otherwise open one targeting the base from your brief — **never dev/live directly when
+   you are a batch member.** `ci: skip` → open it as a **draft**
    (`forge.pr.create.draft` — on Gitea this prepends `WIP: ` to the title, which is how
    Gitea marks a draft, and it is correct).
    Imperative title; body covering what/why/how-tested, referencing `#<number>` (do
@@ -275,11 +284,15 @@ order, chain them with `&&` in one `Bash` call rather than taking a turn each.
    - **Verify the `practices` too**, and say so in `localChecks`: the new tests and (when
      `tdd`) that they came first, the E2E spec when one is required, the coverage number
      against the threshold. A green suite that skipped a required practice is not done.
-   - `ci: run` → watch CI with a **single blocking call**: `gh run watch <id>
-     --exit-status` on GitHub, or the shell poll loop in
-     [../references/forge.md](../references/forge.md) on Gitea. **Never take an agent turn
-     per status check** — one turn per poll re-reads your entire context, so a 20-minute
-     CI run costs 40 full-context round trips instead of one. On failure, read failing logs
+   - `ci: run` → watch CI with **`forge.pr.checks`**, resolved from your brief like every
+     other operation — it is **one blocking call**, and it takes the PR number you already
+     have. **Never take an agent turn per status check** — one turn per poll re-reads your
+     entire context, so a 20-minute CI run costs 40 full-context round trips instead of
+     one. On GitHub it blocks natively and **exits non-zero when checks fail** (`8` while
+     still pending): that non-zero exit is the result, not a tool error to retry. On Gitea
+     it resolves to the run-anchored shell loop in
+     [../references/forge.md](../references/forge.md); `no-run-registered` there means no
+     run was created (a `[skip ci]` commit), which is **not** a pass. On failure, read failing logs
      (`forge.run.log`; fan out a Sonnet child per job if many), fix in the worktree,
      push, re-watch. CI red for reasons unrelated to your change (broken on base too,
      flaky infra) → return `blocked` naming it.
@@ -313,7 +326,18 @@ Your cost is not the work you do, it is **turns × your context size**, and your
 only grows. A 400-turn agent costs far more than four 100-turn agents doing the same work,
 because every turn re-reads everything before it. So you have a budget.
 
-**At ~120 tool calls, stop at the next clean point** and return `outcome: "checkpoint"`.
+**Checkpoint at the next clean point** — return `outcome: "checkpoint"` — as soon as any
+of these is true. They are things you can actually notice about your own run:
+
+- You have pushed three fix rounds against the same failing check.
+- You are re-reading files you already read to remember what you did.
+- A single tool result came back larger than a few hundred lines and you need another.
+- Your local test suite has been run green once and the remaining work is a fresh phase
+  of the issue rather than a finish of the current one.
+
+As a rough scale for the same budget: a long issue runs somewhere around 120 tool calls
+before it is worth handing off. Treat that as an estimate, not a counter to track — you
+cannot count your own calls reliably, and the triggers above are what you should act on.
 Once you are past the budget, do not start a new review lens, a new fix round, or a fresh
 test cycle.
 
@@ -329,12 +353,6 @@ your branch up exactly where you left it (the checkout block above handles this)
 clean context window. Put everything the next worker needs into `remaining` — what is
 done, what is left, and the next concrete step. It cannot see your context, only your
 branch and your verdict.
-
-Checkpoint *early*, before the budget, when:
-
-- You have pushed three fix rounds against the same failing check.
-- You are re-reading files you already read to remember what you did.
-- A single tool result came back larger than a few hundred lines and you need another.
 
 ## Return contract (your final message — return ONLY this object)
 
