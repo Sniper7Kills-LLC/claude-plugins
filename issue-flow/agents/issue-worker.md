@@ -290,7 +290,7 @@ order, chain them with `&&` in one `Bash` call rather than taking a turn each.
      entire context, so a 20-minute CI run costs 40 full-context round trips instead of
      one. On GitHub it blocks natively and **exits non-zero when checks fail** (`8` while
      still pending): that non-zero exit is the result, not a tool error to retry. On Gitea
-     it resolves to the run-anchored shell loop in
+     it resolves to the commit-anchored shell loop in
      [../references/forge.md](../references/forge.md); `no-run-registered` there means no
      run was created (a `[skip ci]` commit), which is **not** a pass. On failure, read failing logs
      (`forge.run.log`; fan out a Sonnet child per job if many), fix in the worktree,

@@ -160,7 +160,13 @@ it before the batch lands. The worker enforces this rule for both forges.
 | `forge.run.list` | `gh run list --branch <b> --json databaseId,status,conclusion` | `tea actions runs list --branch <b> --output json` | `actions_run_read(method: "list_runs")` |
 | `forge.run.view` | `gh run view <id>` | `tea actions runs view <id>` | `actions_run_read(method: "get_run")` |
 | `forge.run.log` | `gh run view <id> --log-failed` | `tea actions runs logs <id>` | `actions_run_read(method: "get_job_log_preview", max_bytes, tail_lines)` — **preferred** |
-| `forge.pr.checks` | `gh pr checks <pr> --watch` | the run-anchored shell loop below | `actions_run_read(method: "list_runs")` |
+| `forge.pr.checks` | `gh pr checks <pr> --watch` | the commit-anchored shell loop below | `actions_run_read(method: "list_runs")` |
+
+**The `tea actions …` rows need Gitea ≥ 1.26.0.** `tea` refuses the whole `actions`
+family against an older server (`gitea server at <host> is older than 1.26.0`). The
+underlying REST endpoints exist well before that, so on a 1.25.x server — including the
+1.25.3 this file is verified against — reach them with
+`tea api "/repos/{owner}/{repo}/actions/…"`, or use the Gitea MCP column.
 
 **`forge.pr.checks` is one blocking call, never a turn per status check.** Every agent
 turn re-reads the agent's whole context, so a 30-minute watch at one turn per check costs
@@ -169,57 +175,59 @@ other operation — never hardcode `gh`. On GitHub it is already blocking and ta
 number the worker already has; on Gitea it resolves to the loop below. Keep either in a
 subagent so log volume never reaches the PM.
 
-**`tea actions runs list` filters by branch.** `--branch <b>` narrows the list to one
-branch, and `--status`, `--event`, `--actor`, `--since` and `--until` narrow it further.
+**Do not build the Gitea watch on `tea actions runs list`.** Two measured reasons:
 
-**Gitea has no `--watch`, and its `runs list --output json` is not the API object.**
-`tea` renders that command as a flattened *table*, so the JSON rows carry only
-`id`, `status`, `workflow`, `branch`, `event`, `started`, `duration` — every value a
-string, **no `conclusion` and no `head_sha`**. Two consequences that make the obvious
-loop wrong:
+- **It is not the API object.** `tea` renders that command as a flattened *table*, so the
+  JSON rows carry only `id`, `status`, `workflow`, `branch`, `event`, `started`,
+  `duration` — every value a string, with **no `conclusion` and no `head_sha`**. Pass/fail
+  is therefore absent: `status` only ever holds `queued`, `waiting`, `in_progress` or
+  `completed`, while the `success`/`failure`/`cancelled`/`skipped` word lives in
+  `conclusion`. And `.[0]` is not the newest run — rows sort descending by `id` compared
+  *as a string*, so with runs 9 and 10 present, `.[0]` is run **9**. A loop keyed on
+  `.[0]` reads a stale run; if that stale run is green it reports success for a commit
+  that was never tested, which is the worst failure a merge gate can be fed.
+- **It does not exist before Gitea 1.26.0** (see the version note above). Every call
+  fails outright, so a loop built on it degrades to a silent timeout rather than an error.
 
-- **`.[0]` is not the newest run.** Rows are sorted descending by `id` compared *as a
-  string*, so with runs 9 and 10 present, `.[0]` is run **9**. Anchoring to `.[0]` reads a
-  stale run — and if that stale run is already green, a watch reports success for a commit
-  that was never tested. A silent false green feeding a merge gate is the worst failure
-  this loop has.
-- **Pass/fail is not in the list.** `status` is only ever `queued`, `waiting`,
-  `in_progress` or `completed`; the `success`/`failure`/`cancelled`/`skipped` word lives in
-  `conclusion`, which this command does not emit. Read it with `forge.run.view`, which
-  prints `Status:`, `Conclusion:` and `Head SHA:` as plain lines.
-
-So anchor to *your own* run before waiting: record the highest run id **before** you push,
-and accept only a strictly greater one. That also keeps `[skip ci]` honest — no new run
-means no run to report, which is not the same as success.
+Use **`tea api`** instead. It is an authenticated passthrough to the REST API, it is not
+version-gated, it returns the real object (`status`, `conclusion`, `head_sha`), and it
+substitutes `{owner}`/`{repo}` from the current checkout — which the worker always has.
+The Actions endpoint filters by `head_sha` **server-side**, so anchor the watch to the
+commit you just pushed rather than to "the latest run on the branch":
 
 ```bash
-# ONE tool call. Blocks until the run for THIS push is terminal.
-# <branch> = the head branch; <prior> = highest run id captured BEFORE pushing:
-#   tea actions runs list --branch <branch> --output json 2>/dev/null \
-#     | jq '[.[].id | tonumber] | max // 0'
-# (the `|| echo []` guard matters: tea prints "No workflow runs found" — not JSON — when empty)
-
-# 1. Wait for our run to register.
-run=""
-for _ in $(seq 1 30); do
-  run=$( { tea actions runs list --branch "<branch>" --output json 2>/dev/null || echo '[]'; } \
-         | jq -r --argjson p "<prior>" \
-             '[.[] | select((.id|tonumber) > $p)] | max_by(.id|tonumber) | .id // empty' )
-  [ -n "$run" ] && break
-  sleep 10
-done
-[ -z "$run" ] && { echo "no-run-registered"; exit 0; }   # e.g. [skip ci] — NOT success
-
-# 2. Wait for it to finish, then report its conclusion.
+# ONE tool call. Blocks until CI for THIS commit is terminal.
+SHA=$(git rev-parse HEAD)
+none=0
 for _ in $(seq 1 60); do
-  d=$(tea actions runs view "$run" --jobs=false)
-  case "$(printf '%s' "$d" | sed -n 's/^Status: //p')" in
-    completed) printf '%s' "$d" | sed -n 's/^Conclusion: //p'; exit 0 ;;
+  v=$(tea api "/repos/{owner}/{repo}/actions/runs?head_sha=$SHA" 2>/dev/null \
+      | jq -r '(.workflow_runs // []) as $r
+               | if   ($r|length) == 0                      then "pending:none"
+                 elif any($r[]; .status != "completed")     then "pending:running"
+                 elif any($r[]; .conclusion == "failure")   then "failure"
+                 elif any($r[]; .conclusion == "cancelled") then "cancelled"
+                 else "success" end')
+  case "$v" in
+    pending:none)                       # no run for this commit yet
+      none=$((none+1))
+      [ "$none" -ge 6 ] && { echo "no-run-registered"; exit 0; }   # [skip ci] — NOT success
+      sleep 10 ;;
+    pending:running) sleep 30 ;;
+    *) echo "$v"; exit 0 ;;
   esac
-  sleep 30
 done
 echo "timed-out"
 ```
+
+Three properties worth keeping if you rewrite it: the `head_sha` anchor (a stale run can
+never be mistaken for yours), `no-run-registered` as a distinct outcome from `success`
+(a `[skip ci]` commit was not tested), and the aggregate across *all* workflows for the
+commit (one green workflow does not excuse a red sibling).
+
+**`tea api` matches the login by git remote URL.** A remote with credentials embedded
+(`https://<token>@host/...`) matches nothing, and `tea` then silently falls back to some
+other configured login and resolves `{owner}`/`{repo}` to empty. Keep the remote clean and
+authenticate with a credential helper.
 
 The same rule holds on GitHub: `gh pr checks <pr> --watch` already blocks in one call.
 Never wrap `forge.pr.checks` or `forge.run.list` in an agent-driven retry loop on either
