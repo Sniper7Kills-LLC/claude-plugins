@@ -245,20 +245,32 @@ Four properties worth keeping if you rewrite it:
   `success` and `skipped` count as green — a workflow skipped by its own `if:` condition
   is a pass, unlike the whole-commit `no-run-registered` beside it.
 
-**The response key differs by server version, and an empty request must not read as
-green.** `(.workflow_runs // .runs // [])` accepts either spelling — with only one of them
-matched, `$r` is empty forever and every watch reports `no-run-registered` after 60
-seconds. For the same reason the request's stderr is *not* suppressed: a failed `tea api`
-call leaves `v` empty, and without the `""|null` arm the empty string falls to `*)`, which
-ends the watch with exit 0 and a blank verdict. The failure that hides is the login
-mismatch documented below — a misconfigured remote resolving `{owner}`/`{repo}` to empty,
-silently producing a blank pass.
+**The response is `{"total_count": n, "workflow_runs": [...]}`** — measured against 1.25.3,
+which is also what GitHub returns for the same endpoint. The `// .runs` fallback is there
+only so a differently-shaped server does not silently produce an empty `$r`, which would
+report `no-run-registered` on every commit forever.
+
+**An empty request must not read as green.** The request's stderr is *not* suppressed: a
+failed `tea api` call leaves `v` empty, and without the `""|null` arm the empty string
+falls to `*)`, which ends the watch with exit 0 and a blank verdict. That is not
+hypothetical — it is exactly what the login mismatch documented below produces. Measured
+on a checkout whose remote carried an embedded token:
+
+```
+NOTE: no login matched this repository, falling back to login 'x' in non-interactive mode.
+Error: request failed: Get "http://<other-host>/api/v1/repos///actions/runs?head_sha=…"
+```
+
+`/repos///` — `{owner}` and `{repo}` both empty, against the wrong server. With the arm in
+place that is `watch-error` and exit 1; without it, a blank pass.
 
 **The `pending:none` window is 60 seconds (6 × 10s) and fails toward "not tested".** A
 self-hosted runner slow to register the run reports `no-run-registered` for a commit that
 does get tested; the PM treats that as a gate to resolve, not a pass, so the cost is a
 stall rather than an untested merge. Raise the count if a runner routinely takes longer to
-pick up work — never lower it.
+pick up work — never lower it. A workflow file Gitea cannot parse registers **no run at
+all** rather than a failed one, so a commit whose only workflow is malformed also lands
+here — another reason this outcome must never be read as green.
 
 **`tea api` matches the login by git remote URL.** A remote with credentials embedded
 (`https://<token>@host/...`) matches nothing, and `tea` then silently falls back to some
