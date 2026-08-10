@@ -243,9 +243,11 @@ order, chain them with `&&` in one `Bash` call rather than taking a turn each.
    overlap. Never run two writers over the same files.
 2. **Open a PR — unless one is already open.** You are routinely a *replacement* worker
    continuing a checkpointed branch, so check first: look for an open PR whose head is
-   `issue/<number>-<slug>` (`forge.pr.view` — it takes a branch name as well as a PR
-   number). If one exists, adopt it — update its body if the scope moved, leave the
-   label alone, and skip to step 3.
+   `issue/<number>-<slug>`. On GitHub that is `gh pr view <branch>` directly; on Gitea
+   there is no branch lookup, so list and filter:
+   `tea api "/repos/{owner}/{repo}/pulls?state=open" | jq '.[] | select(.head.ref == "<branch>")'`
+   (see the `forge.pr.view` notes in `references/forge.md`). If one exists, adopt it —
+   update its body if the scope moved, leave the label alone, and skip to step 3.
    Opening a second PR for the same branch is the failure mode here.
    Otherwise open one targeting the base from your brief — **never dev/live directly when
    you are a batch member.** `ci: skip` → open it as a **draft**

@@ -12,9 +12,12 @@ harness models it, and the failure mode that made this rule necessary.
 - A worker's children are spawned with **no `isolation` parameter**; they inherit the
   worker's worktree.
 - Rework goes back to the **same** worker by `SendMessage`, not a new spawn — see
-  [Rework](#rework-and-re-spawn) below.
+  [Rework](#rework-and-re-spawn) below. **A `checkpoint` verdict is the exception**: it is
+  not rework, and it is re-spawned deliberately to discard the context a `SendMessage`
+  would keep.
 - The PM removes each worktree at sub-merge, from the path in the worker's verdict — see
-  [Teardown](#teardown-is-still-the-pms-job).
+  [Teardown](#teardown-is-still-the-pms-job) — **and immediately on `checkpoint`**, before
+  the replacement worker is spawned.
 
 All harness behavior recorded here was measured on **Claude Code 2.1.224**; re-verify
 against the running version if something reads as stale.
@@ -115,6 +118,14 @@ addressable). Re-spawn is the fallback for when the worker is gone — after a s
 restart, for instance — and it needs `base: <remote>/issue/<number>-<slug>` in the brief so
 the new worker continues the published branch rather than resetting it.
 
+**`checkpoint` inverts this.** A worker that hit its turn budget with work pushed and
+nothing wrong is re-spawned, never `SendMessage`d: the whole point of the verdict is to
+drop a context that has grown expensive, and resuming the same agent keeps exactly the
+thing being discarded. Same brief, `base: <remote>/issue/<number>-<slug>`, the verdict's
+`remaining` text appended — and reap the old worktree first (see
+[Teardown](#teardown-is-still-the-pms-job)); the replacement gets a fresh one from the
+harness and re-checks-out the published branch. See Stage C1 in `SKILL.md`.
+
 This also means a leftover worktree from a previous session **cannot be resumed in place**:
 no new agent can be placed into it, and its own agent is gone. Adopt that work from the
 branch and the PR, then remove the directory.
@@ -131,7 +142,7 @@ with the `worktree` field of its verdict as the fallback source. The PM passes n
 either way.
 
 ```bash
-git worktree remove --force <path>          # at sub-merge, after the worker returned
+git worktree remove --force <path>          # at sub-merge or checkpoint, worker returned
 git branch -D worktree-agent-<id>           # the harness branch it left behind
 git worktree list --porcelain               # sweep for earlier sessions' leftovers
 git worktree prune

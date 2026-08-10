@@ -138,6 +138,19 @@ the correct behavior for a claim lock, but it will displace any pre-existing ass
 | `forge.pr.merge.commit` | `gh pr merge <pr> --merge --delete-branch` | `tea pr merge <pr> --style merge`, then `forge.branch.delete` | `pull_request_write(method: "merge", merge_style: "merge", delete_branch: true)` |
 | `forge.branch.delete` | folded into `--delete-branch` | `tea pr clean <pr>`, or `git push <remote> --delete <branch>` | `delete_branch` |
 
+**`forge.pr.view` by *branch* is GitHub-only.** `gh pr view <branch>` resolves a branch
+name as readily as a number; no `tea` command and no Gitea endpoint does. A replacement
+worker adopting an already-open PR (the routine path after a `checkpoint`) therefore lists
+and filters on the head ref:
+
+```bash
+tea api "/repos/{owner}/{repo}/pulls?state=open" \
+  | jq -r '.[] | select(.head.ref == "issue/<n>-<slug>") | .number'
+```
+
+Empty output means no PR is open for that branch — open one. More than one line is a bug
+worth stopping on, not a pick-the-first situation.
+
 **Draft pull requests on Gitea are a title prefix.** `tea pr create --draft` prepends
 `WIP: `, and Gitea treats a WIP-prefixed pull request as a draft. `tea pr edit --draft`
 adds the prefix idempotently and `--ready` strips a leading `WIP: ` or `[WIP]`. The
@@ -200,29 +213,52 @@ commit you just pushed rather than to "the latest run on the branch":
 SHA=$(git rev-parse HEAD)
 none=0
 for _ in $(seq 1 60); do
-  v=$(tea api "/repos/{owner}/{repo}/actions/runs?head_sha=$SHA" 2>/dev/null \
-      | jq -r '(.workflow_runs // []) as $r
-               | if   ($r|length) == 0                      then "pending:none"
-                 elif any($r[]; .status != "completed")     then "pending:running"
-                 elif any($r[]; .conclusion == "failure")   then "failure"
-                 elif any($r[]; .conclusion == "cancelled") then "cancelled"
-                 else "success" end')
+  v=$(tea api "/repos/{owner}/{repo}/actions/runs?head_sha=$SHA" \
+      | jq -r '(.workflow_runs // .runs // []) as $r
+               | if   ($r|length) == 0                  then "pending:none"
+                 elif any($r[]; .status != "completed") then "pending:running"
+                 elif all($r[]; .conclusion == "success" or .conclusion == "skipped")
+                                                        then "success"
+                 else "failure" end')
   case "$v" in
     pending:none)                       # no run for this commit yet
       none=$((none+1))
       [ "$none" -ge 6 ] && { echo "no-run-registered"; exit 0; }   # [skip ci] — NOT success
       sleep 10 ;;
     pending:running) sleep 30 ;;
+    ""|null) echo "watch-error"; exit 1 ;;   # request or jq failed — never a pass
     *) echo "$v"; exit 0 ;;
   esac
 done
 echo "timed-out"
 ```
 
-Three properties worth keeping if you rewrite it: the `head_sha` anchor (a stale run can
-never be mistaken for yours), `no-run-registered` as a distinct outcome from `success`
-(a `[skip ci]` commit was not tested), and the aggregate across *all* workflows for the
-commit (one green workflow does not excuse a red sibling).
+Four properties worth keeping if you rewrite it:
+
+- **The `head_sha` anchor** — a stale run can never be mistaken for yours.
+- **`no-run-registered` distinct from `success`** — a `[skip ci]` commit was not tested.
+- **The aggregate across *all* workflows for the commit** — one green workflow does not
+  excuse a red sibling.
+- **Success is proven, not assumed.** Listing the failing conclusions instead (`failure`,
+  `cancelled`, …) is a blacklist: `timed_out`, `startup_failure`, `action_required` and a
+  `null` conclusion all fall through to a pass and go straight into a merge gate. Only
+  `success` and `skipped` count as green — a workflow skipped by its own `if:` condition
+  is a pass, unlike the whole-commit `no-run-registered` beside it.
+
+**The response key differs by server version, and an empty request must not read as
+green.** `(.workflow_runs // .runs // [])` accepts either spelling — with only one of them
+matched, `$r` is empty forever and every watch reports `no-run-registered` after 60
+seconds. For the same reason the request's stderr is *not* suppressed: a failed `tea api`
+call leaves `v` empty, and without the `""|null` arm the empty string falls to `*)`, which
+ends the watch with exit 0 and a blank verdict. The failure that hides is the login
+mismatch documented below — a misconfigured remote resolving `{owner}`/`{repo}` to empty,
+silently producing a blank pass.
+
+**The `pending:none` window is 60 seconds (6 × 10s) and fails toward "not tested".** A
+self-hosted runner slow to register the run reports `no-run-registered` for a commit that
+does get tested; the PM treats that as a gate to resolve, not a pass, so the cost is a
+stall rather than an untested merge. Raise the count if a runner routinely takes longer to
+pick up work — never lower it.
 
 **`tea api` matches the login by git remote URL.** A remote with credentials embedded
 (`https://<token>@host/...`) matches nothing, and `tea` then silently falls back to some

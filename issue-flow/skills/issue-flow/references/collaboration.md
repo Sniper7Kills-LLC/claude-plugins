@@ -109,8 +109,11 @@ detector across operators:
 
 ## 6 — Sweep cadence
 
-Run the sweep at the top of every loop iteration and on every worker completion — the
-same trigger as triage, and immediately before it, because a comment can change what
-triage should do. It is cheap: two searches plus comments for the handful of items that
-moved. Also sweep once before any merge gate, so a human's "don't merge this yet" lands
-before the merge, not after it.
+Run the sweep at the same three points as full triage, and immediately before it, because
+a comment can change what triage should do: **on skill load, before any merge gate, and
+when the ready pool empties**. A routine worker completion gets neither — it gets a
+targeted read of the one issue that finished. The sweep itself is cheap (two searches plus
+comments for the handful of items that moved); what is not cheap is the full triage pass
+it fronts, which is why the two share a cadence. The merge-gate sweep is the one that must
+never be skipped: it is what lets a human's "don't merge this yet" land before the merge
+rather than after it.
