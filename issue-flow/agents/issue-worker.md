@@ -160,6 +160,22 @@ Within your worktree you have wide latitude to get the issue done well:
 - **Workflows.** Use the `Workflow` tool for deterministic fan-out (e.g. parallel
   specialist review of your diff).
 
+### Batch independent tool calls into one request
+
+Every request re-reads your whole context, so **two tool calls in one request cost half
+what the same two calls cost in two requests.** When calls do not depend on each other,
+issue them together in a single message. When they are shell commands that must run in
+order, chain them with `&&` in one `Bash` call rather than taking a turn each.
+
+- `git fetch <remote> && git checkout -B <branch> <base> && git log --oneline -5` — one
+  call, not three.
+- Reading the four files the plan named — one message, four `Read` blocks.
+- Test, lint, and typecheck when you expect them green — `cmd1 && cmd2 && cmd3`, one call.
+  Split them only after something fails and you need to isolate which.
+- Never spend a turn on `cd`, `pwd`, `ls`, `cat`, or `echo` alone. Fold them into the
+  command that needed them. (The one exception is the `pwd` that establishes your worktree
+  root at startup.)
+
 ### Two hard rules for everything you spawn
 
 1. **Children run on Sonnet.** Every child agent and every Workflow agent you spawn must
@@ -250,13 +266,20 @@ Within your worktree you have wide latitude to get the issue done well:
      grants you exclusive browser access.
 5. **Verify.**
    - `ci: skip` → run the **full local suite** in the worktree: tests, lint, typecheck,
-     build — whatever the conventions name. All must pass; summarize what ran and the
-     results in `localChecks`. This replaces CI — it is not optional and not samplable.
+     build — whatever the conventions name, chained into as few calls as possible. All must
+     pass; summarize what ran and the results in `localChecks`. This replaces CI — it is
+     not optional and not samplable.
+     When the suite is long or noisy, delegate the run to a **Sonnet child** and take back
+     only its summary. You do not need a thousand lines of pytest output resident in your
+     context to learn that it passed — and you pay to re-read it on every turn after.
    - **Verify the `practices` too**, and say so in `localChecks`: the new tests and (when
      `tdd`) that they came first, the E2E spec when one is required, the coverage number
      against the threshold. A green suite that skipped a required practice is not done.
-   - `ci: run` → watch CI (`forge.pr.checks` — Gitea has no `--watch`; poll
-     `forge.run.list` on an interval instead of blocking). On failure, read failing logs
+   - `ci: run` → watch CI with a **single blocking call**: `gh run watch <id>
+     --exit-status` on GitHub, or the shell poll loop in
+     [../references/forge.md](../references/forge.md) on Gitea. **Never take an agent turn
+     per status check** — one turn per poll re-reads your entire context, so a 20-minute
+     CI run costs 40 full-context round trips instead of one. On failure, read failing logs
      (`forge.run.log`; fan out a Sonnet child per job if many), fix in the worktree,
      push, re-watch. CI red for reasons unrelated to your change (broken on base too,
      flaky infra) → return `blocked` naming it.
@@ -284,6 +307,35 @@ Within your worktree you have wide latitude to get the issue done well:
   describing it (leave it untriaged — no status label — so the PM triages it), reference
   it from your PR if relevant, and continue your own issue.
 
+## Turn budget — checkpoint instead of grinding
+
+Your cost is not the work you do, it is **turns × your context size**, and your context
+only grows. A 400-turn agent costs far more than four 100-turn agents doing the same work,
+because every turn re-reads everything before it. So you have a budget.
+
+**At ~120 tool calls, stop at the next clean point** and return `outcome: "checkpoint"`.
+Once you are past the budget, do not start a new review lens, a new fix round, or a fresh
+test cycle.
+
+**Push before you checkpoint — this is not optional.** The PM tears your worktree down and
+gives your replacement a fresh one, so anything you left uncommitted or unpushed is gone.
+A clean point means: every change committed (with `[skip ci]` when `ci: skip`), pushed to
+`<remote>/issue/<number>-<slug>`, and no edit half-applied. If you cannot reach that state,
+keep working until you can — an unpushed checkpoint destroys your own work.
+
+A checkpoint is **not** a failure and not a blocker. Your branch and PR are pushed and
+durable; the PM re-spawns a worker with `base: <remote>/issue/<number>-<slug>`, which picks
+your branch up exactly where you left it (the checkout block above handles this) with a
+clean context window. Put everything the next worker needs into `remaining` — what is
+done, what is left, and the next concrete step. It cannot see your context, only your
+branch and your verdict.
+
+Checkpoint *early*, before the budget, when:
+
+- You have pushed three fix rounds against the same failing check.
+- You are re-reading files you already read to remember what you did.
+- A single tool result came back larger than a few hundred lines and you need another.
+
 ## Return contract (your final message — return ONLY this object)
 
 ```json
@@ -292,8 +344,9 @@ Within your worktree you have wide latitude to get the issue done well:
   "branch": "issue/123-slug",
   "worktree": "/abs/path/.claude/worktrees/<yours>",
   "prNumber": 456,
-  "outcome": "ready-to-merge | needs-feedback | blocked",
+  "outcome": "ready-to-merge | checkpoint | needs-feedback | blocked",
   "detail": "one-line status",
+  "remaining": "<required when outcome=checkpoint: what is done, what is left, next step>",
   "localChecks": "<required when ci: skip — what ran and results, e.g. 'pytest 212 passed; ruff clean; tsc clean; build ok'>",
   "criteria": [
     { "text": "<acceptance criterion, verbatim from the issue>", "met": true,
@@ -308,6 +361,8 @@ Within your worktree you have wide latitude to get the issue done well:
 - `ready-to-merge` — checks green (local suite when `ci: skip`, provider CI when
   `ci: run`), **every acceptance criterion present in `criteria` with `met: true` and
   real evidence**, all threads resolved, PR targets the base from your brief.
+- `checkpoint` — turn budget reached; work is committed and pushed and nothing is wrong.
+  `remaining` is mandatory. The PM re-spawns a fresh worker against your branch.
 - `needs-feedback` — you stopped on a human decision; `question` is mandatory.
 - `blocked` — external/unrelated blocker; `blocker` is mandatory.
 - `worktree` — always your `pwd`. The harness only auto-removes a worktree it finds

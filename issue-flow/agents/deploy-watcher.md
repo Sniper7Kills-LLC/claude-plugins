@@ -73,6 +73,18 @@ resolves to the right CLI from the `forge` block.
 3. Poll only until a **terminal** state or `maxMinutes` elapses. If the budget elapses
    with no terminal state, return `timed-out` with the job link. Never claim a success
    you did not observe.
+   **Wait inside one `Bash` call, not one call per check.** `pollSeconds` is the `sleep`
+   interval *inside* a shell loop and `maxMinutes` sets its iteration count; both belong
+   to the loop, not to you. A turn per check re-reads your whole context every time and
+   turns a routine 30-minute watch into 60 full-context round trips. Pattern:
+   ```bash
+   for _ in $(seq 1 <maxMinutes*60/pollSeconds>); do
+     s=$(<status query for this provider>)
+     case "$s" in <terminal states>) echo "$s"; exit 0 ;; esac
+     sleep <pollSeconds>
+   done
+   echo "timed-out"
+   ```
 4. On failure, capture `failingStep` and a short `logExcerpt`, and classify
    `suspectedCause`:
    - `code-regression` — build/test/runtime error traceable to the change.

@@ -103,6 +103,11 @@ dev ◄────────────────────────�
    token-heavy read (diffs, CI logs, deploy logs, file maps) is delegated to a subagent
    that returns a short summary. This — not any counter — sets how many issues a session
    can clear. See [references/parallelism.md](references/parallelism.md).
+   **Batch your tool calls.** Every request re-reads your whole context, and yours is the
+   largest in the run, so a wasted round trip costs more here than anywhere else. Issue
+   independent calls together in one message (all of a triage pass's `forge.issue.view`s
+   at once); chain ordered shell commands with `&&` in a single `Bash` call. Never spend a
+   turn on `cd`, `pwd`, or `ls` alone.
 6. **Every state change leaves a tracker trace** (label + comment). Someone reading only
    the tracker can reconstruct what happened — and so can Phase 0 recovery.
 
@@ -325,9 +330,16 @@ read what they did since `LAST_SWEEP`. Full playbook —
 
 ## Stage A — Triage the backlog (after every sweep)
 
-Run this immediately after the Stage A0 sweep — on load, at the top of every loop
-iteration, and on every worker/watcher completion. It is cheap (a list + label/comment
-pass) and it keeps the queue correct as the tracker churns.
+Run **full** triage immediately after the Stage A0 sweep on load, before any merge gate,
+and whenever the ready pool is empty or nearly so. Do **not** re-run it on every worker
+completion. A full pass is a `forge.issue.list` plus a read of every untriaged item, and
+at PM context size that is one of the most expensive things in the loop — not a free
+refresh.
+
+On a routine worker completion, do the **targeted** version instead: read that one issue's
+state, apply its label, and schedule the next issue already in the ready pool. The tracker
+is the source of truth and it is not going anywhere; re-deriving the whole queue after
+every single verdict buys nothing and costs a full-context pass each time.
 
 1. `forge.issue.list` and triage:
    - **Skip** `status:blocked` / `status:needs-feedback` (but re-check, step 4) and `flow:status`.
@@ -385,6 +397,7 @@ Triggered by a worker's completion notification. Act on its `outcome`:
 
 - **`needs-feedback`** → label `status:needs-feedback`, post the worker's `question` as an issue comment, park per the feedback policy. Free the slot → Stage A/B.
 - **`blocked`** → label `status:blocked`, comment naming the `blocker`. Free the slot.
+- **`checkpoint`** → the worker hit its turn budget with work pushed and nothing wrong. **Re-spawn a fresh worker** (do *not* `SendMessage` — that reuses the context the checkpoint exists to discard) with the same brief, `base: <remote>/issue/<n>-<slug>`, and the verdict's `remaining` text appended to the plan. Keep `status:in-progress`, no gate, no digest line, and **do not free the slot** — the issue is still in flight and its replacement occupies the same one. This is routine flow control, not an exception — a long issue is *expected* to take two or three workers. **Remove the checkpointed worker's worktree** (`git worktree remove --force <worktree>` then `git branch -D worktree-agent-<id>`, as in step 5 below) — the replacement gets a fresh one from the harness and re-checks-out the published branch, so keeping the old tree only leaks it. The commits are safe on the remote; that is what makes the handoff free.
 - **`ready-to-merge`** → sub-merge below (never on the worker's word alone):
   1. Verify: all PR threads resolved, PR targets the **integration branch**, worker reported the **local checks green** (`localChecks` in its verdict), and the session's `practices` were met (tests-first evidence, E2E where required, coverage threshold, commit style, docs — see [session-config.md](references/session-config.md)). A practice missed without a stated reason goes back to the worker; it is not waived at the gate. No provider CI to wait for.
   1b. **Acceptance criteria gate.** The worker returns `criteria: [{text, met, evidence}]` — one entry per acceptance criterion in the issue body. Check the list is **complete** (every criterion in the issue appears) and that each `met: true` carries real evidence (a test name, a command output, a file:line). Any criterion `met: false`, missing, or evidenced only by "implemented" goes **back to the worker** with the specific criterion quoted; a criterion the worker argues is wrong or unbuildable is a product question → `status:needs-feedback`, not a waiver. Acceptance criteria are the definition of done that `spec-to-issues` wrote down — this is where they are enforced, not months later in `project-review`.

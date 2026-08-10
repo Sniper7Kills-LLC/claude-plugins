@@ -48,8 +48,10 @@ A workflow under `.gitea/workflows/` or `.github/workflows/` on a Gitea remote, 
 on a self-hosted `act_runner`. Query it with `forge.run.list` filtered to the deploy
 branch, and read a failure with `forge.run.log`.
 
-There is no `--watch`. The deploy-watcher polls `forge.run.list` on an interval and
-returns one terminal deployment per run, exactly as it does for the other providers.
+There is no `--watch`. The deploy-watcher waits with the single-call shell loop in
+[../../../references/forge.md](../../../references/forge.md) — `pollSeconds` and
+`maxMinutes` are the loop's interval and iteration count, **not** a turn budget for the
+agent — and returns one terminal deployment per run, exactly as for the other providers.
 
 Because the runner is the operator's own hardware, there is no minute budget to protect.
 The batch model still applies — it exists for merge hygiene as much as for cost.

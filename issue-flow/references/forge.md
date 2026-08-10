@@ -165,8 +165,27 @@ it before the batch lands. The worker enforces this rule for both forges.
 **`tea actions runs list` filters by branch.** `--branch <b>` narrows the list to one
 branch, and `--status`, `--event`, `--actor`, `--since` and `--until` narrow it further.
 
-**Gitea has no `--watch`.** Poll `forge.run.list` on an interval instead of blocking, and
-keep the polling in a subagent so the log volume never reaches the PM.
+**Gitea has no `--watch`.** Never poll by taking an agent turn per check — every turn
+re-reads the agent's whole context, so a 30-minute watch at one turn per check costs 60
+full-context round trips. Block **inside a single `Bash` call** instead, and keep it in a
+subagent so log volume never reaches the PM:
+
+```bash
+# ONE tool call. Returns when the run is terminal, or after the budget elapses.
+for _ in $(seq 1 60); do
+  s=$(tea actions runs list --branch "$B" --output json \
+      | jq -r '.[0] | "\(.status) \(.conclusion)"')
+  case "$s" in
+    *success*|*failure*|*cancelled*|*skipped*) echo "$s"; exit 0 ;;
+  esac
+  sleep 30
+done
+echo "timed-out"
+```
+
+The same rule holds on GitHub: `gh run watch <id> --exit-status` already blocks in one
+call. Never wrap `gh pr checks` or `forge.run.list` in an agent-driven retry loop on
+either forge.
 
 **`[skip ci]` is native on both.** Gitea Actions honors `[skip ci]`, `[ci skip]`,
 `[no ci]`, `[skip actions]` and `[actions skip]` in the head commit message from 1.20

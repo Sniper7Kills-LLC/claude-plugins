@@ -105,8 +105,9 @@ The worker returns exactly this object as its final message:
     "branch":     { "type": "string" },
     "worktree":   { "type": "string", "description": "the worker's own worktree path (its pwd) — the PM's fallback handle for teardown when the completion notification is unavailable" },
     "prNumber":   { "type": "number" },
-    "outcome":    { "type": "string", "enum": ["ready-to-merge", "needs-feedback", "blocked"] },
+    "outcome":    { "type": "string", "enum": ["ready-to-merge", "checkpoint", "needs-feedback", "blocked"] },
     "detail":     { "type": "string" },
+    "remaining":  { "type": "string", "description": "what is done, what is left, the next concrete step (required when outcome is checkpoint)" },
     "localChecks":{ "type": "string", "description": "what was run and the result, e.g. 'pytest 212 passed; ruff clean; build ok' (required when ci: skip)" },
     "criteria":   { "type": "array", "description": "one entry per acceptance criterion in the issue — required for ready-to-merge",
                     "items": { "type": "object", "required": ["text", "met", "evidence"],
@@ -123,6 +124,7 @@ The worker returns exactly this object as its final message:
 | outcome | PM action (the gate) |
 |---|---|
 | `ready-to-merge` | Verify threads resolved + `localChecks` green (or CI green when `ci: run`) + **every acceptance criterion in `criteria` met and evidenced** (missing/unmet/unevidenced → back to the worker via `SendMessage`, see Rework; disputed → `needs-feedback`); resolve any conflict vs the integration branch; `forge.pr.ready` then `forge.pr.merge.squash`; label `status:batched`, tick the tracking checklist, remove the worktree it reported (`git worktree remove --force <worktree>`; `git worktree prune`), launch any sequenced successor. When the batch completes → batch gate (Stage C2). Standalone/hotfix: merge to dev, Stage D directly. |
+| `checkpoint` | The worker hit its turn budget with work pushed; nothing is wrong. Re-spawn a **fresh** worker (not `SendMessage` — that reuses the context the checkpoint exists to discard) with the same brief, `base: <remote>/issue/<n>-<slug>`, and `remaining` appended to the plan. Remove the checkpointed worktree (`git worktree remove --force <worktree>`; `git branch -D worktree-agent-<id>`) — the replacement gets a fresh one and re-checks-out the published branch. Keep `status:in-progress`. **Does not free the slot** — the issue is still in flight. No gate, no digest line. |
 | `needs-feedback` | Label `status:needs-feedback`, post `question` as an issue comment, park per the feedback policy (notify; ask interactively only when it gates work). Free the slot. |
 | `blocked` | Label `status:blocked`, comment naming `blocker`. Free the slot. |
 
