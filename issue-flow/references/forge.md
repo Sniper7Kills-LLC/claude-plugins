@@ -215,7 +215,7 @@ path. The branch is the only place that shows what actually landed:
 ```bash
 git fetch <remote> <base> -q
 git log -1 --format='%s%n%b' <remote>/<base> \
-  | grep -ciE '\[(skip[ -]?ci|ci skip|no ci|skip actions|actions skip)\]|^skip-checks: ?true$' || true
+  | grep -ciE '\[(skip[ -]?ci|ci skip|no ci|skip actions|actions skip)\]' || true
 ```
 
 Read the count against what you intended: `0` after a batch merge means the head will be
@@ -227,11 +227,20 @@ send the PM into a remediation it does not need. The looser `grep -ciE 'skip|no 
 right for the pre-push check on a message you are about to write yourself, where a false
 positive costs one reworded subject.
 
-**The set is the five bracketed forms plus GitHub's `skip-checks: true` trailer** (with or
-without the space, on its own line — GitHub honors it, and the exact-token grep above
-matches it). Gitea matches the bracketed forms from `SKIP_WORKFLOW_STRINGS`; matching the
-trailer there is a harmless over-match. If a forge adds a token, this regex is the one
-place to widen — the loose pre-push pattern already catches anything containing `skip`.
+**The set is the five bracketed forms, and deliberately not GitHub's `skip-checks` trailer.**
+GitHub does honor `skip-checks:true` / `skip-checks: true` (the space is optional), but only
+as a git trailer — the docs require the trailers section to be **preceded by two empty
+lines**, and measurement agrees: after one empty line the same text registers a run, after
+two it registers none. That matters twice here. A line-based `grep -E` cannot see blank-line
+context, so `^skip-checks: ?true$` would match the one-empty-line form that *does* run CI —
+a false positive declaring a healthy `dev` suppressed, the exact class this exact-token
+pattern exists to avoid. And the suppressing form cannot reach these commits anyway: `git
+commit -m … -m …` collapses consecutive empty lines under the default
+`--cleanup=whitespace`, and a squash fold joins commit messages with single blank lines. So
+the trailer is documented here and left out of the regex on purpose. Gitea matches the
+bracketed forms from `SKIP_WORKFLOW_STRINGS` and has no trailer form. If a forge adds a
+token, this regex is the one place to widen — the loose pre-push pattern already catches
+anything containing `skip`.
 
 **`Closes #<n>` works differently on each forge.** On GitHub, it closes the linked
 issue only when the pull request merges into the default branch. On Gitea, it closes
@@ -389,7 +398,7 @@ opposite remedies:
 git fetch <remote> <branch> -q
 git cat-file -e <sha>^{commit} || { echo "sha-not-local"; }   # do not diagnose without it
 git log -1 --format='%s%n%b' <sha> \
-  | grep -niE '\[(skip[ -]?ci|ci skip|no ci|skip actions|actions skip)\]|^skip-checks: ?true$' || true
+  | grep -niE '\[(skip[ -]?ci|ci skip|no ci|skip actions|actions skip)\]' || true
 ```
 
 The `|| true` is not decoration: `grep` exits 1 on zero matches, and **zero matches is the

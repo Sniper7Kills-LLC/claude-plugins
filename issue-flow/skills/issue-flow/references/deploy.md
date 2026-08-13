@@ -35,12 +35,15 @@ usually the integration-branch one about to be torn down, and an unqualified com
 publishes nothing while looking like a fix:
 
 ```bash
-git -C <repo> fetch <remote> <deploy-branch> -q
-git -C <repo> checkout -B <deploy-branch> <remote>/<deploy-branch>
-git -C <repo> commit --allow-empty -m "ci: run suite for batch #<n>"   # subject only, no body
-git -C <repo> push <remote> <deploy-branch>
-git -C <repo> rev-parse HEAD                                           # correlate the deploy against this
+git fetch <remote> <deploy-branch> -q
+git worktree add .claude/worktrees/<deploy-branch> <remote>/<deploy-branch>
+git -C .claude/worktrees/<deploy-branch> commit --allow-empty -m "ci: run suite for batch #<n>"   # subject only, no body
+git -C .claude/worktrees/<deploy-branch> push <remote> HEAD:<deploy-branch>
+git -C .claude/worktrees/<deploy-branch> rev-parse HEAD                                           # correlate the deploy against this
 ```
+
+A worktree rather than a `checkout -B`, per the PM-worktree convention in
+[batching.md](batching.md) — it must not move the user's `HEAD` or their local branch.
 
 It restarts the CI run and the deploy together, and it rewrites nothing. The pushed commit
 becomes the branch head, so **it is the SHA to correlate the resulting deployment against**

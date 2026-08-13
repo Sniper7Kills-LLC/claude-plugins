@@ -192,7 +192,7 @@ unchanged.
    ```bash
    git fetch <remote> <integration-branch> -q
    git log -1 --format='%s%n%b' <remote>/<integration-branch> \
-     | grep -ciE '\[(skip[ -]?ci|ci skip|no ci|skip actions|actions skip)\]|^skip-checks: ?true$' || true
+     | grep -ciE '\[(skip[ -]?ci|ci skip|no ci|skip actions|actions skip)\]' || true
    ```
 
    `0` means a run just started. **If the batch PR is already open**, the sub-merge
@@ -230,7 +230,7 @@ Batch complete = every member `status:batched` or terminally parked.
    `|| true` absorbs `grep -c`'s exit 1 on a zero count, which is the *passing* case) —
    then poll `ci-watch` to a terminal verdict, anchored to the SHA you just pushed.
    `no-run-registered` means the trigger did not take; it is never a pass. Grep the
-   commit to tell the two causes apart (`… | grep -niE '\[(skip[ -]?ci|ci skip|no ci|skip actions|actions skip)\]|^skip-checks: ?true$' || true`, the `|| true` keeping the no-token
+   commit to tell the two causes apart (`… | grep -niE '\[(skip[ -]?ci|ci skip|no ci|skip actions|actions skip)\]' || true`, the `|| true` keeping the no-token
    branch reachable under `set -e`; fetch the SHA first, or `git log` exits 128 and the
    empty pipe reads as a clean message): a token in the message → push one clean
    subject-only trigger and re-watch; a clean message → re-poll the run list for that SHA
