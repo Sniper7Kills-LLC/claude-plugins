@@ -170,8 +170,11 @@ unchanged.
    branch; mechanical conflicts resolved directly or by a short-lived worker with both
    issues' context; **semantic** conflicts → `status:needs-feedback` on both issues.
 3. `forge.pr.ready` then `forge.pr.merge.squash`, then `forge.branch.delete` on Gitea —
-   one clean squashed commit per member on the integration branch. Head commit carries
-   `[skip ci]`, so this stays CI-free.
+   one clean squashed commit per member on the integration branch. The squash **folds the
+   member's `[skip ci]` commits into the body** of that commit, and providers match the
+   token anywhere in the message, so this stays CI-free. Two consequences to carry
+   forward: a member that lands after the batch PR opened re-suppresses the head (step 2
+   below), and squashing the batch PR would carry the tokens onto dev (step 6).
 4. Member → `forge.issue.status.set <m> status:batched`, which **removes `status:in-review`
    in the same operation** (at most one `status:` label per issue — a bare
    `forge.issue.label.add` leaves it in two states and breaks status queries); tick the
@@ -199,8 +202,13 @@ Batch complete = every member `status:batched` or terminally parked.
    before pushing — `git log -1 --format='%s%n%b' | grep -ciE 'skip|no ci' || true` must
    print `0` (the alternation covers `[no ci]`, which a bare `skip` match misses; the
    `|| true` absorbs `grep -c`'s exit 1 on a zero count, which is the *passing* case) —
-   then poll `ci-watch` to a terminal verdict. `no-run-registered` means the trigger
-   did not take; it is never a pass.
+   then poll `ci-watch` to a terminal verdict, anchored to the SHA you just pushed.
+   `no-run-registered` means the trigger did not take; it is never a pass. Grep the
+   commit to tell the two causes apart: a token in the message → push one clean
+   subject-only trigger and re-watch; a clean message → runner or workflow problem,
+   which a re-push does not fix. **Repeat this step after every later push to the
+   integration branch** — a late member's sub-merge brings `[skip ci]` in through its
+   squash body (step 3 above) and quietly suppresses the head again.
 3. Optional **batch review**: one subagent reviews the whole integration→dev diff for
    cross-member integration problems (interface drift between members, duplicate
    migrations, conflicting config). Cheap — no CI involved.
@@ -208,7 +216,10 @@ Batch complete = every member `status:batched` or terminally parked.
    `[skip ci]`; final push re-runs CI. CI red for pre-existing/base reasons → `blocked`.
 5. Conflict vs dev (another batch landed first) → resolve once here; semantic → park.
 6. Merge `--merge` (preserves per-member squashed commits; `--squash` only if the
-   project's history style demands one commit). Delete the branch.
+   project's history style demands one commit — and then with an explicit subject and an
+   empty body, or the members' `[skip ci]` folds onto dev and the post-merge run and
+   deploy never start; verify `<remote>/dev`'s head greps clean afterwards). Delete the
+   branch.
 7. Close members: automatic via `Closes #` **only when dev is the default branch**;
    otherwise close each manually with a comment linking the batch PR. Close the `type:batch`
    tracking issue; an epic closes when its last child closes.

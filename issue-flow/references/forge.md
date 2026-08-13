@@ -174,6 +174,35 @@ CI-free draft sub-pull-request model therefore works unchanged.
 teardown is a separate `forge.branch.delete` step. Do not skip it — an undeleted
 integration branch is re-adopted as live work by Phase 0 state recovery.
 
+**A squash merge folds the branch's commit messages into the commit body.** That fold is
+what keeps a sub-pull-request merge CI-free without anyone re-typing the token: every
+member commit ends in `[skip ci]`, the squash carries those lines into the body of the new
+commit on the integration branch, and both providers match the token anywhere in the
+message — subject or body. Measured against GitHub Actions: `gh pr merge --squash` on a
+two-commit branch produced a squash commit whose body held both `[skip ci]` lines, and the
+Actions API returned `total_count: 0` for that commit — no run, no check, nothing red.
+
+The same fold is a trap one level up. Squash a **batch** pull request and every member's
+token lands on `dev`, so the post-merge push registers **no run at all** and any
+push-triggered deploy never starts — the absent check reads like a pending one, never a red
+one. Where the merge result must be CI-visible, write the message explicitly instead of
+accepting the default fold:
+
+| | Explicit-message squash |
+|---|---|
+| GitHub | `gh pr merge <pr> --squash --subject "<title> (#<pr>)" --body "" --delete-branch` |
+| Gitea | `tea pr merge <pr> --style squash --title "<title> (#<pr>)" --message ""`, then `forge.branch.delete` |
+| Gitea MCP | `pull_request_write(method: "merge", merge_style: "squash", title: "<title>", message: "", delete_branch: true)` |
+
+Then verify the **branch you merged into**, not the pull request — a repository whose merge
+settings override the supplied message still produces a suppressed head, and the branch is
+the only place that shows it:
+
+```bash
+git fetch <remote> <base> -q
+git log -1 --format='%s%n%b' <remote>/<base> | grep -ciE 'skip|no ci' || true    # must print 0
+```
+
 **`Closes #<n>` works differently on each forge.** On GitHub, it closes the linked
 issue only when the pull request merges into the default branch. On Gitea, it closes
 when the pull request merges into any branch. The plugin requires sub-pull-requests to
@@ -321,6 +350,24 @@ stall rather than an untested merge. Raise the count if a runner routinely takes
 pick up work — never lower it. A workflow file Gitea cannot parse registers **no run at
 all** rather than a failed one, so a commit whose only workflow is malformed also lands
 here — another reason this outcome must never be read as green.
+
+**Recovering from `no-run-registered`.** The verdict is never a pass, but it is not always a
+stall either — the caller reads the commit before deciding, because the two causes have
+opposite remedies:
+
+```bash
+git log -1 --format='%s%n%b' <sha> | grep -niE 'skip|no ci'
+```
+
+A hit means the commit is **suppressed**, usually by a token folded in from a squash body
+rather than one anybody typed. Push one clean trigger — `git commit --allow-empty -m "<subject>"`,
+one `-m`, subject only, no body — re-run the pre-push check above, and watch the new SHA.
+No hit means nothing in the message suppressed anything, so the cause is the runner or the
+workflow file (disabled runner, billing, a workflow the provider cannot parse): a hard stop
+to resolve or substitute a local gate for, not something a re-push fixes.
+
+**Cap the recovery at one clean re-trigger.** If a commit that greps clean also registers
+no run, the token was never the cause and pushing a third commit only hides that.
 
 **`tea api` matches the login by git remote URL.** A remote with credentials embedded
 (`https://<token>@host/...`) matches nothing, and `tea` then silently falls back to some
