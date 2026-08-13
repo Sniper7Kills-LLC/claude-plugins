@@ -29,9 +29,22 @@ Everything else here **reads** status. Once — when the merge commit's message 
 the push run (see the merged-into-branch check in SKILL.md Stage C2 step 5) — nothing is
 polling because nothing began, and the PM has to start it.
 
-**Preferred, and provider-independent: one clean empty commit on the deploy branch** —
-`git commit --allow-empty -m "ci: run suite for batch #<n>"`, subject only, no body. It
-restarts the CI run and the deploy together, and it rewrites nothing.
+**Preferred, and provider-independent: one clean empty commit on the deploy branch,
+pushed.** Check the branch out by name first — at this point in C2 the PM's worktree is
+usually the integration-branch one about to be torn down, and an unqualified commit there
+publishes nothing while looking like a fix:
+
+```bash
+git -C <repo> fetch <remote> <deploy-branch> -q
+git -C <repo> checkout -B <deploy-branch> <remote>/<deploy-branch>
+git -C <repo> commit --allow-empty -m "ci: run suite for batch #<n>"   # subject only, no body
+git -C <repo> push <remote> <deploy-branch>
+git -C <repo> rev-parse HEAD                                           # correlate the deploy against this
+```
+
+It restarts the CI run and the deploy together, and it rewrites nothing. The pushed commit
+becomes the branch head, so **it is the SHA to correlate the resulting deployment against**
+— record it in place of the merge commit before handing the watch to the companion.
 
 Where the branch is protected against direct pushes, start the deploy at the provider:
 
@@ -62,7 +75,10 @@ aws amplify get-job --app-id <APP_ID> --branch-name <BRANCH> --job-id <JOB_ID> \
   --query 'job.summary.status'   # PENDING | PROVISIONING | RUNNING | SUCCEED | FAILED | CANCELLED
 ```
 
-Correlate the job's `commitId` with the merge commit so you watch the right deploy. On
+Correlate the job's `commitId` with **the deploy branch's head after the merge** — the
+merge commit normally, or the recovery commit above whenever one was pushed on top. The
+deployment carries the SHA it built, so correlating against a superseded merge commit
+finds nothing and reads as a missing deploy. On
 `FAILED`, pull the step logs (the `get-job` response lists steps with `logUrl`; fetch the
 build/deploy step log) and extract the failing step + error. The same calls work through
 `mcp__aws-api` `call_aws` if the CLI isn't directly available.

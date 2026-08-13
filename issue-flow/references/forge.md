@@ -150,11 +150,11 @@ the correct behavior for a claim lock, but it will displace any pre-existing ass
 | `forge.pr.thread.resolve` | `gh api graphql` with the `resolveReviewThread` mutation | `tea pr resolve <comment-id>` | `pull_request_review_write(method: "resolve_thread")` |
 | `forge.pr.merge.squash` | `gh pr merge <pr> --squash --delete-branch` | `tea pr merge <pr> --style squash`, then `forge.branch.delete` | `pull_request_write(method: "merge", merge_style: "squash", delete_branch: true)` |
 | `forge.pr.merge.commit` | `gh pr merge <pr> --merge --delete-branch` | `tea pr merge <pr> --style merge`, then `forge.branch.delete` | `pull_request_write(method: "merge", merge_style: "merge", delete_branch: true)` |
+| `forge.branch.delete` | folded into `--delete-branch` | `tea pr clean <pr>`, or `git push <remote> --delete <branch>` | `delete_branch` |
 
 **Both merge rows are incomplete on purpose: always add the explicit message** (and check
 the branch afterwards) — see *Never let a merge write its own commit message* below. The
 default message decides whether the merged-into branch runs CI, and it differs per forge.
-| `forge.branch.delete` | folded into `--delete-branch` | `tea pr clean <pr>`, or `git push <remote> --delete <branch>` | `delete_branch` |
 
 **`forge.pr.view` by *branch* is GitHub-only.** `gh pr view <branch>` resolves a branch
 name as readily as a number; no `tea` command and no Gitea endpoint does. A replacement
@@ -215,7 +215,7 @@ path. The branch is the only place that shows what actually landed:
 ```bash
 git fetch <remote> <base> -q
 git log -1 --format='%s%n%b' <remote>/<base> \
-  | grep -ciE '\[(skip[ -]?ci|ci skip|no ci|skip actions|actions skip)\]' || true
+  | grep -ciE '\[(skip[ -]?ci|ci skip|no ci|skip actions|actions skip)\]|^skip-checks: ?true$' || true
 ```
 
 Read the count against what you intended: `0` after a batch merge means the head will be
@@ -226,6 +226,12 @@ the parser` folded in from a member would otherwise declare a healthy `dev` supp
 send the PM into a remediation it does not need. The looser `grep -ciE 'skip|no ci'` stays
 right for the pre-push check on a message you are about to write yourself, where a false
 positive costs one reworded subject.
+
+**The set is the five bracketed forms plus GitHub's `skip-checks: true` trailer** (with or
+without the space, on its own line — GitHub honors it, and the exact-token grep above
+matches it). Gitea matches the bracketed forms from `SKIP_WORKFLOW_STRINGS`; matching the
+trailer there is a harmless over-match. If a forge adds a token, this regex is the one
+place to widen — the loose pre-push pattern already catches anything containing `skip`.
 
 **`Closes #<n>` works differently on each forge.** On GitHub, it closes the linked
 issue only when the pull request merges into the default branch. On Gitea, it closes
@@ -380,23 +386,40 @@ stall either — the caller reads the commit before deciding, because the two ca
 opposite remedies:
 
 ```bash
+git fetch <remote> <branch> -q
+git cat-file -e <sha>^{commit} || { echo "sha-not-local"; }   # do not diagnose without it
 git log -1 --format='%s%n%b' <sha> \
-  | grep -niE '\[(skip[ -]?ci|ci skip|no ci|skip actions|actions skip)\]' || true
+  | grep -niE '\[(skip[ -]?ci|ci skip|no ci|skip actions|actions skip)\]|^skip-checks: ?true$' || true
 ```
 
 The `|| true` is not decoration: `grep` exits 1 on zero matches, and **zero matches is the
 branch the caller most needs to reach** — without it, a `set -e` script dies precisely when
 the diagnosis is "not a token problem".
 
+**Fetch first, and prove the commit is local, because `|| true` hides a missing one.** The
+SHAs this runs on are usually forge-created merge commits that no local ref points at yet.
+`git log` then exits 128, `grep` reads empty input and exits 1, and `|| true` swallows both
+— indistinguishable from a clean message, so a genuinely suppressed commit gets diagnosed
+as a runner problem. `sha-not-local` after a fetch is its own outcome: resolve it (fetch
+the right remote or branch) before reading the count at all.
+
 A hit means the commit is **suppressed**, usually by a token folded in from a squash body
 rather than one anybody typed. Push one clean trigger — `git commit --allow-empty -m "<subject>"`,
-one `-m`, subject only, no body — re-run the pre-push check above, and watch the new SHA.
-No hit means nothing in the message suppressed anything, so the cause is the runner or the
-workflow file (disabled runner, billing, a workflow the provider cannot parse): a hard stop
-to resolve or substitute a local gate for, not something a re-push fixes.
+one `-m`, subject only, no body — check the message you are about to push with the loose
+pre-push grep (SKILL.md stage C2 step 1), then watch the new SHA.
 
-**Cap the recovery at one clean re-trigger.** If a commit that greps clean also registers
-no run, the token was never the cause and pushing a third commit only hides that.
+No hit means nothing in the message suppressed anything. **Re-poll once before escalating.**
+The `pending:none` window above is 60 seconds, and a busy self-hosted runner that registers
+the run at 90 seconds produces exactly this clean-message `no-run-registered` — the most
+common cause of it, not a broken runner. Poll `forge.run.list` for the SHA again after a
+further 60-120 seconds; if a run has appeared, there was never anything to recover. Only a
+second clean poll points at the runner or the workflow file (disabled runner, billing, a
+workflow the provider cannot parse): a hard stop to resolve or substitute a local gate for,
+not something a re-push fixes.
+
+**Cap the recovery at one clean re-trigger** — the re-poll is not a re-trigger and does not
+count against the cap. If a commit that greps clean also registers no run across both polls,
+the token was never the cause and pushing a third commit only hides that.
 
 **`tea api` matches the login by git remote URL.** A remote with credentials embedded
 (`https://<token>@host/...`) matches nothing, and `tea` then silently falls back to some

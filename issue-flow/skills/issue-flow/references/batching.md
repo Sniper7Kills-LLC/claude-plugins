@@ -183,11 +183,24 @@ unchanged.
    token there. Neither default is safe: GitHub folds the member's commits into the body
    (the token arrives by luck, and a repository setting can withdraw it), Gitea folds
    nothing and starts a run per sub-merge.
-3b. Read the integration branch head afterwards —
-   `git log -1 --format='%s%n%b' <remote>/<integration-branch> | grep -ciE '\[(skip[ -]?ci|ci skip|no ci|skip actions|actions skip)\]' || true`
-   — where `0` means a run just started. **If the batch PR is already open, push a fresh
-   subject-only trigger commit now** and re-anchor the watch: the sub-merge replaced the
-   head the batch gate was watching.
+3b. Read the integration branch head afterwards — **fetch first, always.** The merge
+   happened on the server, so without the fetch `<remote>/<integration-branch>` still
+   points at the *previous* head (typically the last member's `[skip ci]` squash), the
+   grep returns non-zero, and the check reports the intended state for a merge it never
+   saw:
+
+   ```bash
+   git fetch <remote> <integration-branch> -q
+   git log -1 --format='%s%n%b' <remote>/<integration-branch> \
+     | grep -ciE '\[(skip[ -]?ci|ci skip|no ci|skip actions|actions skip)\]|^skip-checks: ?true$' || true
+   ```
+
+   `0` means a run just started. **If the batch PR is already open**, the sub-merge
+   replaced the head the batch gate was watching: push a fresh subject-only trigger commit
+   and re-anchor the watch **when this is the last member**, and otherwise leave the branch
+   CI-free and let the gate (step 2 of the batch checklist) re-trigger once on the final
+   head — a trigger per late member burns one full run each, which is the cost the batch
+   model exists to avoid (SKILL.md Stage C1 step 4b).
 4. Member → `forge.issue.status.set <m> status:batched`, which **removes `status:in-review`
    in the same operation** (at most one `status:` label per issue — a bare
    `forge.issue.label.add` leaves it in two states and breaks status queries); tick the
@@ -217,10 +230,13 @@ Batch complete = every member `status:batched` or terminally parked.
    `|| true` absorbs `grep -c`'s exit 1 on a zero count, which is the *passing* case) —
    then poll `ci-watch` to a terminal verdict, anchored to the SHA you just pushed.
    `no-run-registered` means the trigger did not take; it is never a pass. Grep the
-   commit to tell the two causes apart (`… | grep -niE '\[(skip[ -]?ci|ci skip|no ci|skip actions|actions skip)\]' || true`, the `|| true` keeping the no-token
-   branch reachable under `set -e`): a token in the message → push one clean subject-only
-   trigger and re-watch; a clean message → runner or workflow problem, which a re-push
-   does not fix. **Repeat this step after every later push to the integration branch** —
+   commit to tell the two causes apart (`… | grep -niE '\[(skip[ -]?ci|ci skip|no ci|skip actions|actions skip)\]|^skip-checks: ?true$' || true`, the `|| true` keeping the no-token
+   branch reachable under `set -e`; fetch the SHA first, or `git log` exits 128 and the
+   empty pipe reads as a clean message): a token in the message → push one clean
+   subject-only trigger and re-watch; a clean message → re-poll the run list for that SHA
+   once after another 60–120 seconds (a slow self-hosted runner registering after the
+   60-second window is the usual cause) and only then call it a runner or workflow
+   problem, which a re-push does not fix. **Repeat this step after every later push to the integration branch** —
    a late member's sub-merge writes a new head carrying the token (sub-merge step 3) and
    quietly suppresses the run again.
 3. Optional **batch review**: one subagent reviews the whole integration→dev diff for
@@ -231,11 +247,15 @@ Batch complete = every member `status:batched` or terminally parked.
 5. Conflict vs dev (another batch landed first) → resolve once here; semantic → park.
 6. Merge `--merge` (preserves per-member squashed commits; `--squash` only if the
    project's history style demands one commit), always with an explicit subject and an
-   **empty** body, then check `<remote>/dev`'s head for the token whatever the style — a
-   repository can compose merge-commit messages from the PR description too. A suppressed
-   head means no post-merge run and no deploy: remedy with one clean subject-only empty
-   commit on dev (not a rewrite of the merge commit), or start the deploy at the provider
-   if dev is protected ([deploy.md](deploy.md)). Delete the branch.
+   **empty** body, then `git fetch <remote> dev -q` and check `<remote>/dev`'s head for the
+   token whatever the style (the fetch is not optional — the merge was server-side, so an
+   unfetched tracking ref answers for the commit *before* it). A repository can compose
+   merge-commit messages from the PR description too. A suppressed head means no post-merge
+   run and no deploy: remedy with one clean subject-only empty commit on dev, **checked out
+   by name and pushed** (not a rewrite of the merge commit), or start the deploy at the
+   provider if dev is protected ([deploy.md](deploy.md)) — and re-anchor Stage D's
+   correlation to the pushed commit, which is now the head the deploy builds. Delete the
+   branch.
 7. Close members: automatic via `Closes #` **only when dev is the default branch**;
    otherwise close each manually with a comment linking the batch PR. Close the `type:batch`
    tracking issue; an epic closes when its last child closes.
