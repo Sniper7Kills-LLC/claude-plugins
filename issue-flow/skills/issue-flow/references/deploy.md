@@ -23,6 +23,31 @@ Look for, in order:
 
 If none is found, **skip Stage D** and note that to the user once.
 
+## Starting a deploy that never started
+
+Everything else here **reads** status. Once — when the merge commit's message suppressed
+the push run (see the merged-into-branch check in SKILL.md Stage C2 step 5) — nothing is
+polling because nothing began, and the PM has to start it.
+
+**Preferred, and provider-independent: one clean empty commit on the deploy branch** —
+`git commit --allow-empty -m "ci: run suite for batch #<n>"`, subject only, no body. It
+restarts the CI run and the deploy together, and it rewrites nothing.
+
+Where the branch is protected against direct pushes, start the deploy at the provider:
+
+```bash
+# AWS Amplify — redeploy the branch head
+aws amplify start-job --app-id <APP_ID> --branch-name <BRANCH> --job-type RELEASE
+
+# GitHub/Gitea Actions — only if the workflow declares workflow_dispatch
+gh workflow run <workflow-file> --ref <branch>
+```
+
+Vercel and Netlify have no start operation in the read paths above: use a deploy hook URL
+if the project has one, or the provider's own CLI/dashboard. Whichever path is used, **say
+in the digest that the deploy was started by hand** — a deployment a human triggered must
+not be reported as one the merge triggered.
+
 ## AWS Amplify queries
 
 Latest job on the branch and its status:

@@ -134,7 +134,9 @@ dev ◄────────────────────────�
 - Every epic gets an **integration branch** off dev. The PM also groups loose issues into
   batches of `batchSize` or fewer, and each batch gets one.
 - Each worker opens a **draft PR into the integration branch**, and ends every pushed
-  commit message with `[skip ci]`. Provider CI never runs for a sub-issue. The worker
+  commit message with `[skip ci]`; the PM writes the same token into the sub-merge's
+  commit message rather than trusting the forge's default, which carries it on GitHub and
+  drops it on Gitea. Provider CI never runs for a sub-issue. The worker
   verifies with the full local test and lint suite, plus a parallel specialist
   self-review.
 - The PM **sub-merges** each member into the integration branch and resolves any conflict
