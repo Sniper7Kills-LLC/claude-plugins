@@ -151,6 +151,13 @@ def collect(teams_dir, stale_hours=None, now=None, projects_dir=DEFAULT_PROJECTS
             continue
         if stale_hours is not None:
             touched = session_last_active(team["session"], projects_dir)
+            # No transcript match means the owning session cannot be found at all —
+            # true for a team created by a worktree-isolated agent, whose own
+            # session leaves no top-level transcript. Fall back to the roster mtime,
+            # but say the answer is unverified: measured on this machine, a peer
+            # dead for hours still looked "live" that way, which is the one thing
+            # this tool must not do quietly.
+            team["liveness"] = "session-active" if touched is not None else "roster-only"
             if touched is None:
                 try:
                     touched = os.path.getmtime(os.path.join(directory, "config.json"))
@@ -199,7 +206,12 @@ def render(teams, now, stale=()):
         )
         return lines + stale_summary(stale)
     for team in teams:
-        lines.append(f"{team['session']}:")
+        caveat = (
+            "   (owning session not found — roster only, may already be dead)"
+            if team.get("liveness") == "roster-only"
+            else ""
+        )
+        lines.append(f"{team['session']}:{caveat}")
         for member in team["members"]:
             mail = f"  {member['pendingMail']} undrained" if member["pendingMail"] else ""
             pane = member["pane"]

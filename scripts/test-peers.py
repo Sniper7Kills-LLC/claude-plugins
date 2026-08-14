@@ -223,6 +223,30 @@ try:
     if "session-aaa11111" in [t["session"] for t in stale]:
         fail("an active session's team must not be filtered as stale")
 
+    # A team whose owning session cannot be found is reported, but labelled: on a
+    # real machine a peer dead for hours still looked "live" through the roster
+    # fallback, and a detector that says "live" about a corpse is worse than none.
+    orphan = make_team(
+        work,
+        "session-orphan1",
+        [lead_for("session-orphan1"), dict(IN_PROCESS_PEER, name="lost-child")],
+    )
+    recent = NOW - 600
+    os.utime(os.path.join(orphan, "config.json"), (recent, recent))
+    live, stale = peers.collect(
+        work, stale_hours=24, now=NOW, projects_dir=os.path.join(work, "projects")
+    )
+    orphan_team = next((t for t in live if t["session"] == "session-orphan1"), None)
+    if not orphan_team:
+        fail("a team with no matching transcript should still be reported")
+    elif orphan_team.get("liveness") != "roster-only":
+        fail(f"unverifiable liveness must be labelled: {orphan_team.get('liveness')}")
+    if "roster only" not in "\n".join(peers.render(live, NOW, stale)):
+        fail("the rendered output must carry the roster-only caveat")
+    active = next((t for t in live if t["session"] == "session-aaa11111"), None)
+    if active and active.get("liveness") != "session-active":
+        fail(f"a team with a live transcript is session-active: {active.get('liveness')}")
+
     # ...and when that session goes quiet, the same team becomes cleanup.
     os.utime(transcript, (NOW - 48 * 3600, NOW - 48 * 3600))
     live, stale = peers.collect(

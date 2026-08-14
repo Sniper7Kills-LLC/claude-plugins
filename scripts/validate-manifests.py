@@ -160,29 +160,57 @@ def spawn_lint(text):
 
     Put `<!-- spawn-lint: ok -->` in a paragraph that discusses these shapes
     without prescribing them (the rule itself has to be written down somewhere).
+
+    Rule 1 reads a **two-paragraph window**, not one paragraph. A spec that says
+    "spawn `Agent` with `agentType: …`" and then names the agent in the next
+    paragraph is the same instruction to a reader and the same trap to a PM, and a
+    copyedit that reflows one paragraph into two must not turn CI green.
     """
-    found = []
-    for line, block in paragraphs(text):
+    found = {}
+    blocks = list(paragraphs(text))
+    # Windows of one and two adjacent paragraphs. Two is deliberate: it catches a
+    # reflowed spec while keeping the blast radius small, where a whole-section
+    # window would pair an `agentType` mention with an unrelated `name:` far below.
+    windows = [(i, i) for i in range(len(blocks))] + [
+        (i, i + 1) for i in range(len(blocks) - 1)
+    ]
+
+    for first, last in windows:
+        parts = blocks[first : last + 1]
+        block = "\n\n".join(part for _, part in parts)
         if SPAWN_LINT_SUPPRESS in block:
             continue
         agent_site = any(marker in block for marker in AGENT_MARKERS) or bool(
             AGENT_PROSE.search(block)
         )
 
-        def at(match):
-            """The line the offending text sits on, not the line the block starts on."""
-            return line + block[: match.start()].count("\n")
+        def at(match, parts=parts):
+            """Map an offset in the joined window back to a real file line.
 
-        name_match = re.search(r"`name:", block)
+            Each paragraph carries its own true start line, so the answer stays
+            right however many blank lines separated them in the source — the
+            joined text is not the file, and pretending otherwise drifts the
+            number by one per extra blank line.
+            """
+            offset = match.start()
+            for start_line, part in parts:
+                if offset <= len(part):
+                    return start_line + part[:offset].count("\n")
+                offset -= len(part) + 2  # the "\n\n" this join inserted
+            return parts[-1][0]
+
+        # The parameter, backticked or bare: `name: "x"` and name: "x" are the same
+        # instruction. Not a bare `name` — that word appears everywhere in prose.
+        name_match = re.search(r"`name:|\bname:\s*[\"']", block)
         # Match the parameter, not the word. "no isolation needed for a read-only
         # helper" must still be caught — a writer who justifies omitting it is the
         # writer most likely to be wrong — and an incidental mention must not
         # silence the paragraph.
         if agent_site and name_match and not ISOLATION_PARAM.search(block):
-            found.append(
-                (at(name_match), "spawn spec passes `name:` with no `isolation:` — that "
-                                 "is a peer session with no completion notification "
-                                 "(issue #25)")
+            found[(at(name_match), "name")] = (
+                at(name_match), "spawn spec passes `name:` with no `isolation:` — that "
+                                "is a peer session with no completion notification "
+                                "(issue #25)"
             )
         # Decide this one on the clause the parameter sits in, not the paragraph.
         # A paragraph may legitimately say "launch the poller with
@@ -199,11 +227,13 @@ def spawn_lint(text):
                 or bool(ISOLATION_PARAM.search(clause))
             )
             if agent_clause and not any(marker in clause for marker in BASH_MARKERS):
-                found.append(
-                    (at(background_match), "`run_in_background` on an `Agent` spawn is "
-                                           "inert — drop it (it stays on `Bash` calls)")
+                found[(at(background_match), "background")] = (
+                    at(background_match), "`run_in_background` on an `Agent` spawn is "
+                                          "inert — drop it (it stays on `Bash` calls)"
                 )
-    return found
+    # Windows overlap, so the same line can be reached twice; report it once,
+    # in file order.
+    return [found[key] for key in sorted(found)]
 
 
 def check_spawn_specs(path):

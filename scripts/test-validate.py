@@ -133,6 +133,57 @@ check(
     expect_bg=1,
 )
 
+# --- review round 2: a spec split across paragraphs is the same trap ----------
+check(
+    "a spawn spec reflowed across two paragraphs is still flagged",
+    'Spawn `Agent` with `agentType: "issue-flow:issue-worker"`.\n'
+    "\n"
+    'Use `name: "worker-42"` to keep it addressable.\n',
+    expect_names=1,
+)
+check(
+    "...and stays clean when the second paragraph does pass isolation",
+    'Spawn `Agent` with `agentType: "x"`.\n'
+    "\n"
+    'Pass `name: "w"` and `isolation: "worktree"`.\n',
+)
+check(
+    "an unrelated `name:` two paragraphs away is not dragged in",
+    'Spawn `Agent` with `agentType: "x"`, `isolation: "worktree"`.\n'
+    "\n"
+    "Some unrelated prose sits here, mentioning nothing in particular.\n"
+    "\n"
+    'The label `name: "release"` belongs to a different subject entirely.\n',
+)
+check(
+    "bare, un-backticked parameters count too",
+    'Spawn with `Agent`, `agentType: "x"`, name: "y".',
+    expect_names=1,
+)
+check(
+    "the word name in prose is not a parameter",
+    "Spawn a subagent and give the batch a name that matches the epic.",
+)
+
+# a split spec separated by several blank lines still reports the true line
+spread = (
+    'Spawn `Agent` with `agentType: "x"`.\n'
+    "\n"
+    "\n"
+    "\n"
+    'Then pass `name: "w"`.\n'
+)
+found = validate.spawn_lint(spread)
+if len(found) != 1:
+    failures.append(f"multi-blank split: expected 1 finding, got {found}")
+elif found[0][0] != 5:
+    failures.append(f"multi-blank split: expected line 5, got line {found[0][0]}")
+
+# overlapping windows must not report the same offence twice
+double = 'Spawn `Agent` with `agentType: "x"` and `name: "y"`.\n\nUnrelated closing prose.\n'
+if len(validate.spawn_lint(double)) != 1:
+    failures.append(f"overlapping windows should report once: {validate.spawn_lint(double)}")
+
 # --- paragraph splitting and line numbers ------------------------------------
 two_blocks = (
     "First paragraph, nothing to see.\n"
