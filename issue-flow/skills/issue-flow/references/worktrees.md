@@ -128,11 +128,13 @@ Two consequences the PM should treat as load-bearing:
    project's `.claude/settings.json` where named peer sessions are wanted deliberately
    (exporting it from a tool call does nothing). `ask` exists but is interactive-only —
    a background agent hangs on the prompt, which is worse than the refusal.
-2. **Unnamed un-isolated helpers are reachable and do notify.** `deploy-watcher`,
-   `code-auditor` and `ux-explorer` are spawned without isolation and are *not* peer
-   sessions: they fire completion notifications and they accept a mid-run `SendMessage`
-   addressed by `agentId`. What they lack is a stable name, so keep the `agentId` from the
-   spawn result if you intend to push anything to them.
+2. **Unnamed un-isolated helpers are reachable and do notify.** `code-auditor`,
+   `ux-explorer`, `deploy-verifier` and `review-scribe` are spawned without isolation and
+   are *not* peer sessions: they fire completion notifications and they accept a mid-run
+   `SendMessage` addressed by `agentId`. What they lack is a stable name, so keep the
+   `agentId` from the spawn result if you intend to push anything to them. (Stage D's
+   deploy watch is a background `Bash` command, not an agent — `run_in_background: true`
+   stays correct there.)
 
 Because delivery costs the worker no turn of its own, a correction that arrives while it
 works is cheap. Use it: see the mid-flight push in

@@ -117,6 +117,10 @@ Write it as `features/00-foundation.md` plus an `Epic 0: Foundation` entry, cove
 - The **branch model the user chose** (below) — create `dev` when they picked
   dev-and-live.
 - Deploy target wiring for the spec's hosting choice, and the seed/demo data script.
+  When the hosting platform deploys outside the forge's own Actions, this includes a
+  **deploy-status command** (for example `scripts/deploy-status.sh`) printing
+  `<state> <jobId> <sha>` with a normalized state — issue-flow's Stage D watches
+  deployments through it, and ships no provider integrations of its own.
 - A first end-to-end smoke path (app builds, starts, serves one route) so epic 1 has
   something to build on.
 

@@ -22,8 +22,10 @@ would each write the committed file and produce a merge conflict in the very con
 governs them. Rule of thumb: **`prAuthority` and `practices` are project policy and
 belong in the committed file** (a local override that loosens the merge gate defeats the
 point); `concurrency`, `batchSize`, `runLength` and `review.when` are fine to override
-locally. Write the session's answers to the local file when a co-operator is active
-(Phase 0 co-operator check), to the committed file otherwise — and say which you wrote.
+locally. Write the session's answers to the local file when a co-operator is active,
+to the committed file otherwise — and say which you wrote. (Phase 0 runs the
+co-operator check, step 10, **before** the run configuration, step 11, precisely so
+this decision has its input.)
 
 ```json
 {
@@ -41,6 +43,16 @@ locally. Write the session's answers to the local file when a co-operator is act
   "prGranularity": "batch",
   "prAuthority": "batch-review",
   "review": { "when": "end-of-session" },
+  "deploy": {
+    "mode": "command",
+    "statusCmd": "./scripts/deploy-status.sh",
+    "startCmd": null,
+    "workflow": null,
+    "url": "https://app.example.com",
+    "previewUrlPattern": null,
+    "pollSeconds": 30,
+    "maxMinutes": 30
+  },
   "docsMcp": { "offered": ["<server name>"], "installed": ["<server name>"], "marketplacesAdded": ["<source>"], "declined": true, "restartPending": false },
   "practices": {
     "tdd": true,
@@ -114,6 +126,14 @@ abbreviate them.
 | `review-all` | **human approval required** | **human approval required** | user-approved |
 | `propose-only` | PM opens PRs, merges nothing | PM opens it, merges nothing | user-approved |
 
+**A standalone PR into dev takes the batch-PR column.** A hotfix, an urgent
+`priority:high` singleton, a `type:spec-update` PR, `project-review`'s docs PR, and
+every PR under `per-issue` granularity all run CI and land on dev — exactly what the
+batch-PR column governs. Hotfixes skip *batching*, never the merge gate: under the
+default `batch-review` a hotfix PR still needs a human approving review before the PM
+merges it. A run that must self-merge hotfixes unattended needs `autonomous`, chosen
+explicitly.
+
 Rules:
 
 - **Promotion to live is never autonomous**, whatever this is set to.
@@ -139,7 +159,10 @@ Rules:
   watches CI itself. Stage C1 becomes the only merge gate and Stage C2 is skipped;
   conflicts are resolved per PR against dev rather than once per batch. Epics still
   exist as trackers and still close when their children do. Say plainly at startup that
-  this multiplies CI usage by the number of issues.
+  this multiplies CI usage by the number of issues — and that every one of those PRs
+  takes the **batch-PR column** of `prAuthority`, so under the default `batch-review`
+  each needs a human approving review (pick `autonomous` for an unattended per-issue
+  run).
 
 Hotfixes are `per-issue` regardless of this setting.
 
@@ -156,6 +179,25 @@ Whatever the mode, the existing stop conditions still apply (nothing workable, b
 spent, user stop). Reaching the limit stops the loop cleanly with a final digest — it
 never abandons in-flight work: let running workers finish and gate their results first,
 then stop.
+
+## deploy — how Stage D watches deployments
+
+Recorded by Phase 0 step 6, not asked in the startup rounds (confirm only when detection
+was ambiguous). The plugin ships no provider integrations — the platform is a project
+architecture choice, and this block is where the project's wiring is recorded
+([deploy.md](deploy.md)):
+
+- `mode` — `actions` (a deploy workflow in the forge's own Actions; Stage D watches its
+  runs), `command` (a project-supplied status command), or `none` (Stage D skipped).
+- `statusCmd` — `mode: command` only: a one-shot command printing
+  `<state> <jobId> <sha>` with `state` normalized to
+  `pending | running | succeeded | failed | rolled-back`. Must be in the committed
+  allow-list.
+- `startCmd` — optional: how to start a deploy by hand when the branch is
+  push-protected.
+- `workflow` — `mode: actions` only: the deploy workflow file name.
+- `url` / `previewUrlPattern` — what the deploy-verifier loads.
+- `pollSeconds` / `maxMinutes` — the watch loop's interval and budget (defaults 30/30).
 
 ## docsMcp — documentation access
 

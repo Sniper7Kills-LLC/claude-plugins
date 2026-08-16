@@ -282,7 +282,7 @@ unread check.
 A background shell keeps running across turns and re-invokes the agent when it exits, so
 the ceiling stops applying and the cost is **one turn to launch, one to read the verdict,
 regardless of how long CI takes**. That is strictly better than the foreground call on both
-axes. Both waiting paths — this one and the deploy-watcher's poll
+axes. Both waiting paths — this one and the Stage D deploy watch
 ([../skills/issue-flow/references/deploy.md](../skills/issue-flow/references/deploy.md)) —
 use it, and they use it the same way:
 

@@ -30,10 +30,11 @@ branch:       issue/<number>-<slug>
 base:         <remote>/<integration-branch or dev>
 ci:           skip | run
 batch:        epic #<n> | batch #<n> | standalone
+members:      <count of members in the batch; 1 for standalone/hotfix>
 crossCheck:   <URL of the batch cross-check comment> | n/a — standalone or single-member batch
-              Required whenever the batch starts more than one member. Read it before you
-              plan your edits: it is where the PM records what a sibling already built, which
-              plan was narrowed and why, and which shared resources are yours.
+              Required whenever `members` > 1. Read it before you plan your edits: it is
+              where the PM records what a sibling already built, which plan was narrowed
+              and why, and which shared resources are yours.
               Checked before anything else — see **First action** below.
 remote:       <remote>
 forge:        the run configuration's forge block, passed verbatim: {type, host, owner,
@@ -330,8 +331,10 @@ skip this section.
 **Do this before you read the issue, the repo, or anything else.** It costs one tool call
 and it is the only check that must happen before you spend a turn.
 
-1. Does `batch` name a batch or epic with **other members**? If it says `standalone`, or the
-   batch has only you in it, skip this section entirely.
+1. Does the brief say `members` > 1? If `batch` says `standalone`, or `members` is 1,
+   skip this section entirely. No `members` line at all → treat the batch as
+   multi-member and keep checking; you cannot count the batch yourself, and assuming
+   "single" is the cheap way to build against an unchecked plan.
 2. **Is there a `crossCheck` line in the brief at all?** Look for its absence, not only for
    a bad value. A field that was never written produces nothing to react to, which is why
    this is a step rather than a note: measured, a worker given a brief with no `crossCheck`
@@ -382,7 +385,8 @@ costs one turn and is always the cheaper error.
 4. **Address every PR thread** — yours, humans', bots', CI annotations. A human
    reviewer's request is authoritative over your self-review.
    - **PR-preview check (if a preview exists).** If the platform builds a preview
-     deployment for the PR (Amplify/Vercel/Netlify preview URL), verify it renders before
+     deployment for the PR (a preview URL — the pattern is in the run configuration's
+     `deploy` block when one exists), verify it renders before
      declaring ready: either spawn the `issue-flow:deploy-verifier` agent (Sonnet) with
      the preview `url`, or drive a browser MCP yourself — load the browser tools via
      `ToolSearch` (`playwright browser navigate` / `chrome devtools`), navigate, snapshot,

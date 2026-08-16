@@ -83,9 +83,10 @@ documentation. Slower, still mandatory.
   pagination, rate limits, and the permissions the call needs. Cite the doc URL in the PR
   body. If the documentation contradicts the plan, that is a `needs-feedback` — not
   something to reconcile by guessing.
-- **deploy-watcher / deploy-verifier.** Run the commands the brief gives you. If one is
-  rejected as malformed, confirm the correct form from `help` output or the provider's
-  docs before you retry — never permute flags until something runs.
+- **deploy-verifier, and the Stage D deploy watch.** Run the commands the brief or the
+  `deploy` block gives you. If one is rejected as malformed, confirm the correct form
+  from `help` output or the provider's docs before you retry — never permute flags until
+  something runs.
 - **PM.** When a plan or a verdict rests on an assumed external behaviour, send it back.
   "It should support that" is not a source.
 

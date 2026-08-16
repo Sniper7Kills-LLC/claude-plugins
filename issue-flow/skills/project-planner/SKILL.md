@@ -59,8 +59,8 @@ Before the first question, spend one round finding out what you can without the 
   or an existing codebase?
 - Existing `CLAUDE.md`, `AGENTS.md`, `.claude/`, `.gitignore`, `README`, package
   manifest, lockfile, CI config, `docs/specs/`?
-- Existing codebase → delegate a survey (`Explore`, or `cavecrew-investigator` if
-  present) for stack, layout, test command, conventions.
+- Existing codebase → delegate a survey (an `Explore` agent) for stack, layout, test
+  command, conventions.
 - A `docs/specs/spec.md` already present → this is a **revision**, not a new plan. Read
   it, and interview only about what's changing.
 

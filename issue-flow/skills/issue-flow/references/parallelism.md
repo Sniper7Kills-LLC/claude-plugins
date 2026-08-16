@@ -28,7 +28,7 @@ into Workflows.
 
 | Stage | Work | Parallel? | Mechanism |
 |---|---|---|---|
-| plan (PM, Stage B) | Locate files, map call sites | ✅ read-only | `Agent` fan-out (Explore / cavecrew-investigator) |
+| plan (PM, Stage B) | Locate files, map call sites | ✅ read-only | `Agent` fan-out (`Explore`) |
 | implement (worker) | Edit code | ⚠️ only if file sets are **disjoint** | worktree-per-issue; within an issue, sequential unless partitioned |
 | self-review (worker) | Review diff by dimension | ✅ read-only | Workflow fan-out: correctness / security / frontend / backend |
 | verify (worker/batch CI) | Read failing logs | ✅ read-only | `Agent` fan-out, one per failing job |
@@ -206,10 +206,15 @@ the main thread reads full diffs, full CI logs, or full file contents inline, co
 fills no matter how much you parallelize. So:
 
 - **Never read a large artifact inline on the main thread.** Delegate it to a subagent
-  (cavecrew-investigator for code maps, cavecrew-reviewer for diffs, a log reader for
+  (an `Explore` agent for code maps, a reviewer subagent for diffs, a log reader for
   CI) and take back only a **short structured summary** — findings, root cause, the
   decision, and pointers (`issue#`, `PR#`, file:line). The compressed return is the
   point.
+- **Keep `rtk` in the loop when the operator has it installed** (`rtk --version`
+  succeeds). Its hook rewrites shell commands transparently (`git status` →
+  `rtk git status`) and filters token-heavy output for the PM and every worker alike.
+  Do not bypass it with `rtk proxy` except to debug an output the filter mangled, and do
+  not re-add filters it already applies.
 - **Hold pointers, not payloads.** The main thread's per-issue footprint should be a
   handful of lines: issue number, branch/worktree path, PR number, current phase, open
   decisions. Everything reconstructable from the tracker stays *on* the tracker.

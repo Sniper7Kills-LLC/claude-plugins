@@ -193,8 +193,10 @@ Sub-agents **report**; only the PM files. On all verdicts collected:
      core flow → add `priority:high`. A sprawling UX overhaul → file as `type:epic`
      with the findings as its checklist, and let issue-flow decompose it.
    - Screenshots referenced in issue bodies must be durable: they land in the docs PR
-     (Phase 4) — link the repo path; until that PR merges, attach the image to the
-     issue (`forge.issue.create` body upload or a comment) so the evidence stands alone.
+     (Phase 4) — link the repo path the manual will use. Neither `gh` nor `tea` can
+     upload an image from the CLI, so until that PR merges the issue stands on its
+     quoted evidence: paste the console/server-log excerpt inline, name the scratch
+     screenshot path, and say the image lands with the docs PR.
 5. Keep a run ledger (finding → issue # / PR / recorded-only) for the digest and the summary issue.
 
 # Phase 4 — Deliverables PR (manual + E2E tests)
@@ -220,9 +222,13 @@ Sub-agents **report**; only the PM files. On all verdicts collected:
    from the scribe's `repairsMade`), and the filed-issue ledger. A repair the scribe reports
    unmade is stated as unmade with its reason, never dropped from the list. Docs + tests only —
    this PR is standalone, so **CI runs normally** on it.
-3. Gate it like any PM merge: CI green, threads resolved → merge. CI failure caused by
-   the new tests → send it back to a scribe re-run; **never patch product code to make
-   a review test pass.**
+3. Gate it like any PM merge — which includes the project's merge authority. Read
+   `prAuthority` from `.issue-flow.json` when it exists: a PR into dev takes the
+   batch-PR column (issue-flow's `references/session-config.md`), so under the default
+   `batch-review` and stricter, request a **human approving review** and do not merge
+   without it. Then: CI green, threads resolved → merge. CI failure caused by the new
+   tests → send it back to a scribe re-run; **never patch product code to make a review
+   test pass.**
 
 # Phase 5 — Report & hand off to issue-flow
 

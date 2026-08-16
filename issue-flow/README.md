@@ -2,14 +2,60 @@
 
 A Claude Code plugin. It drives an autonomous development loop from tracker issues:
 
-```
-spec → issues → batched builds → one CI run per batch → verified deploy → user review
+```mermaid
+flowchart LR
+    P["/project-planner<br/>spec + mockups + scaffold"] --> S["/spec-to-issues<br/>epics + sub-issues"]
+    S --> F["/issue-flow<br/>batched autonomous builds"]
+    F --> R["/project-review<br/>user-viewpoint QA"]
+    R -- "files new issues" --> F
 ```
 
 The review files new issues, and the loop runs them next.
 
 Tracker issues are the single source of truth. Labels hold the state. Comments hold the
 audit trail. All durable state lives on the forge, so the loop survives a restart.
+
+## The loop at a glance
+
+```mermaid
+flowchart TD
+    P0["Phase 0 — Preflight<br/>repo + forge · labels · foundation check · branch model<br/>deploy target · CI check · docs MCP · identity<br/>co-operators · run config · state recovery"]
+    P0 --> A0["Stage A0 — Sweep<br/>read what humans and co-operators changed"]
+    A0 --> A["Stage A — Triage<br/>label untriaged work · decompose epics<br/>park questions, keep working"]
+    A --> B["Stage B — Batch and schedule<br/>plan every member · cross-check the plans<br/>launch workers in isolated worktrees"]
+    B --> V{"worker verdict"}
+    V -- "ready-to-merge" --> C1["Stage C1 — Sub-merge gate<br/>acceptance criteria + practices + threads<br/>squash into the integration branch"]
+    V -- "checkpoint" --> RS["re-spawn a fresh worker<br/>same slot, same branch"] --> V
+    V -- "needs-feedback / blocked" --> PK["park with a comment<br/>free the slot"] --> A
+    C1 --> Q{"batch complete?"}
+    Q -- "no" --> B
+    Q -- "yes" --> C2["Stage C2 — Batch gate<br/>one PR into dev · CI runs once<br/>batch review · authority gate"]
+    C2 --> D["Stage D — Deploy watch<br/>one background shell per merge<br/>then a real-browser verify"]
+    D -- "verified" --> E["Stage E — Digest, refill, loop"]
+    D -- "failed" --> HF["type:hotfix issue<br/>standalone PR, CI on"] --> B
+    E --> A0
+```
+
+Labels are the state machine. An issue carries at most one `status:` label:
+
+```mermaid
+stateDiagram-v2
+    [*] --> ready: triage
+    ready --> in_progress: claim + launch
+    in_progress --> in_review: sub-PR opened
+    in_review --> batched: sub-merged by the PM
+    in_review --> awaiting_review: human approval required
+    awaiting_review --> batched: approving review, then merge
+    batched --> [*]: batch PR merges, issue closes
+    ready --> needs_feedback: question for the user
+    in_progress --> needs_feedback: worker parks a decision
+    needs_feedback --> ready: answered
+    ready --> blocked: open dependency
+    blocked --> ready: dependency closes
+```
+
+(`status:deploying` and `status:deploy-failed` sit on the batch's tracking issue during
+Stage D, never on a member.)
 
 ## Which forge
 
@@ -62,8 +108,26 @@ The autonomous loop. It has two roles.
   resolves conflicts, merges, monitors deployments, and posts status digests.
 - **The sub-agents — background agents with self-contained prompts.**
   `issue-flow:issue-worker` builds one issue and returns a verdict.
-  `issue-flow:deploy-watcher` monitors deployments. `issue-flow:deploy-verifier` checks
-  the live site in a real browser.
+  `issue-flow:deploy-verifier` checks the live site in a real browser. The deploy
+  *watch* is not an agent — it is one background shell command per merge.
+
+One worker's life, end to end:
+
+```mermaid
+sequenceDiagram
+    participant PM
+    participant W as worker (own worktree)
+    participant F as forge
+    PM->>F: plan comment + assign (the claim)
+    PM->>F: batch cross-check comment
+    PM->>W: spawn — isolation worktree, handoff brief
+    W->>F: draft PR into the integration branch ([skip ci])
+    W->>W: implement · self-review · full local suite
+    W-->>PM: verdict — ready-to-merge, criteria, localChecks
+    PM->>F: gate — criteria evidenced, threads resolved, practices met
+    PM->>F: squash sub-merge, explicit "[skip ci]" message
+    PM->>F: status batched + tick the tracking checklist
+```
 
 ### `/project-review`
 
@@ -150,11 +214,23 @@ infrastructure instead of failing at compile time. So:
 
 One CI run per batch, and each conflict resolved once.
 
-```
-dev ◄────────────────────────── ONE batch PR (full CI, once)
-  └─ epic/42-auth ◄─┬─ issue/43  (draft PR, [skip ci], local tests)
-                    ├─ issue/44  (draft PR, [skip ci], local tests)
-                    └─ issue/45  (draft PR, [skip ci], local tests)
+```mermaid
+%%{init: { 'gitGraph': { 'mainBranchName': 'dev' } } }%%
+gitGraph
+    commit id: "dev head"
+    branch epic/42-auth
+    commit id: "integration branch"
+    branch issue/43
+    commit id: "issue 43 [skip ci]"
+    checkout epic/42-auth
+    merge issue/43 id: "sub-merge 43"
+    branch issue/44
+    commit id: "issue 44 [skip ci]"
+    checkout epic/42-auth
+    merge issue/44 id: "sub-merge 44"
+    commit id: "ci: run suite" type: HIGHLIGHT
+    checkout dev
+    merge epic/42-auth id: "batch PR — CI once"
 ```
 
 - Every epic gets an **integration branch** off dev. The PM also groups loose issues into
@@ -172,18 +248,41 @@ dev ◄────────────────────────�
 - Members of a dependency chain share one batch and run in sequence. The plugin never
   stacks chained PRs.
 - A `type:hotfix` issue, or an urgent `priority:high` issue, skips the batch. It gets a
-  standalone PR into dev, with CI enabled.
+  standalone PR into dev, with CI enabled — and that PR takes the same merge authority as
+  a batch PR, so the default `batch-review` still requires a human approving review.
 
-## The loop
+## Deployment — watched, then browser-verified
+
+The plugin ships **no provider integrations**. A hosting platform (Amplify, Vercel, a
+Kubernetes rollout) is a project architecture choice, and the project supplies the way to
+query it: either the deploy runs in the forge's own Actions (watched like CI), or the
+project wires a one-line status command (`scripts/deploy-status.sh`, written by Epic 0)
+printing `<state> <jobId> <sha>`. Detail: the issue-flow skill's `references/deploy.md`.
+
+```mermaid
+flowchart LR
+    M["batch PR merges to dev"] --> W["background watch<br/>anchored to the merged head SHA"]
+    W -- "succeeded" --> V["deploy-verifier<br/>loads the site in a real browser"]
+    V -- "verified" --> OK["done — digest + notify"]
+    V -- "broken / unreachable" --> F["status deploy-failed<br/>classify the cause"]
+    W -- "failed / rolled-back" --> F
+    W -- "no deployment observed" --> T["check the merge message<br/>push a clean trigger commit"]
+    F -- "code regression" --> H["type:hotfix issue<br/>standalone PR, CI on"] --> M
+    F -- "config / secret / infra" --> U["park for human input"]
+```
+
+**A deployment is done only after the browser check passes.** A person approves every
+promotion from `dev` to the live branch.
+
+## The loop, in prose
 
 1. **Preflight.** Check the repository, the remote and the labels. Check the foundation —
    an empty repository gets Epic 0 first, never a feature issue. Read the branch model
-   from the spec (`dev-and-live` or `trunk`) and create `dev` when it is needed. Detect the
-   deploy target. Check CI; when the repository has none, the PM runs the suite itself at
-   the batch gate and says so. Offer the documentation MCP servers (below). Confirm the
-   run configuration with you. Find or create your `flow:status` status issue, check for
-   co-operators, launch the standing deploy-watcher companion, and recover the state of
-   any unfinished work.
+   from the spec (`dev-and-live` or `trunk`) and create `dev` when it is needed. Detect
+   the deploy target. Check CI; when the repository has none, the PM runs the suite
+   itself at the batch gate and says so. Offer the documentation MCP servers. Find or
+   create your `flow:status` status issue, check for co-operators, confirm the run
+   configuration with you, and recover the state of any unfinished work.
 2. **Sweep, then triage.** The PM reads new comments and external changes first, and
    applies them. A human's answer, instruction or PR review always wins. An untriaged
    issue becomes `status:ready` or `status:needs-feedback`. An epic with no sub-issues gets
@@ -191,8 +290,9 @@ dev ◄────────────────────────�
    by default. It asks you interactively only when too little work remains, when you are
    already at the keyboard, or when an answer blocks a completed batch.
 3. **Form batches and schedule.** Each epic becomes an epic batch. Loose issues become
-   grouped batches with a `type:batch` tracking issue. The PM runs up to `concurrency`
-   workers across all batches, each one an independent engineer in its own git worktree.
+   grouped batches with a `type:batch` tracking issue. The PM cross-checks every member's
+   plan before the first launch, then runs up to `concurrency` workers across all
+   batches, each one an independent engineer in its own git worktree.
 4. **Integrate through two gates.** At the sub-merge gate the PM checks that the threads
    are resolved, the local checks are green, and **every acceptance criterion carries
    evidence**. It then squashes the member into the integration branch and labels it
@@ -200,20 +300,17 @@ dev ◄────────────────────────�
    batch diff, including a cross-batch migration check. CI runs once. The PM then closes
    the members, writes the spec changelog and the feature status back, and removes the
    worktrees.
-5. **Deploy.** The watcher reports each terminal deployment. A deploy-verifier then drives
-   a real browser to confirm the site works. On failure the PM opens a `type:hotfix` issue
-   (standalone, CI enabled), or labels the work `needs-feedback` or `blocked` for an infra
-   or config cause. **A deployment is done only after the browser check passes.**
+5. **Deploy.** One background shell watches each merge to a terminal state. A
+   deploy-verifier then drives a real browser to confirm the site works. On failure the
+   PM opens a `type:hotfix` issue (standalone, CI enabled), or parks the work for human
+   input on an infra or config cause.
 6. **Report.** At every milestone the PM posts a terminal digest of 10 lines or fewer,
    updates the status issue body, and sends a push notification. Between milestones it
    stays quiet. The loop continues while workable backlog remains.
 
-A person approves every promotion from `dev` to the live branch.
-
 **Model tiers.** Each agent's own `model:` frontmatter is authoritative. The current
 summary: PM and issue-worker run on **Opus**; a worker's children, the deploy-verifier,
-the ux-explorer, the code-auditor and the review-scribe run on **Sonnet**; the
-deploy-watcher runs on **Haiku**.
+the ux-explorer, the code-auditor and the review-scribe run on **Sonnet**.
 
 ## Install
 
@@ -265,13 +362,17 @@ Required:
 
 Optional:
 
-- **Deploy monitoring** — the provider's CLI and credentials. For example `aws` (or the
-  AWS MCP server) for Amplify, another provider CLI, or a health-check URL.
+- **Deploy monitoring** — a deploy workflow in the forge's own Actions, or a project
+  status command printing `<state> <jobId> <sha>` (wired by Epic 0, or supplied once at
+  preflight), or nothing — Stage D is skipped and the PM says so.
 - **Deploy verification** — a browser MCP server, `playwright` or `chrome-devtools`.
   Without one, the verifier falls back to an HTTP and content check.
 - **`/project-review`** — the same browser MCP server, plus a sandbox to review against: a
   local dev server, `docker compose up`, or a deployed dev or staging URL. Never
   production, because the explorers submit test data.
+- **`rtk` (Rust Token Killer)** — when the operator has it installed (`rtk --version`),
+  its hook rewrites shell commands transparently and filters token-heavy output for the
+  PM and every worker. The loop checks for it once at preflight and leaves it in place.
 
 Connect a browser MCP server once, at user scope:
 
@@ -296,6 +397,7 @@ changes from run to run.
 | `prAuthority` | how much the PM may merge on its own | **`batch-review`** |
 | `review.when` | when to offer a `/project-review` | **end of session** |
 | `practices` | TDD · DDD · E2E expectations · coverage · commit style · docs | from the spec, else off |
+| `deploy` | how Stage D watches deployments (`actions` · `command` · `none`) and the URLs | detected in preflight |
 | `docsMcp` | which documentation MCP servers and marketplaces the PM offered, you installed, or you declined, and whether a restart is still pending | set in preflight |
 
 `prAuthority` is the most important setting:
@@ -307,8 +409,10 @@ changes from run to run.
 | `review-all` | nothing without a human approving review |
 | `propose-only` | nothing — the PM opens PRs and stops |
 
-Two rules override it: a person approves every promotion from `dev` to the live branch,
-and branch protection always wins.
+Any standalone PR into dev — a hotfix, an urgent singleton, or every PR under
+`per-issue` granularity — takes the batch-PR authority. Two rules override the setting:
+a person approves every promotion from `dev` to the live branch, and branch protection
+always wins.
 
 `practices` travel in the worker handoff brief, and the PM checks them at the merge gate.
 The PM returns a missed practice to the worker instead of waiving it.
