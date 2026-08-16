@@ -10,6 +10,11 @@ Skip the two spec mechanisms when there is no `docs/specs/spec.md`; issue-flow w
 fine on a plain tracker. ADRs (mechanism 3) apply on any project — decisions with
 lasting rationale happen with or without a spec.
 
+These mechanisms are the PM's, for changes that happen **during a run**. When the user
+wants the spec itself moved between runs — new scope, a retired feature, or an old
+package migrated to the current format — that is the `/spec-update` skill, not a PM
+mechanism; suggest it rather than absorbing planner-scale edits into the loop.
+
 ## Three mechanisms, different weights
 
 **1. Changelog line — every scope decision, immediately.**

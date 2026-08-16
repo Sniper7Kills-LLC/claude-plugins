@@ -4,7 +4,9 @@ A Claude Code plugin. It drives an autonomous development loop from tracker issu
 
 ```mermaid
 flowchart LR
-    P["/project-planner<br/>spec + mockups + scaffold"] --> S["/spec-to-issues<br/>epics + sub-issues"]
+    P["/project-planner<br/>greenfield: spec + mockups + scaffold"] --> S["/spec-to-issues<br/>epics + sub-issues"]
+    I["/project-inherit<br/>existing repo: spec written backward"] --> S
+    U["/spec-update<br/>change or refresh the spec"] --> S
     S --> F["/issue-flow<br/>batched autonomous builds"]
     F --> R["/project-review<br/>user-viewpoint QA"]
     R -- "files new issues" --> F
@@ -68,7 +70,7 @@ self-hosted Gitea with its own runner has no such ceiling.
 
 The full operation mapping is in [references/forge.md](references/forge.md).
 
-## The four skills
+## The six skills
 
 ### `/project-planner`
 
@@ -89,6 +91,39 @@ Interviews you, then writes the project brief and the project scaffold.
 
 One project per repository. The planner uploads nothing, and every path it writes is
 relative.
+
+### `/project-inherit`
+
+The planner for code that already exists. It brings an existing repository into the
+pipeline by writing the spec **backward** from what was built.
+
+- Harvests every existing statement of intent first — README, `docs/`, ADRs, wikis,
+  specs in other formats — then verifies each claim against the code. The code is the
+  senior witness; contradictions land in `Risks & open questions`.
+- Reviews the entire repository with parallel read-only survey agents (stack, data
+  model, API surface, screens and flows, cross-cutting concerns, tests and CI,
+  conventions and slop), and interviews you only about what code cannot answer:
+  intent, personas, the roadmap.
+- Writes the same `docs/specs/` package the planner writes. Existing features get
+  `status: built` (documented, never re-issued, no mockups — the app is its own
+  mockup); the roadmap and foundation gaps get `status: planned`, which is what
+  `spec-to-issues` turns into work.
+- Backfills ADRs for the major choices already made, marked as reconstructed.
+
+### `/spec-update`
+
+Evolves an approved spec between runs, without replanning the project.
+
+- **Change mode** — add a feature, alter built behaviour (expressed as new planned
+  work, never rewritten history), or retire a feature. Full planner depth, review
+  cycle included; `spec-to-issues`' id-dedup then issues only the delta.
+- **Refresh mode** — after a plugin upgrade, mechanically migrate an older package to
+  the current format: draw the missing diagrams from existing prose, replace a
+  hand-written `spec.html` with the generated one, backfill `docs/adr/`,
+  `docs/external.md` and quality rules. It invents zero product content — anything it
+  cannot fill mechanically becomes a recorded question.
+- Mid-run spec edits stay with the issue-flow PM's spec-maintenance mechanisms; this
+  skill is the user's tool between runs.
 
 ### `/spec-to-issues`
 
@@ -352,6 +387,17 @@ The full pipeline, from an idea:
 /issue-flow
 /project-review                        # user-test the shipped work → issues → /issue-flow
 ```
+
+Or from a codebase that already exists:
+
+```
+/project-inherit                       # whole-repo review → spec written backward → approve
+/spec-to-issues                        # issues the roadmap + foundation gaps only
+/issue-flow
+```
+
+Later, to grow or modernize the spec: `/spec-update` ("add a feature ...", or "refresh
+the spec" after a plugin upgrade).
 
 On any existing tracker, start the loop with `/issue-flow`, "work the issues", or "pick up
 the next issue".

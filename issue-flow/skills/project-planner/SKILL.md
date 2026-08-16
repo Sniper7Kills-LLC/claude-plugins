@@ -60,9 +60,14 @@ Before the first question, spend one round finding out what you can without the 
 - Existing `CLAUDE.md`, `AGENTS.md`, `.claude/`, `.gitignore`, `README`, package
   manifest, lockfile, CI config, `docs/specs/`?
 - Existing codebase → delegate a survey (an `Explore` agent) for stack, layout, test
-  command, conventions.
+  command, conventions. When the codebase is substantial — built features, real users,
+  history worth documenting — offer **`/project-inherit`** instead: it reviews the
+  whole repository and writes the spec backward from what exists, which this skill's
+  forward-planning interview does not.
 - A `docs/specs/spec.md` already present → this is a **revision**, not a new plan. Read
-  it, and interview only about what's changing.
+  it, and interview only about what's changing. For a scoped change to an approved
+  spec (one new feature, a retirement, a format refresh), **`/spec-update`** is the
+  lighter tool.
 
 Report what you found in one short paragraph before Phase 1, so the user knows what you
 already know.

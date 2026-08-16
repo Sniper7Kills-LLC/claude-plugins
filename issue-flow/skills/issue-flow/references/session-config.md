@@ -93,6 +93,10 @@ committed file carries the stamp; a `.issue-flow.local.json` override session le
 the committed `pluginVersion` alone and notes the drift for the config's owner in the
 digest instead.
 
+Version drift can also mean the **spec package** predates the current format (missing
+diagrams, hand-written `spec.html`, no quality rules). That is not config business:
+mention it once and point the user at `/spec-update` (refresh mode) between runs.
+
 ## forge — which tracker this project uses
 
 `type` is `github` or `gitea`. `interface` is `cli` or `mcp` and selects the primary
