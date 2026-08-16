@@ -112,7 +112,11 @@ Write it as `features/00-foundation.md` plus an `Epic 0: Foundation` entry, cove
 - Repo scaffold for the chosen stack — framework init, package manifest, directory
   layout as the spec's `Architecture & stack` describes it.
 - Test harness (unit + integration) and the exact `test` command; lint, format,
-  typecheck commands. These become `conventions` in every worker brief.
+  typecheck commands. These become `conventions` in every worker brief. The lint config
+  enables the linter's **complexity and maintainability rules** (cyclomatic complexity,
+  max nesting, unused/dead code — whatever the chosen linter offers), mirroring
+  `.claude/rules/quality.md`: what a rule can catch mechanically should fail a check,
+  not wait for a reviewer.
 - CI workflow that runs those commands on pull requests.
 - The **branch model the user chose** (below) — create `dev` when they picked
   dev-and-live.

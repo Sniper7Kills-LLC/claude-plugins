@@ -30,7 +30,7 @@ into Workflows.
 |---|---|---|---|
 | plan (PM, Stage B) | Locate files, map call sites | ✅ read-only | `Agent` fan-out (`Explore`) |
 | implement (worker) | Edit code | ⚠️ only if file sets are **disjoint** | worktree-per-issue; within an issue, sequential unless partitioned |
-| self-review (worker) | Review diff by dimension | ✅ read-only | Workflow fan-out: correctness / security / frontend / backend |
+| self-review (worker) | Review diff by dimension | ✅ read-only | Workflow fan-out: correctness / security / maintainability / frontend / backend |
 | verify (worker/batch CI) | Read failing logs | ✅ read-only | `Agent` fan-out, one per failing job |
 | across issues | Multiple issues at once | ✅ with isolation | one git worktree + branch per issue, concurrency cap |
 | across batches | Multiple integration branches live | ✅ but prefer finishing one | batch-level conflicts resolved once at the batch gate |
@@ -111,6 +111,15 @@ the diff actually touches:
 
 - **correctness** — logic, edge cases, regressions
 - **security** — injection, authz, secrets, unsafe deserialization
+- **maintainability** — always on: the slop a green suite never catches. Check the diff
+  **rule by rule** against the project's `.claude/rules/quality.md` when it exists (the
+  planner scaffolds it), reporting a pass/fail verdict per rule; else use this default
+  list: try/catch that only rethrows or logs-and-continues; defensive casts or null
+  checks against states the types already exclude; abstractions with a single caller;
+  configuration for a value nothing varies; dead or commented-out code; comments that
+  restate the code. This lens exists because test-passing does not measure
+  maintainability, so nothing else in the loop penalizes it — and a per-rule verdict is
+  auditable where "looks clean" is not.
 - **frontend** — only if the diff touches UI/client code: a11y, state, render cost
 - **backend** — only if the diff touches server/data code: API contracts, queries, migrations
 
@@ -165,7 +174,9 @@ const FINDINGS = {
     },
   },
 }
-// args = { diff: "<unified diff, from `forge.pr.diff`>", lenses: ["correctness","security","frontend","backend"] }
+// args = { diff: "<unified diff, from `forge.pr.diff`>", lenses: ["correctness","security","maintainability","frontend","backend"] }
+// For the maintainability lens, append the project's .claude/rules/quality.md to the
+// prompt when it exists, and ask for a pass/fail verdict per rule.
 phase('Review')
 const reviews = await parallel(args.lenses.map(lens => () =>
   agent(

@@ -122,6 +122,19 @@ dev ◄────────────────────────�
 
 # Phase 0 — Preflight (run once per session)
 
+**Look for the preflight digest before spending a single turn on mechanics.** The plugin
+ships a `SessionStart` hook (`hooks/preflight.py`) that, in a repo with a committed
+`.issue-flow.json`, has already run `git fetch` and put an `issue-flow preflight:` block
+into your context: remote name, default branch, live `epic/*`/`batch/*` branches,
+leftover worktrees, missing standard labels, and — when the forge CLI answered — open PRs
+and parked issues. Hooks cost CPU, not inference, and the fetch it already ran is what
+kills the stale-ref failure class measured in live runs. When the block is present, do
+not re-derive those facts with your own tool calls: verify anything surprising, then
+spend the saved turns on the judgment steps (foundation check, branch model, run
+configuration). When it is absent — hook disabled, no `.issue-flow.json` yet, CLI not
+authenticated — run every step below yourself; the hook is an accelerator, never a
+dependency.
+
 1. **Repo and forge check.** `git rev-parse --is-inside-work-tree`, then work out which
    forge this repo lives on — see [../../references/forge.md](../../references/forge.md).
    - Not a git repo → ask the user to initialize; if yes, `git init` + initial commit.
@@ -253,7 +266,10 @@ dev ◄────────────────────────�
    empty / until stopped), `prGranularity` (batch vs per-issue PRs), **`prAuthority`**
    (how much may the PM merge on its own — default `batch-review`: the batch PR needs a
    human approving review; a standalone/hotfix/per-issue PR into dev follows the same
-   batch-PR column), `review.when` (when to offer a `/project-review`), `practices`
+   batch-PR column), **`planReview`** (hold each batch's plans for operator approval
+   before its first launch — Stage B step 4b), **`reviewWipLimit`** (soft cap on batches
+   parked `status:awaiting-review` before the PM stops forming new ones — Stage B step
+   1), `review.when` (when to offer a `/project-review`), `practices`
    (TDD, DDD, E2E expectations, coverage, commit style, docs), and the **`deploy`** block
    step 6 detected. Write the
    answers back to `.issue-flow.json` (a gitignored `.issue-flow.local.json` overrides it
@@ -462,7 +478,17 @@ back in `notesForPM`.
 
 ## Stage B — Form batches & schedule work
 
-1. **Form batches from the ready pool.** (Skip this step entirely when `prGranularity` is
+1. **Form batches from the ready pool — after checking the review WIP cap.** Count the
+   tracking issues currently `status:awaiting-review`. At or above `reviewWipLimit`
+   ([session-config.md](references/session-config.md), default 2), **form no new batch**:
+   finished-but-unreviewed batches are inventory stacked in front of the pipeline's real
+   bottleneck — the human reviewer — and another parallel batch adds inventory, not
+   throughput, while its conflicts against the unreviewed work compound. Keep filling
+   worker slots for batches already in flight, work the parked questions, and notify the
+   operator **once per cap event** (digest + push) that reviews are the constraint; an
+   approval or merge frees the cap. The cap is soft and binds only under an authority
+   setting that parks batches for review — under `autonomous` it never triggers.
+   (Skip this step entirely when `prGranularity` is
    `per-issue`: each ready issue goes straight to a worker on its own branch off dev with
    `ci: run`, and Stage C2 never runs.)
    - Every epic with ≥1 `status:ready` sub-issue → an **epic batch** on `epic/<n>-<slug>` (all its ready sub-issues are members).
@@ -473,7 +499,12 @@ back in `notesForPM`.
 3. **Plan + claim, per issue (PM):**
    - **Locate (read-only, parallel):** fan out `Agent` calls **unnamed** (a `name:` without `isolation:` is a peer session that never reports back — [worktrees.md](references/worktrees.md); the shipped guard denies it) (`Explore`) to map the files/call-sites the issue touches; take back a short summary. **Tell every locate agent the batch's base branch and require it to read that ref**, not the default branch: for an epic batch, earlier members are already sub-merged into the integration branch and exist *nowhere else*. An agent that greps `main` will truthfully report a helper "does not exist anywhere" when a sibling built it an hour ago, and the worker then rebuilds it. **`git fetch` before you locate**, and have the agents read the fetched remote ref rather than whatever the working tree happens to be on — naming the right branch is not enough if the checkout behind it is stale. Both failures were measured in live runs: one locate pass read `origin/main` and missed a UUIDv5 helper a merged sibling had added, which would have produced a second id scheme against a unique column; a later one read a working tree that was a single merge behind `origin/main` and reported its issue's whole premise as fiction. The symptom is identical either way — a truthful "this does not exist anywhere" about code that does — so treat any such report from a locate pass as suspect until the ref it read is confirmed current.
    - **If the issue calls an external service, confirm the interface before you plan it.** Delegate a read of the vendor's current documentation (or the CLI's own `help`) and put the doc URL + pinned version in the plan. Never plan against a remembered API shape — see [references/external-apis.md](../../references/external-apis.md). Cannot confirm it → `status:needs-feedback`, not a guess.
-   - Comment a short plan on the issue (approach, files, out-of-scope).
+   - Comment a short plan on the issue: approach, files, **build order as vertical
+     slices** (the thin end-to-end path first, then what deepens it — migration, real
+     logic, error handling), the intended call stack for the main path, the tests the
+     worker is expected to add, and out-of-scope. The slice order is what makes a
+     mid-issue checkpoint hand over working behaviour instead of a half-built layer, and
+     the named tests are what the C1 gate's pre-patch check verifies.
    - **Claim with compare-and-set:** immediately before claiming, re-read the issue's labels/assignees; if another worker already took it, abandon and pick the next. Else `forge.issue.assign`, then `forge.issue.status.set <n> status:in-progress`. **On a multi-member batch, assign every member here but hold the status swap** until each one actually launches (step 5) — step 4 forbids `status:in-progress` before the cross-check comment exists, and the assignee is what holds the claim in the meantime (assignee = lock; on Gitea resolve your login with `forge.user.login` first — `tea` has no `@me`).
    - If planning surfaces a user-only decision, don't guess: comment the question, `forge.issue.status.set <n> status:needs-feedback` (removes whichever single `status:` label the issue is carrying — `status:in-progress` if the claim already swapped it, none if it has not), drop the claim, pick different work.
 4. **Cross-check the batch's plans — a gate, before the batch's first launch.**
@@ -534,6 +565,19 @@ back in `notesForPM`.
    [references/batching.md](references/batching.md)), not only in your own context — including
    anything the locate passes surfaced, such as work an already-merged sibling has done.
 
+4b. **Plan review — only when `planReview: true`**
+   ([session-config.md](references/session-config.md)). After the cross-check comment
+   exists and before any member launches, surface the batch's plans to the operator: one
+   line per member (issue number, plan-comment link, one-sentence approach) plus the
+   cross-check verdict, then `AskUserQuestion` — **approve the batch** / **revise named
+   plans** (collect what to change, edit the plan comments, post a cross-check addendum
+   for any plan that changed) / **proceed without review this batch**. This is the
+   cheapest re-steer point in the loop: a correction here costs one comment edit, the
+   same correction at the batch gate costs built branches — a bad line of a plan becomes
+   hundreds of bad lines of code. This gate is the one place the loop *does* wait on the
+   user, because they switched it on to be asked; under the default `planReview: false`
+   skip it entirely — the plans are still on the issues for anyone watching.
+
 5. **Hand off to a worker.** For a batch starting more than one member, the brief's
    **`crossCheck` field is the URL of step 4's comment**, and it is required — you cannot fill
    it in before the comment exists, which is the point. **The worker validates it and returns
@@ -566,7 +610,7 @@ Triggered by a worker's completion notification. Act on its `outcome`:
   `blocker`. Free the slot.
 - **`checkpoint`** → the worker hit its turn budget with work pushed and nothing wrong. **Re-spawn a fresh worker** (do *not* `SendMessage` — that reuses the context the checkpoint exists to discard) with the same brief, `base: <remote>/issue/<n>-<slug>`, and the verdict's `remaining` text appended to the plan. **Do not touch the status label** — leave it exactly as the checkpointed worker left it: `status:in-review` if it had already opened the PR (runbook step 2), `status:in-progress` if it checkpointed during implementation before that. Either is correct, the replacement adopts whatever PR exists rather than re-opening one, and flipping the label buys nothing but thrash. **Post one terse comment** — `checkpoint <k>: <one-line remaining>, replacement spawned` — which is what invariant 6 requires of any state change, what the chain cap below counts, and what Phase 0 reconstructs an interrupted run from. No gate, no digest line, and **do not free the slot** — the issue is still in flight and its replacement occupies the same one. This is routine flow control, not an exception — a long issue is *expected* to take two or three workers. **Remove the checkpointed worker's worktree** (`git worktree remove --force <worktree>` then `git branch -D worktree-agent-<id>`, as in step 6 below) — the replacement gets a fresh one from the harness and re-checks-out the published branch, so keeping the old tree only leaks it. The commits are safe on the remote; that is what makes the handoff free. **Cap the chain: after 3 consecutive checkpoints on one issue**, stop re-spawning — a worker that checkpoints without visible progress recycles forever and pays a fresh context ramp each time. `forge.issue.status.set <n> status:needs-feedback` (or `status:blocked` if the last `remaining` names a hard blocker) — it removes whichever single `status:` label the checkpointed worker left, `status:in-review` or `status:in-progress` — comment with the chain of `remaining` notes, free the slot, and park it per the feedback policy. Count the chain from those checkpoint comments, and reset it whenever a checkpoint's PR shows new commits.
 - **`ready-to-merge`** → sub-merge below (never on the worker's word alone):
-  1. Verify: all PR threads resolved, PR targets the **integration branch**, worker reported the **local checks green** (`localChecks` in its verdict), and the session's `practices` were met (tests-first evidence, E2E where required, coverage threshold, commit style, docs — see [session-config.md](references/session-config.md)). A practice missed without a stated reason goes back to the worker; it is not waived at the gate. No provider CI to wait for.
+  1. Verify: all PR threads resolved, PR targets the **integration branch**, worker reported the **local checks green** (`localChecks` in its verdict), and the session's `practices` were met (tests-first evidence, E2E where required, coverage threshold, commit style, docs — see [session-config.md](references/session-config.md)). When the PR adds or changes tests, `localChecks` must also carry the **pre-patch check** — the new tests were run against the pre-patch code and failed (`agents/issue-worker.md`, Verify): a test that already passed before the change is evidence of nothing, and its green is permanent. Missing or unstated goes back to the worker like any other unevidenced practice. A practice missed without a stated reason goes back to the worker; it is not waived at the gate. No provider CI to wait for.
   1b. **Acceptance criteria gate.** The worker returns `criteria: [{text, met, evidence}]` — one entry per acceptance criterion in the issue body. Check the list is **complete** (every criterion in the issue appears) and that each `met: true` carries real evidence (a test name, a command output, a file:line). Any criterion `met: false`, missing, or evidenced only by "implemented" goes **back to the worker** with the specific criterion quoted; a criterion the worker argues is wrong or unbuildable is a product question → `forge.issue.status.set <n> status:needs-feedback` (removes `status:in-review`), not a waiver. Acceptance criteria are the definition of done that `spec-to-issues` wrote down — this is where they are enforced, not months later in `project-review`.
   2. **Conflict vs the integration branch** (a sibling just sub-merged): mechanical → resolve directly or via a short-lived worker; **semantic** (two intents on the same logic) → `forge.issue.status.set <n> status:needs-feedback` on both issues (each removes whichever single `status:` label it carries), park, do not guess.
   3. **Authority gate.** If `prAuthority` is `review-all` or `propose-only`, do **not** merge: ready the PR, request review, `forge.issue.status.set <member> status:awaiting-review` (removes `status:in-review` — a bare label add here leaves the same split status step 5 exists to prevent), notify once, and go schedule other work. Merge only after a human approving review lands (a reaction or a vague "looks good" is not one). Under `autonomous`/`batch-review`, sub-merges are yours.
@@ -635,6 +679,14 @@ parked work is entangled. That call is the PM's.
    **On `no-run-registered`, read the commit before reacting** — `git fetch <remote> <branch> -q; git cat-file -e <sha>^{commit} 2>/dev/null || echo sha-not-local; git log -1 --format='%s%n%b' <sha> | grep -niE '\[(skip[ -]?ci|ci skip|no ci|skip actions|actions skip)\]' || true` (the `|| true` matters: `grep` exits 1 on zero matches, which is the *no-token* branch — the one that must still be reachable inside a `set -e` script; the fetch and the existence check matter for the same reason in reverse — on a SHA no local ref covers, `git log` exits 128, the empty pipe reads exactly like a clean message, and `|| true` hides both — `sha-not-local` is its own outcome, so resolve it before reading the count at all). A hit is a suppressed commit: push one clean subject-only trigger and re-watch. No hit → **re-poll the run list for that SHA once, after another 60–120 seconds, before concluding anything**: the `pending:none` window is 60 seconds and a slow self-hosted runner registering late is the most common clean-message `no-run-registered`. Still nothing on the second poll is a runner or workflow-file problem, which a re-push does not fix — resolve it or substitute the local gate at step 3 and say so on the PR. One clean re-trigger, not a loop (the re-poll is not a re-trigger).
 2. **Batch review — optional, but the choice is recorded.** One reviewer pass over the whole batch diff (cheap — an **unnamed** subagent, no CI; naming it without `isolation:` strands the result) to catch cross-member integration issues the per-issue reviews couldn't see. Run it by default for any batch with more than one member; skipping is reasonable for a single member or a diff that is entirely one member's work. **Either way, say which on the batch PR** — the review's findings, or one line naming the skip and the reason. A skipped optional step and a step that found nothing leave the same trace, which is none, and the step then quietly stops happening: measured across two runs, where it ran and found two members' comments made untrue by a sibling, then did not run at all and nobody could tell. Include **prose one member's change made untrue** — a comment, docstring or test name in *another* member's files that describes behavior this batch just changed. This is the one class the Stage B cross-plan check cannot reach: the plans were genuinely disjoint and the check was right to clear them, and the drift only exists once the code lands. Measured in a live run: a fixture comment asserted a boot-sync behavior that is false for the case it annotates, and a live-test docstring still described a silent-join that a sibling member had just ended. Both are wrong in a way that misleads the next reader while every test passes.
 
+   Include a **maintainability pass** against the project's quality rules
+   (`.claude/rules/quality.md` when the planner scaffolded one, else the default slop
+   list in [parallelism.md](references/parallelism.md)) — one verdict per rule, pass or
+   fail, over the whole batch diff. This is the defect class a green suite never catches
+   and per-member self-review systematically under-penalizes: try/catch that only
+   rethrows, defensive casts against impossible states, abstractions with one caller,
+   dead code. Enumerated rules turn "looks clean" into something auditable.
+
    **The review reports every class it was asked to cover, including the ones that came back clean** — name what you compared and state the negative, exactly as the Stage B cross-plan check does. A review that only mentions what it found cannot be told apart from one that never looked for it, and the classes that are usually clean are the ones that quietly stop being checked. This applies to the diff itself too: if a file appears in the PR's file list with a size change but no visible content — git treats it as binary, or it exceeds the host's diff cap — then it was **not reviewed**, whatever the lenses reported. Read both versions directly and say in the review that you did (see [parallelism.md](references/parallelism.md)).
 
    Include a **cross-batch check** when another integration branch is live: compare this batch's schema/migration files, seed data and shared config against the other live branches' — two batches each adding a migration are individually valid and collide on merge. A collision found here is resolved now (renumber/rebase the migration); a semantic one parks both.
@@ -680,7 +732,7 @@ parked work is entangled. That call is the PM's.
    That restarts both the run and any push-triggered deploy. It is not a rewrite: the merge commit stays exactly as it is, and rewriting it is what you must not do. **Re-anchor after it**: the recovery commit is now `dev`'s head, so it — not the merge commit — is the SHA the CI watch polls and the SHA Stage D correlates the deployment's `commitId` against. Record it in place of the merge commit, or the deploy watch will hunt for a SHA no deployment carries and report `no-deployment-observed` for a deploy that ran fine. If `dev` is protected against direct pushes, start the deploy the project's own way (`gh workflow run <file> --ref <branch>` when the deploy workflow declares `workflow_dispatch`; the project's wired start command — `deploy.startCmd` — otherwise; see [references/deploy.md](references/deploy.md)) — and say in the digest which of the two happened, because a deploy that a human started by hand must not be reported as an automatic one.
 6. **Close member issues.** If dev is the default branch, `Closes #` handles it; if not, close each member manually with a comment linking the batch PR. Close the batch tracking issue; the epic closes when its last child does. Clear lingering status labels.
 7. Tear down: sweep for leftovers with `git worktree list --porcelain`, `git worktree remove -f -f` any entry on this batch's `issue/*` branches (`-f -f` because a leftover from a killed session is still locked; the notification paths cover the ones you tracked, the sweep catches the rest), `git branch -D` the matching `worktree-agent-*` branches, `git worktree prune`; delete the integration branch (the merge did if `--delete-branch`).
-8. **Keep the spec honest** (when the project has one — see [spec-maintenance.md](references/spec-maintenance.md)): append a dated line to `docs/specs/spec.md` § Changelog for every scope decision this batch involved (ship-partial, an answered product question, a hotfix that changed behaviour), advance any fully-closed feature to `status: built`, and file a `type:spec-update` issue when the **documented behaviour** anywhere under `docs/specs/` actually diverged from what shipped — a `features/*.md`, or `spec.md`'s Terms, data model or cross-cutting concerns, which every worker and `spec-to-issues` read the same way. Commit it with the batch.
+8. **Keep the spec honest** (when the project has one — see [spec-maintenance.md](references/spec-maintenance.md)): append a dated line to `docs/specs/spec.md` § Changelog for every scope decision this batch involved (ship-partial, an answered product question, a hotfix that changed behaviour), advance any fully-closed feature to `status: built`, and file a `type:spec-update` issue when the **documented behaviour** anywhere under `docs/specs/` actually diverged from what shipped — a `features/*.md`, or `spec.md`'s Terms, data model or cross-cutting concerns, which every worker and `spec-to-issues` read the same way. **Record any decision with lasting technical rationale as an ADR** in `docs/adr/` — a gate dispute resolved one way over another, an approach chosen against a considered alternative, a worker finding flagged `adr-worthy` — per [spec-maintenance.md](references/spec-maintenance.md); a `Carried forward` comment dies with the batch, an ADR does not, and ADRs apply even on a project with no spec. What does **not** earn one: a routine implementation choice, a decision already in the spec, anything with no alternative that was seriously considered — an ADR per batch is the churn signal, not the goal. Commit it all with the batch.
 9. Post a **status digest** (Stage E reporting). Hand off to **Stage D** if a deploy target exists.
 
 **Promotion to live** (dev ≠ live): never automatic. On user request, open a `dev → live` PR through the same gates.

@@ -100,6 +100,27 @@ This bound exists because it was measured missing: a project hardened the plugin
 1,500+ lines of agreement tests, and the two most-contended files in the repository
 became a mandatory edit for every member. The obligation firing per member, not per
 finding, regenerates the churn regardless of what the filing gate says.
+### docs/adr/ and docs/external.md
+
+Two documentation homes the spec cannot cover, scaffolded now so the loop has somewhere
+to write:
+
+- **`docs/adr/`** — architecture decision records. The spec records why each launch
+  choice beat its alternative; decisions made *during* issue-flow runs — gate disputes,
+  worker findings with lasting rationale, approaches chosen mid-batch — otherwise die
+  with their batch. Seed the directory with `docs/adr/0000-template.md` (`# NNNN —
+  <decision>` / `Date` / `Status: accepted | superseded by NNNN` / `## Context` /
+  `## Decision` / `## Consequences`, one page maximum, STE) and write `0001-<slug>.md`
+  now for any genuinely contested choice the interview settled (stack, data store,
+  auth). issue-flow's PM appends entries at the batch gate
+  ([spec-maintenance.md](../../issue-flow/references/spec-maintenance.md)).
+- **`docs/external.md`** — the facts agents repeatedly need that live *outside* the
+  codebase: environment variable **names** (never values), third-party dashboard and
+  webhook/payment setup steps, test accounts and where they come from, where users file
+  support requests. One file with headed sections; grow it into `docs/external/` only
+  when one file stops being enough. **Never a secret, a token, or a credential** — the
+  file is committed. Seed it from the spec's `Environments & config` and `Interfaces`
+  sections, with `TODO(#issue)` markers for what Epic 0 will fill in.
 
 ### .claude/
 
@@ -206,6 +227,30 @@ URL and version in the PR body.
 Anything that creates, deletes or changes a cloud resource is confirmed with the user
 first. Read-only `list-*` / `get-*` / `describe-*` calls are the safe way to learn the
 shape of a real resource.
+```
+
+**Always write `.claude/rules/quality.md`** — the maintainability rules that issue-flow's
+review lenses check the diff against, one pass/fail verdict per rule (the worker's
+self-review and the PM's batch review both read it). These are the defects a green test
+suite never catches, so without an enumerated list nothing in the loop penalizes them.
+Path-scope it to the project's source globs. Start from this floor and add what the
+spec's conventions imply:
+
+```markdown
+---
+paths:
+  - "src/**/*.{ts,tsx,js,jsx}"     # ← the project's actual source globs
+---
+
+# Quality rules — reviewed per rule, pass or fail
+
+- No try/catch that only rethrows, or logs and continues.
+- No defensive casts or null checks against states the types already exclude.
+- No abstraction with a single caller; inline it until a second caller exists.
+- No configuration for a value nothing varies.
+- No dead code and no commented-out code.
+- A comment states what the code cannot (see the STE rule); delete comments that
+  restate the code.
 ```
 
 Other path-scoped rules follow the same shape:

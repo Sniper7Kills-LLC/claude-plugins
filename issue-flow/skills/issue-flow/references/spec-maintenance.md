@@ -6,10 +6,11 @@ still describes the app. The PM makes decisions during the loop that change the 
 ship-partial calls, answers to parked questions, hotfixes that alter behaviour — and
 none of them reach the spec on their own.
 
-Skip this entirely when there is no `docs/specs/spec.md`; issue-flow works fine on a
-plain tracker.
+Skip the two spec mechanisms when there is no `docs/specs/spec.md`; issue-flow works
+fine on a plain tracker. ADRs (mechanism 3) apply on any project — decisions with
+lasting rationale happen with or without a spec.
 
-## Two mechanisms, different weights
+## Three mechanisms, different weights
 
 **1. Changelog line — every scope decision, immediately.**
 
@@ -59,6 +60,29 @@ it reviewed like everything else.
 Do **not** let a worker rewrite the spec as a side effect of building a feature. Spec
 edits are their own issue, so the change is visible and reviewable rather than buried in
 a feature diff.
+
+**3. ADR — when the *why* must outlive the batch.**
+
+The loop makes decisions whose rationale nothing above records: a gate dispute resolved
+one way over another, a worker `finding:` flagged `adr-worthy`, an approach chosen
+against a considered alternative. A changelog line records *that* something was decided;
+a `Carried forward` comment records it only on the one issue that will look; the batch
+findings log dies with the batch. A decision someone will re-litigate later needs a
+durable record — an Architecture Decision Record:
+
+- `docs/adr/NNNN-<slug>.md`, numbered sequentially. The planner scaffolds `docs/adr/`
+  ([scaffold.md](../../project-planner/references/scaffold.md)); create it on first use
+  when it is missing.
+- Format, one page maximum: `# NNNN — <decision>`, `Date`, `Status: accepted` (or
+  `superseded by NNNN`), `## Context` (the forces, with issue/PR links), `## Decision`
+  (one sentence, active voice), `## Consequences` (what this rules out, what it commits
+  the project to). STE throughout.
+- Written by the PM at the batch gate (SKILL.md C2 step 8), committed with the batch's
+  other spec bookkeeping — never rewritten later; a reversed decision gets a new ADR
+  that supersedes the old one.
+- What earns one: a decision that would be re-litigated by someone who cannot see this
+  batch's comments. What does not: anything a changelog line already says, routine
+  ship-partial calls, implementation detail.
 
 ## Feature status lifecycle
 

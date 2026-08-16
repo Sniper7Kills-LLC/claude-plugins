@@ -276,7 +276,10 @@ promotion from `dev` to the live branch.
 
 ## The loop, in prose
 
-1. **Preflight.** Check the repository, the remote and the labels. Check the foundation —
+1. **Preflight.** A `SessionStart` hook has already fetched the remote and handed the PM
+   the mechanical facts — branches, leftover worktrees, missing labels, open PRs — in a
+   repository that carries `.issue-flow.json`; the PM verifies instead of re-deriving.
+   Check the repository, the remote and the labels. Check the foundation —
    an empty repository gets Epic 0 first, never a feature issue. Read the branch model
    from the spec (`dev-and-live` or `trunk`) and create `dev` when it is needed. Detect
    the deploy target. Check CI; when the repository has none, the PM runs the suite
@@ -290,11 +293,19 @@ promotion from `dev` to the live branch.
    by default. It asks you interactively only when too little work remains, when you are
    already at the keyboard, or when an answer blocks a completed batch.
 3. **Form batches and schedule.** Each epic becomes an epic batch. Loose issues become
-   grouped batches with a `type:batch` tracking issue. The PM cross-checks every member's
-   plan before the first launch, then runs up to `concurrency` workers across all
-   batches, each one an independent engineer in its own git worktree.
+   grouped batches with a `type:batch` tracking issue — unless `reviewWipLimit` batches
+   already wait on your review, in which case the PM tells you reviews are the
+   constraint instead of stacking more inventory in front of you. The PM cross-checks
+   every member's plan before the first launch — and, with `planReview` on, holds the
+   batch until you approve the plans, the point where a correction costs one comment
+   instead of a built branch. Then it runs up to `concurrency` workers across all
+   batches, each one an independent engineer in its own git worktree. Workers build in
+   vertical slices — a thin end-to-end path first — so every commit, and every
+   mid-issue checkpoint, leaves something a test can exercise.
 4. **Integrate through two gates.** At the sub-merge gate the PM checks that the threads
-   are resolved, the local checks are green, and **every acceptance criterion carries
+   are resolved, the local checks are green, that new tests **failed on the pre-patch
+   code** (a test that passed before the change proves nothing), and that **every
+   acceptance criterion carries
    evidence**. It then squashes the member into the integration branch and labels it
    `status:batched`. At the batch gate it opens one PR into dev and reviews the whole
    batch diff, including a cross-batch migration check. CI runs once. The PM then closes
@@ -395,6 +406,8 @@ changes from run to run.
 | `runLength` | one batch · N issues · until the backlog empties · until you stop it | **25 issues** |
 | `prGranularity` | `batch` (one CI run per batch) or `per-issue` (one PR and one CI run each) | **batch** |
 | `prAuthority` | how much the PM may merge on its own | **`batch-review`** |
+| `planReview` | hold each batch until you approve its member plans — the cheapest re-steer point, before any code exists | **off** |
+| `reviewWipLimit` | how many batches may wait on human review before the PM stops forming new ones | **2** |
 | `review.when` | when to offer a `/project-review` | **end of session** |
 | `practices` | TDD · DDD · E2E expectations · coverage · commit style · docs | from the spec, else off |
 | `deploy` | how Stage D watches deployments (`actions` · `command` · `none`) and the URLs | detected in preflight |

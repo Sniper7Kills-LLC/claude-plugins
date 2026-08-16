@@ -72,7 +72,9 @@ and any text copied from the spec.
 done**, not advice:
 
 - `tdd: true` → write the failing test first; tests land in the same PR as (or before)
-  the implementation, and `localChecks` shows they exercise the new behaviour.
+  the implementation, and `localChecks` shows they exercise the new behaviour — including
+  the pre-patch check (Verify, step 5): the new tests demonstrably fail without your
+  change.
 - `ddd: true` → model the domain concepts and boundaries the plan names; keep domain
   logic out of transport/UI layers.
 - `e2e: user-facing` → any change a user can see ships with an E2E spec; `e2e: all` →
@@ -318,8 +320,11 @@ skip this section.
   only concerns your own issue — that goes on your issue, not the batch's.
 - **Anything that outlives the batch needs a different home.** The log is thrown away with
   the batch. A fact the project should keep goes in the repo — the spec, a README, a code
-  comment — as part of your change. A fact that **constrains another epic or another open
-  issue** goes as a comment **on that issue**, headed
+  comment — as part of your change. A **decision with lasting technical rationale** — an
+  approach chosen over a considered alternative, a constraint that will shape later
+  design — is ADR material: say so in the finding's body (`adr-worthy: <one line why>`)
+  and the PM records it in `docs/adr/` at the batch gate. A fact that **constrains
+  another epic or another open issue** goes as a comment **on that issue**, headed
   `Carried forward from <this batch> — <the constraint>`: say what it rules out and what
   the options are, and leave the decision to whoever works it. A constraint recorded only
   where you found it is a constraint nobody planning that work will ever read.
@@ -359,6 +364,16 @@ costs one turn and is always the cheaper error.
    batch findings log first (see above) — before you plan your edits, not after. Run the
    project's tests/linters as you go. Commit in logical units referencing `#<number>`;
    when `ci: skip`, end **every** commit message you push with `[skip ci]`.
+
+   **Build vertically, not horizontally.** When the issue crosses layers (data → service
+   → API → UI), build one thin end-to-end slice first — a stubbed endpoint, the minimal
+   consumer, the wiring between them — and then deepen it: the migration, the real logic,
+   the error handling. Commit per slice, so every commit leaves something runnable that a
+   test can exercise. Never lay a whole layer across the issue before any single path
+   works end to end: a horizontal half-build has nothing to verify until the very end,
+   and if you checkpoint mid-issue it hands your replacement inventory instead of working
+   behaviour. Follow the slice order in your plan when the PM wrote one; derive it
+   yourself when the plan is silent.
    If the issue splits into **disjoint** paths (e.g. `frontend/` vs `backend/`), you may
    fan implementation out to Sonnet children — but only if the paths provably don't
    overlap. Never run two writers over the same files.
@@ -378,7 +393,10 @@ costs one turn and is always the cheaper error.
    **not** write `Closes #` — issues close via the batch PR, which the PM owns; write it
    only when `batch: standalone`). Set the issue label to `status:in-review` (remove
    `status:in-progress`).
-3. **Self-review** the diff by specialist lens — correctness, security, frontend/backend
+3. **Self-review** the diff by specialist lens — correctness, security, maintainability
+   (rule by rule against the project's `.claude/rules/quality.md` when it exists, else
+   the default slop list: try/catch that only rethrows, defensive casts against
+   impossible states, single-caller abstractions, dead code), frontend/backend
    pruned to the diff — in parallel via Sonnet children/Workflow, else sequentially. Post
    findings as PR comments, fix the real ones, push. Reply to reject a finding with the
    reason.
@@ -408,6 +426,26 @@ costs one turn and is always the cheaper error.
    - **Verify the `practices` too**, and say so in `localChecks`: the new tests and (when
      `tdd`) that they came first, the E2E spec when one is required, the coverage number
      against the threshold. A green suite that skipped a required practice is not done.
+   - **Prove the new tests fail on the pre-patch code — whichever `ci` mode.** A new test
+     that passes *before* your change is evidence it tests nothing, and it will read green
+     forever. This is the same trap as the skipped suite: a signal that cannot fail is not
+     a signal. Once per PR, with everything committed, restore the implementation to its
+     pre-patch state while keeping your tests, run the new tests, require failure, restore:
+
+     ```bash
+     base=$(git merge-base HEAD <base>)
+     git checkout "$base" -- <implementation paths you changed>   # tests stay yours
+     <test command, scoped to the new/changed tests>              # must FAIL
+     git checkout HEAD -- <those same paths>                      # restore your change
+     ```
+
+     A path that did not exist pre-patch makes that `checkout` error — delete the file
+     instead (`git rm -q <file>`), then restore everything with `git checkout HEAD -- .`.
+     A failure by import or missing-symbol error counts: failure is failure. Record the
+     result in `localChecks` (`pre-patch: 4 new tests fail as expected`) — the PM's gate
+     looks for it. New tests that pass pre-patch are broken tests: fix them before
+     returning `ready-to-merge`. Skip only when the PR genuinely adds no test a behaviour
+     change could fail (docs-only, comment-only), and say so in `localChecks`.
    - `ci: run` → watch CI with **`forge.pr.checks`**, resolved from your brief like every
      other operation — it is **one blocking call launched with `run_in_background: true`**,
      and it takes the PR number you already

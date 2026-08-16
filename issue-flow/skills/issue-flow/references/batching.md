@@ -269,3 +269,8 @@ Batch complete = every member `status:batched` or terminally parked.
   sub-merge (small, local, immediate) instead of racing a moving dev.
 - Latency tradeoff: a member's code reaches dev only when its batch lands. Anything
   urgent goes standalone — that's the hotfix/priority:high exception, not a batch.
+- WIP: a finished batch waiting on human review is inventory, not throughput. When
+  `reviewWipLimit` batches (default 2) sit `status:awaiting-review`, Stage B stops
+  forming new batches and tells the operator reviews are the constraint
+  ([session-config.md](session-config.md)) — more parallel batches in front of a
+  saturated reviewer only age against a moving dev.

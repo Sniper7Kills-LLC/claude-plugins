@@ -144,10 +144,11 @@ back.
 
 ## Phase 3 — Generate spec.html and the project scaffold
 
-Generate the browsable `spec.html`, then `CLAUDE.md`, `.claude/` (settings, rules,
-skills, commands, hooks) and the `.gitignore` block. The format and the rules for each —
-including the permission floor, the hook safety rules, and the mandatory
-`.claude/rules/ste.md` — are in **[references/scaffold.md](references/scaffold.md)**.
+Generate the browsable `spec.html`, then `CLAUDE.md`, `docs/adr/` + `docs/external.md`,
+`.claude/` (settings, rules, skills, commands, hooks) and the `.gitignore` block. The
+format and the rules for each — including the permission floor, the hook safety rules,
+and the mandatory `.claude/rules/ste.md` and `.claude/rules/quality.md` — are in
+**[references/scaffold.md](references/scaffold.md)**.
 
 Two things gate this phase, so they stay here:
 
@@ -229,6 +230,11 @@ Before you declare the planner done, verify:
       each repair goes in this project's branch model. Without it the loop files an issue
       per stale record and the backlog regenerates as fast as it clears. On a repo that
       already had a `CLAUDE.md`, proposed and the user declined also satisfies this.
+- [ ] `.claude/rules/quality.md` — written, path-scoped to the source globs, every rule
+      checkable pass/fail per diff.
+- [ ] `docs/adr/` seeded — the template plus an ADR for any contested choice the
+      interview settled; `docs/external.md` present — names and pointers only, never a
+      secret or a value.
 - [ ] `.claude/rules/*.md` — path-scoped where the content is area-specific.
 - [ ] `.claude/skills/*/SKILL.md` — at minimum `run` and `test` for a fresh project;
       relative paths only, minimal `allowed-tools`.
