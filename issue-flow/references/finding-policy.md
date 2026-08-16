@@ -17,18 +17,25 @@ issues remain".
 The failure is measurable, and the numbers below reproduce with the `## How to measure`
 commands, run on each repo's default branch (merges counted once — a merge-inclusive
 per-commit loop double-counts every batch member and inflated an earlier version of
-these figures). On one project that ran without this policy, the specification was
-edited in **62% of the last 300 commits at 3.9 lines per edit** — a sentence at a time,
-not a section landing — and **60% of commits touched documentation and no product
-code**. The bookkeeping had become the deliverable. The sibling project that adopted
-the policy, on the same library in another language, edited its specification in **16%
-of commits at 6.1 lines per edit**, with bookkeeping-only at **38%**; a third,
-unrelated project measured **4.6%** bookkeeping-only with a `+1310/−19` spec
-add/delete shape. **Edit share is the discriminator** — 62% against 16% is a 3.9x
-separation, while lines-per-edit separates the same repos only 1.6x (3.9 vs 6.1, both
-"low"). Lines-per-edit corroborates the shape — four lines is a sentence, not a
-section — and the add/delete shape separates growth (`+thousands/−tens`) from rewrite
-churn; neither carries the verdict alone.
+these figures). The window is the last 300 **non-merge** commits, which is what
+`--no-merges` on the `rev-list` makes it — the flag redefines the window rather than
+filtering the old one, so every figure here is derived against that window and not
+against the 300 most recent commits.
+
+On one project that ran without this policy, the specification was edited in **82% of
+those commits at 3.6 lines per edit** — a sentence at a time, not a section landing —
+and **59% of commits touched documentation and no product code**. The bookkeeping had
+become the deliverable. The sibling project that adopted the policy, on the same
+library in another language, edited its specification in **25% of commits at 6.7 lines
+per edit**, with bookkeeping-only at **47%**; a third, unrelated project measured
+**4.6%** bookkeeping-only with a `+1310/−19` spec add/delete shape.
+
+**Edit share is the discriminator.** 82% against 25% is a **3.3x** separation. Every
+other signal on the same pair is weaker: lines-per-edit **1.9x** (3.6 against 6.7, both
+"low"), bookkeeping-only commit share **1.3x** (59% against 47%), and library-touching
+commit share **none at all** — 26.7% against 25.7%. Lines-per-edit corroborates the
+shape — four lines is a sentence, not a section — and the add/delete shape separates
+growth (`+thousands/−tens`) from rewrite churn; neither carries the verdict alone.
 
 A large test surface, by itself, is **not** evidence of over-guarding — TDD mandates and
 test fakes standing in for absent external systems both inflate test LOC legitimately.
@@ -172,7 +179,7 @@ Read the signals in this order, strongest first:
 
 1. **Per-file edit share** (the table's edit count against `N`): a bookkeeping file
    edited in more than half of all commits is the strong signal — it separated the
-   measured failing and healthy repos 3.9x where every other signal managed 1.6x.
+   measured failing and healthy repos 3.3x where no other signal managed 2x.
    Corroborate with the same row's **lines-per-edit and add/delete shape**: a few
    lines per edit with balanced adds/deletes is record-patching; `+thousands/−tens`
    is honest growth. The per-file table is also the one signal that **survives the
@@ -180,12 +187,16 @@ Read the signals in this order, strongest first:
    share and the convergence check both read healthy whether or not the churn
    stopped, but a spec file touched by most commits stays visible here. Judge each
    file by its own row, not by which file it is: on the measured failing repo the
-   specification carried the record-patching signature while the *changelog*, at 37
+   specification carried the record-patching signature while the *changelog*, at 33.5
    lines per edit, read as honest growth — the same file class can sit on either
    side.
-2. **Bookkeeping-only commit share**: commits touching docs and no product code.
-3. **Library-touching commit share**: the coarsest signal — it moves severalfold on the
-   `PRODUCT_RE` choice alone; use it for trend, never verdict.
+2. **Bookkeeping-only commit share**: commits touching docs and no product code. Weak
+   on its own — 59% against 47% on the measured pair, a 1.3x separation that no
+   threshold can be drawn across. Read it as corroboration of the per-file table.
+3. **Library-touching commit share**: the coarsest signal, and on the measured pair it
+   separated nothing — 26.7% failing against 25.7% healthy. It also moves severalfold
+   on the `PRODUCT_RE` choice alone. Quote it only with its regex, only as a trend
+   against the same repo's own history, and never as a verdict.
 
 No LOC ratio appears here on purpose. Guard-LOC vs product-LOC moves severalfold on the
 choice of `PRODUCT_RE` alone and false-positives on TDD-heavy or fake-heavy repos, so it
