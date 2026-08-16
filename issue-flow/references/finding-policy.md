@@ -28,7 +28,9 @@ and **59% of commits touched documentation and no product code**. The bookkeepin
 become the deliverable. The sibling project that adopted the policy, on the same
 library in another language, edited its specification in **25% of commits at 6.7 lines
 per edit**, with bookkeeping-only at **47%**; a third, unrelated project measured
-**4.6%** bookkeeping-only with a `+1310/−19` spec add/delete shape.
+**4.6%** bookkeeping-only with a `+1310/−19` spec add/delete shape (that one figure
+predates the window pin and was measured merge-inclusive — treat it as approximate;
+at 4.6% no window choice moves the verdict).
 
 **Edit share is the discriminator.** 82% against 25% is a **3.3x** separation. Every
 other signal on the same pair is weaker: lines-per-edit **1.9x** (3.6 against 6.7, both
