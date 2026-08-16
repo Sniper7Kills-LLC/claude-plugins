@@ -75,7 +75,11 @@ The full operation mapping is in [references/forge.md](references/forge.md).
 Interviews you, then writes the project brief and the project scaffold.
 
 - `docs/specs/` — the index `spec.md`, one detailed `features/*.md` per feature set,
-  self-contained HTML mockups, and a browsable `spec.html` you open locally.
+  mermaid diagrams for the architecture, the data model and every user flow, and
+  self-contained HTML mockups.
+- `spec.html` — a generated single-page website of the whole spec (full content,
+  rendered diagrams, embedded mockups), built from the markdown by a committed
+  `render-spec.py` so a revision is always one script run away from a fresh review page.
 - `CLAUDE.md`, the `.claude/` scaffold (permissions, hooks, path-scoped rules, project
   skills such as `/run` and `/test`), and the Claude Code `.gitignore` block.
 - A review cycle. You see every permission, hook and skill before the planner writes it.
@@ -412,6 +416,7 @@ changes from run to run.
 | `practices` | TDD · DDD · E2E expectations · coverage · commit style · docs | from the spec, else off |
 | `deploy` | how Stage D watches deployments (`actions` · `command` · `none`) and the URLs | detected in preflight |
 | `docsMcp` | which documentation MCP servers and marketplaces the PM offered, you installed, or you declined, and whether a restart is still pending | set in preflight |
+| `pluginVersion` | which plugin release last ran this project — the preflight hook flags drift after an upgrade, and the PM re-asks any config question the older file never saw | stamped in preflight |
 
 `prAuthority` is the most important setting:
 

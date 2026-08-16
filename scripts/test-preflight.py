@@ -126,6 +126,39 @@ with tempfile.TemporaryDirectory() as base:
         if expected not in digest:
             failures.append(f"digest should contain {expected!r}:\n{digest}")
 
+    # --- plugin-version drift --------------------------------------------------
+    with open(
+        os.path.join(ROOT, "issue-flow", ".claude-plugin", "plugin.json"),
+        encoding="utf-8",
+    ) as handle:
+        installed = json.load(handle)["version"]
+    if "no pluginVersion recorded" not in digest:
+        failures.append(f"a config without pluginVersion should say so:\n{digest}")
+
+    def write_config(plugin_version):
+        with open(
+            os.path.join(project, ".issue-flow.json"), "w", encoding="utf-8"
+        ) as handle:
+            json.dump(
+                {
+                    "version": 1,
+                    "forge": {"type": "gitea"},
+                    "pluginVersion": plugin_version,
+                },
+                handle,
+            )
+
+    write_config(installed)
+    digest = run_hook(payload_here, project) or ""
+    if f"plugin version: {installed} (matches the last run)" not in digest:
+        failures.append(f"a matching pluginVersion should be reported as such:\n{digest}")
+
+    write_config("0.0.1")
+    digest = run_hook(payload_here, project) or ""
+    if f"plugin version: {installed}, project last ran 0.0.1" not in digest:
+        failures.append(f"a stale pluginVersion should be flagged as drift:\n{digest}")
+    write_config(installed)
+
     # --- spec front-matter feeds the branch-model line ------------------------
     specs = os.path.join(project, "docs", "specs")
     os.makedirs(specs)

@@ -30,6 +30,7 @@ this decision has its input.)
 ```json
 {
   "version": 1,
+  "pluginVersion": "0.13.0",
   "forge": {
     "type": "gitea",
     "host": "http://gitea.example:3000",
@@ -74,6 +75,23 @@ practices block. Say which defaults came from the spec when you present them.
 
 If the file is missing, malformed, or from a newer `version`, fall back to the built-in
 defaults below and say so. Never crash the session over config.
+
+## pluginVersion — upgrade detection
+
+Two versions live in this file and they answer different questions. `version` is the
+**config schema** (a newer one than you know → defaults, as above). `pluginVersion` is
+the **plugin release that last ran this project**, stamped by Phase 0 step 11 every
+time the config is written. The preflight hook compares it against the installed
+plugin's manifest and puts any drift in the session's first digest.
+
+On drift, the config was written by an older plugin, so its silence is not consent:
+a field the saved file lacks may be a question that did not exist yet. During the
+step 11 confirm rounds, ask about every option the current tables define that the file
+has no value for — never default one silently — then stamp the current version. When
+the field is absent entirely (a pre-tracking config), treat it the same way. The
+committed file carries the stamp; a `.issue-flow.local.json` override session leaves
+the committed `pluginVersion` alone and notes the drift for the config's owner in the
+digest instead.
 
 ## forge — which tracker this project uses
 

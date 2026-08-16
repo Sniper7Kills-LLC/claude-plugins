@@ -4,25 +4,36 @@ How to generate `spec.html`, `CLAUDE.md`, the `.claude/` directory and `.gitigno
 `SKILL.md` Phase 3 points here. Nothing in `.claude/` is written before the user
 approves it in the Phase 4 review round.
 
-### spec.html
+### spec.html — generated from the markdown, never hand-authored
 
-A single self-contained HTML document at `docs/specs/spec.html` — the review artifact
-the user actually reads. Same rules as the mockups (inline everything, responsive,
-light + dark, no external requests). It must contain:
+The markdown package **is** the spec; `spec.html` is a build product. Copy the
+renderer shipped with this skill — `scripts/render-spec.py`, relative to this file at
+[`../scripts/render-spec.py`](../scripts/render-spec.py) — into the project as
+`docs/specs/render-spec.py`, then generate with:
 
-- Project name, status, date, and a one-screen executive summary.
-- Goals / non-goals / personas, the feature map, architecture, data model, epics and
-  milestones — the whole design, readable top to bottom, not a link farm.
-- A section per feature set summarising its FRs and acceptance criteria, linking to
-  its `features/NN-*.md`.
-- Every mockup embedded **both ways**: an `<iframe src="mockups/NN-x.html">` *and* a
-  visible `<a href="mockups/NN-x.html" target="_blank">Open in new tab</a>` next to it.
-  Browsers treat local files as opaque origins and an iframe can silently render blank,
-  so the link is the guaranteed path, not a decoration.
-- Open questions and assumptions, called out visually.
+```
+python3 docs/specs/render-spec.py
+```
 
-All links relative. Regenerate `spec.html` at the end of **every** revision round and
-set `html_generated` in the front-matter — a stale spec.html is worse than none.
+The script reads `spec.md` plus every feature file its front-matter lists, renders the
+**full content of every file in place** — the whole spec readable top to bottom, never
+a summary that links out to the `.md` files — and writes a single self-contained
+`spec.html` (inline CSS/JS, responsive, light + dark, no external requests). It also
+embeds each feature's mockups **both ways**: an `<iframe>` *and* a visible
+`Open in new tab` link (browsers treat local files as opaque origins, so an iframe can
+silently render blank — the link is the guaranteed path), styles `Assumptions` /
+`Risks & open questions` as call-outs, and stamps `html_generated` in `spec.md`.
+
+Two planner duties around it:
+
+- **Vendor mermaid once.** Download a pinned mermaid build (for example
+  `https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js`) to
+  `docs/specs/assets/mermaid.min.js` and commit it — the renderer inlines it so the
+  spec's diagrams render offline. If the download is impossible, say so: the page still
+  builds, with each diagram shown as its readable source.
+- **Regenerate at the end of every revision round** — a stale `spec.html` is worse
+  than none. Edit the markdown, rerun the script; never edit `spec.html` directly,
+  the next run overwrites it.
 
 ### CLAUDE.md
 

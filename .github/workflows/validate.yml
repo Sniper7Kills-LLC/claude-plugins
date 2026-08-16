@@ -39,5 +39,8 @@ jobs:
       - name: Test the preflight hook
         run: python3 scripts/test-preflight.py
 
+      - name: Test the spec renderer
+        run: python3 scripts/test-render-spec.py
+
       - name: Validate manifests, frontmatter and links
         run: python3 scripts/validate-manifests.py

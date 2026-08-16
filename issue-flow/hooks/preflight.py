@@ -139,6 +139,44 @@ def spec_branch_model(root):
     return None
 
 
+def plugin_version():
+    """The installed plugin's version, from the manifest beside this hook."""
+    manifest = os.path.join(
+        os.path.dirname(os.path.abspath(__file__)),
+        os.pardir,
+        ".claude-plugin",
+        "plugin.json",
+    )
+    try:
+        with open(manifest, encoding="utf-8") as handle:
+            version = json.load(handle).get("version")
+        return version if isinstance(version, str) and version else None
+    except Exception:
+        return None
+
+
+def version_line(config):
+    """Report plugin-version drift: the project's config remembers which plugin
+    version last ran it (`pluginVersion`, stamped by Phase 0 step 11)."""
+    current = plugin_version()
+    if not current:
+        return None
+    last = config.get("pluginVersion")
+    if not isinstance(last, str) or not last:
+        return (
+            f"- plugin version: {current} (no pluginVersion recorded in "
+            ".issue-flow.json — first run, or a pre-tracking config; step 11 stamps it)"
+        )
+    if last == current:
+        return f"- plugin version: {current} (matches the last run)"
+    return (
+        f"- plugin version: {current}, project last ran {last} — the plugin changed "
+        "since this project's previous session. In step 11, walk the config against "
+        "the current option tables: ask about any field the saved file lacks instead "
+        "of silently defaulting it, then stamp the new version."
+    )
+
+
 def gh_json(root, args):
     out = run(["gh"] + args, root, timeout=FORGE_TIMEOUT)
     if out is None:
@@ -220,6 +258,10 @@ def digest(cwd):
         config = {}
 
     lines = ["issue-flow preflight (mechanical facts, gathered by the SessionStart hook):"]
+
+    drift = version_line(config)
+    if drift:
+        lines.append(drift)
 
     remote = detect_remote(root)
     if remote:

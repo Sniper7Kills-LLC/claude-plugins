@@ -34,9 +34,13 @@ features:                     # ordered, must match features/ exactly
 ## Non-goals              — explicitly out of v1 (as load-bearing as Goals)
 ## Users & personas       — who, what each needs, what each is allowed to do
 ## Feature map            — table: feature set → spec file → epic → mockups
-## Architecture & stack   — components, data flow, hosting/deploy target, key libraries,
-                            and why each choice beat the alternative
-## Data model             — every entity: fields, types, constraints, relations, lifecycle
+## Architecture & stack   — opens with a mermaid flowchart of the components and the
+                            data flow between them; then per component: hosting/deploy
+                            target, key libraries, and why each choice beat the
+                            alternative
+## Data model             — opens with a mermaid erDiagram of the entities and their
+                            relations; then per entity: fields, types, constraints,
+                            lifecycle
 ## Cross-cutting concerns — auth/authz model, error handling, validation, logging,
                             accessibility, i18n, performance targets, security posture
 ## Environments & config  — envs, every environment variable and what it does, secrets
@@ -77,7 +81,11 @@ mockups: [mockups/03-<screen>.html]
                            per statement, active voice, present tense, no conjunction,
                            no "should be able to", no vague quantity. Patterns and
                            worked examples: references/ste.md § 4.
-## User flows            — step by step, happy path first, including entry points
+## User flows            — one mermaid diagram per flow (flowchart, or sequenceDiagram
+                           when actors exchange messages): happy path plus each failure
+                           branch, entry points included — followed by the numbered STE
+                           steps. Diagram and steps must agree; the reviewer reads the
+                           picture, the builder reads the steps.
 ## Screens & states      — per screen: purpose, regions, every state
                            (empty / loading / populated / error / permission-denied),
                            and its mockup link
@@ -149,6 +157,29 @@ epics so that:
   `Depends on: <epic>`.
 - **Order by dependency, then user value.** Epic 0 is the foundation; epic 1 should
   produce something demoable.
+
+### Diagrams
+
+Anything the spec describes as a flow, a lifecycle, or a structure of connected parts
+gets a picture, not only prose: a reviewer must be able to judge "is this how it should
+work?" from the diagram alone, without decoding a page of text. Three are mandatory —
+the architecture flowchart (`spec.md`), the data-model erDiagram (`spec.md`), and one
+diagram per user flow (each `features/NN-*.md`). Add a `stateDiagram-v2` for any entity
+or screen whose lifecycle has more than three states.
+
+Rules:
+
+- Fenced ` ```mermaid ` blocks in the markdown — GitHub and Gitea render them natively,
+  so the spec is visual straight from the forge. The mermaid source in the `.md` files
+  is the single source of truth for every diagram.
+- Label nodes and edges with the spec's `## Terms` vocabulary — a diagram that invents
+  its own names for things splits the controlled vocabulary.
+- One diagram, one question. A flow diagram answers "what happens, in what order, and
+  where can it fail"; it does not also carry the data model. Keep each diagram to one
+  screen — split a sprawling flow at its natural handoff rather than shrinking the text.
+- The prose next to a diagram states what the picture cannot: constraints, quantities,
+  exact field names, error copy. Never let diagram and prose disagree — on a revision
+  round, whichever one you edit, update the other.
 
 ### Mockups
 

@@ -275,7 +275,9 @@ dependency.
    answers back to `.issue-flow.json` (a gitignored `.issue-flow.local.json` overrides it
    per operator, so concurrent sessions don't fight over the committed file — write the
    local file when step 10 found a co-operator, the committed file otherwise, and say
-   which). Full option
+   which). When the preflight digest reported **plugin-version drift**, ask about every
+   option the saved file lacks a value for instead of defaulting it, and stamp the
+   installed version as `pluginVersion` when you write the committed file. Full option
    tables, the authority matrix and how practices are enforced:
    [references/session-config.md](references/session-config.md).
    **Worker worktrees are created by the harness, not by you.** Launch every worker with
