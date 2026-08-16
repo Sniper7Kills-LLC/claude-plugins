@@ -15,16 +15,20 @@ then regenerates at about the rate it closes, and the loop never reaches "no wor
 issues remain".
 
 The failure is measurable, and the numbers below reproduce with the `## How to measure`
-commands, run on each repo's default branch. On one project that ran without this
-policy, **60% of the last 300 commits touched documentation and no product code**, and
-the specification was edited in **88%** of them at **10 lines per edit** — a file being
-patched a sentence at a time, not a section landing. The bookkeeping had become the
-deliverable. A sibling project that adopted the policy, on the same library in another
-language, ran bookkeeping-only at **38%** with its specification edited in **34%** of
-commits at **20 lines per edit**; a third, unrelated project measured **4.6%**
-bookkeeping-only and 27 lines per edit with a `+1310/−19` add/delete shape. The pairing
-is the discriminator, not either number alone: high edit count times low lines-per-edit
-is record-patching, while a high edit share with `+thousands/−tens` is growth.
+commands, run on each repo's default branch (merges counted once — a merge-inclusive
+per-commit loop double-counts every batch member and inflated an earlier version of
+these figures). On one project that ran without this policy, the specification was
+edited in **62% of the last 300 commits at 3.9 lines per edit** — a sentence at a time,
+not a section landing — and **60% of commits touched documentation and no product
+code**. The bookkeeping had become the deliverable. The sibling project that adopted
+the policy, on the same library in another language, edited its specification in **16%
+of commits at 6.1 lines per edit**, with bookkeeping-only at **38%**; a third,
+unrelated project measured **4.6%** bookkeeping-only with a `+1310/−19` spec
+add/delete shape. **Edit share is the discriminator** — 62% against 16% is a 3.9x
+separation, while lines-per-edit separates the same repos only 1.6x (3.9 vs 6.1, both
+"low"). Lines-per-edit corroborates the shape — four lines is a sentence, not a
+section — and the add/delete shape separates growth (`+thousands/−tens`) from rewrite
+churn; neither carries the verdict alone.
 
 A large test surface, by itself, is **not** evidence of over-guarding — TDD mandates and
 test fakes standing in for absent external systems both inflate test LOC legitimately.
@@ -119,10 +123,13 @@ output:
 - **Run with `bash`, not zsh** — zsh does not word-split unquoted variables, so the
   loops silently iterate once over the whole blob and die. The script below uses
   process substitution, which also requires bash.
-- **Run on the repo's default branch.** The ref decides whether a "commit" is a batch
-  merge or a squashed member, and the same file can read 20 or 7 lines per edit
-  depending on which you pick — the same instability class that disqualifies the LOC
-  ratio. Pin the ref, and the numbers become reproducible instead of merely plausible.
+- **Run on the repo's default branch.** The ref defines the window the numbers
+  describe; pin it and the numbers become reproducible instead of merely plausible.
+- **Count merges once.** Both halves below exclude merge commits (`--no-merges`;
+  `git log --numstat` skips them natively). A merge-inclusive per-commit `git show`
+  loop counts every batch member's changes twice — once in the member, once in the
+  merge that carried it — which inflates lines-per-edit severalfold on a
+  merge-heavy history and dilutes the share metrics with file-less merge slots.
 
 Configure the three regexes per repo — a product-dir set that misses `api/`, `cmd/`,
 `web/src/`, or the package name itself silently reports a false "healthy" reading. A
@@ -137,7 +144,7 @@ TEST_RE='(_test\.go$|\.test\.[jt]sx?$|^tests?/|/tests?/|test_.*\.py$|_spec\.rb$)
 DOC_RE='(\.md$|^docs/)'
 
 N=300
-COUNT=$(git rev-list --count HEAD)
+COUNT=$(git rev-list --count --no-merges HEAD)
 [ "$COUNT" -lt "$N" ] && N=$COUNT          # shallow or young history is the common case
 
 lib=0; bookonly=0
@@ -148,12 +155,13 @@ while read -r s; do
   elif echo "$f" | grep -qE "$DOC_RE"; then
     bookonly=$((bookonly+1))               # touched docs, touched no product code
   fi
-done < <(git rev-list -n "$N" HEAD)
+done < <(git rev-list -n "$N" --no-merges HEAD)
 echo "bookkeeping-only:  $bookonly/$N"
 echo "library-touching:  $lib/$N"
 
 # Per-file: edit count x lines-per-edit x add/delete shape
-git log -n "$N" --numstat --format= \
+# (git log --numstat skips merges natively — same population as the loop above)
+git log -n "$N" --no-merges --numstat --format= \
   | awk '$3!=""{a[$3]+=$1; d[$3]+=$2; n[$3]++}
          END{for(f in n) printf "%4d edits  +%-6d -%-6d  %5.1f ln/edit  %s\n",
                                 n[f], a[f], d[f], (a[f]+d[f])/n[f], f}' \
@@ -162,15 +170,19 @@ git log -n "$N" --numstat --format= \
 
 Read the signals in this order, strongest first:
 
-1. **Per-file lines-per-edit** (the table): a most-edited file at a few lines per edit
-   with balanced adds/deletes is record-patching; `+thousands/−tens` is honest growth.
-   This is the one signal that **survives the gate itself** — once repairs ride inside
-   product PRs, bookkeeping-only commit share and the convergence check both read
-   healthy whether or not the churn stopped, but a spec file being patched a few lines
-   at a time stays visible here. Judge each file by its own shape, not by which file it
-   is: on the measured failing repo the specification carried the record-patching
-   signature while the *changelog*, at 84 lines per edit, read as honest growth — the
-   same file class can sit on either side.
+1. **Per-file edit share** (the table's edit count against `N`): a bookkeeping file
+   edited in more than half of all commits is the strong signal — it separated the
+   measured failing and healthy repos 3.9x where every other signal managed 1.6x.
+   Corroborate with the same row's **lines-per-edit and add/delete shape**: a few
+   lines per edit with balanced adds/deletes is record-patching; `+thousands/−tens`
+   is honest growth. The per-file table is also the one signal that **survives the
+   gate itself** — once repairs ride inside product PRs, bookkeeping-only commit
+   share and the convergence check both read healthy whether or not the churn
+   stopped, but a spec file touched by most commits stays visible here. Judge each
+   file by its own row, not by which file it is: on the measured failing repo the
+   specification carried the record-patching signature while the *changelog*, at 37
+   lines per edit, read as honest growth — the same file class can sit on either
+   side.
 2. **Bookkeeping-only commit share**: commits touching docs and no product code.
 3. **Library-touching commit share**: the coarsest signal — it moves severalfold on the
    `PRODUCT_RE` choice alone; use it for trend, never verdict.
