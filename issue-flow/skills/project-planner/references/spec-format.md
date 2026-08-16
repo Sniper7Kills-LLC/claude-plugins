@@ -68,7 +68,9 @@ id: <feature-id>              # stable, kebab-case, NEVER changed once issued �
 feature: <Feature Name>       # display name; safe to rename
 epic: <epic name from spec.md>
 status: planned               # planned → issued → built (spec-to-issues and the PM
-                              #   advance this; only `planned` gets issues created)
+                              #   advance this; only `planned` gets issues created).
+                              #   `retired` (set by /spec-update, from any state) also
+                              #   gets no issues: the file stays as the record.
 issues: []                    # filled in by spec-to-issues with the numbers it created;
                               #   leave empty — the planner never writes issue numbers
 mockups: [mockups/03-<screen>.html]

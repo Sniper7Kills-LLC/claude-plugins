@@ -69,7 +69,9 @@ against the code.
 
 ## Phase 1 — Review the entire repository
 
-Fan out **read-only survey agents** (`Explore` agents; one per area, in parallel) and
+Fan out **read-only survey agents** (`Explore` agents; one per area, in parallel,
+**spawned unnamed** — never pass `name:`, the spawn guard denies a named agent without
+worktree isolation, and one denial here stalls the phase seven times over) and
 have each return structured findings with `file:line` evidence. Size the fan-out to the
 repo — a small repo may merge areas, a monorepo may need one pass per package — but
 cover all of:

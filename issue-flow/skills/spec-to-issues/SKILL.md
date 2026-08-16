@@ -40,9 +40,10 @@ patterns for each. Two rules carry the most weight here:
   `{ id, file }` pairs). A missing or unreadable feature file is a hard stop — report exactly which, and send the user back to the
   planner rather than guessing the feature's contents.
 - **Work only `status: planned` features.** Each feature file carries a stable `id:` and
-  a `status:` of `planned | issued | built`. Create issues for the `planned` ones; skip
-  `issued`/`built` and say so. This is what makes second and third planning waves safe —
-  a re-approved spec re-issues only what actually changed.
+  a `status:` of `planned | issued | built | retired`. Create issues for the `planned`
+  ones; skip `issued`/`built`/`retired` and say so. This is what makes second and third
+  planning waves safe — a re-approved spec re-issues only what actually changed, and a
+  feature `/spec-update` retired stays retired instead of resurfacing as new work.
   (A `spec_version: 1` spec has no ids or statuses. Treat every feature as `planned`,
   fall back to the marker/title dedup in Preflight, and tell the user their spec predates
   per-feature tracking.)

@@ -39,14 +39,17 @@ external interfaces from fetched docs only, mockup and diagram obligations inclu
      architecture/data-model **diagrams**, data model, milestones.
    - **Change to a built feature** — never rewrite history into fiction: update the
      built feature file to keep describing current reality, and express the change as
-     **new planned work** — either FRs appended under a clearly-marked planned
-     delta section of that file, or a separate delta feature file when the change is
-     epic-sized. Either way the planned work carries its own acceptance criteria, so
-     `spec-to-issues` can issue exactly it.
+     a **separate delta feature file** (new stable `id`, `status: planned`, referencing
+     the built feature it modifies) with its own FRs and acceptance criteria. Always a
+     separate file, never a delta section inside the built file: `spec-to-issues` gates
+     on the file-level `status:`, so planned work inside a `built` file is skipped
+     whole — silently, on a run that reads as clean.
    - **Retire a feature** — do not delete the file (`id`s are permanent, and
-     spec-to-issues dedups on them). Mark the intent in the feature file and the
-     feature map, move the epic entry accordingly, and record why in the `Changelog`.
-     If removal requires engineering, that removal is itself new planned work.
+     spec-to-issues dedups on them). Set `status: retired` in its front-matter — from
+     any state; spec-to-issues creates nothing for it — mark the feature map, move the
+     epic entry accordingly, and record why in the `Changelog`. The file stays as the
+     record of what the feature was. If removal requires engineering, that removal is
+     itself a new planned feature.
 3. **Keep the invariants.** Never renumber or re-`id` existing features; never edit
    `issues:` lists by hand; never silently regenerate a hand-edited mockup; keep
    `Terms` free of synonym drift.
@@ -76,9 +79,10 @@ becomes a question or an open-questions entry, never an invention.
    - Missing `docs/adr/` (template), `docs/external.md`, `.claude/rules/quality.md`,
      `.claude/rules/ste.md`: scaffold per `scaffold.md` — proposing before writing
      anything under `.claude/`, as always.
-   - Front-matter drift: missing `branch_model`, `spec_version`, feature `id`s, or a
-     `features:` list that disagrees with the directory. Ask for anything you cannot
-     derive (a wrong `branch_model` guess would misroute every batch).
+   - Front-matter drift: missing `branch_model`, `spec_version`, `html_generated`,
+     feature `id`s, or a `features:` list that disagrees with the directory. Ask for
+     anything you cannot derive (a wrong `branch_model` guess would misroute every
+     batch).
    - Orphaned mockups or dead mockup references; STE violations in headings and FRs.
 2. **Apply, then report.** One pass, then a plain list: what was generated, what was
    moved, what was asked, what remains open. Add a `Changelog` entry naming the plugin
