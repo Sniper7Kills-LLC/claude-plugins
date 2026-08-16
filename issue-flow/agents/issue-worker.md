@@ -433,14 +433,20 @@ costs one turn and is always the cheaper error.
      pre-patch state while keeping your tests, run the new tests, require failure, restore:
 
      ```bash
+     # ONE Bash call, from the repo root — never split across turns. `git checkout
+     # <commit> -- <paths>` stages the revert as well as writing the worktree, so an
+     # interruption between these commands leaves pre-patch code staged, and any later
+     # `git commit` sweeps it into the PR. The trap restores even when the test fails
+     # (which is the expected result) or the shell dies.
      base=$(git merge-base HEAD <base>)
+     trap 'git checkout HEAD -- <implementation paths you changed>' EXIT
      git checkout "$base" -- <implementation paths you changed>   # tests stay yours
      <test command, scoped to the new/changed tests>              # must FAIL
-     git checkout HEAD -- <those same paths>                      # restore your change
      ```
 
      A path that did not exist pre-patch makes that `checkout` error — delete the file
-     instead (`git rm -q <file>`), then restore everything with `git checkout HEAD -- .`.
+     instead (`git rm -q <file>`) with `trap 'git checkout HEAD -- .' EXIT` as the
+     restore (`.` is CWD-relative, which is why the call runs from the repo root).
      A failure by import or missing-symbol error counts: failure is failure. Record the
      result in `localChecks` (`pre-patch: 4 new tests fail as expected`) — the PM's gate
      looks for it. New tests that pass pre-patch are broken tests: fix them before

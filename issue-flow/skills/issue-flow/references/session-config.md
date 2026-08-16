@@ -210,10 +210,15 @@ Two caveats, stated to the user when they switch it on:
 
 ## reviewWipLimit — the cap in front of the human review gate
 
-Soft cap on batches simultaneously parked `status:awaiting-review` (default **2**). At
-or above it, the PM forms no new batches: it keeps filling worker slots for batches
+Soft cap on batches with anything simultaneously parked `status:awaiting-review`
+(default **2**). A batch counts when its **tracking issue** carries the label (the C2
+hold under `batch-review`) or **any member** does (the C1 per-PR holds under
+`review-all` / `propose-only` — counting only tracking issues would leave the cap
+permanently at zero there, since no batch ever reaches C2 while its members are held).
+At or above it, the PM forms no new batches: it keeps filling worker slots for batches
 already in flight, works parked questions, and notifies the operator once that reviews
-are the constraint (SKILL.md Stage B step 1). An approval or merge frees the cap.
+are the constraint, naming the setting and value (SKILL.md Stage B step 1). An approval
+or merge frees the cap.
 
 Why: "the PM moves on rather than block" is correct per batch and wrong in aggregate —
 when human review is the bottleneck, every additional finished-but-unreviewed batch is

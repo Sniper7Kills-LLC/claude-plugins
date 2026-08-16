@@ -96,6 +96,14 @@ flowchart TD
 | Field | Rule |
 | --- | --- |
 | serial | unique, required |
+| state | `pending | running | stored` |
+
+- top rule
+  - nested two-space rule
+    - nested four-space child
+- second top rule
+
+A [strange link](x"onmouseover="alert1) survives escaping.
 """
 
 MOCKUP_HTML = "<h1>Intake form mockup</h1>"
@@ -151,6 +159,29 @@ def main():
     )
     check("table rendered", "<th>Field</th>" in page and "<td>serial</td>" in page)
     check(
+        "pipe inside code span stays one cell",
+        "<td><code>pending | running | stored</code></td>" in page,
+    )
+    check(
+        "nested list opens inside the parent <li>",
+        "<li>top rule\n<ul>" in page,
+    )
+    check(
+        "no <ul> directly inside <ul>",
+        "<ul>\n<ul>" not in page and "<ul><ul>" not in page,
+    )
+    check(
+        "4-space indent nests one level, not two",
+        # toc + spec.md assumptions + feature outer + exactly 2 nested levels;
+        # a fabricated empty intermediate list would make it 6
+        page.count("<ul>") == 5,
+        "found %d" % page.count("<ul>"),
+    )
+    check(
+        "href quotes escaped",
+        'onmouseover="alert1' not in page and "onmouseover" in page,
+    )
+    check(
         "both mermaid diagrams present",
         page.count('<pre class="mermaid">') == 2,
         "found %d" % page.count('<pre class="mermaid">'),
@@ -188,6 +219,23 @@ def main():
         '<pre class="mermaid">' in page and "classList.add('raw')" in page,
     )
     check("reports the missing asset", "not vendored" in result.stdout)
+    shutil.rmtree(root)
+
+    print("missing html_generated key:")
+    root, spec = make_spec_dir(with_mermaid_asset=False)
+    spec_md = os.path.join(spec, "spec.md")
+    with open(spec_md) as f:
+        stripped_front_matter = f.read().replace("html_generated: null\n", "")
+    with open(spec_md, "w") as f:
+        f.write(stripped_front_matter)
+    result = render(spec)
+    check("exits 0", result.returncode == 0, result.stderr)
+    check(
+        "inserts the key instead of silently skipping",
+        re.search(r"^html_generated: \d{4}-\d{2}-\d{2}$", open(spec_md).read(), re.M)
+        is not None,
+    )
+    check("warns about the insertion", "was missing" in result.stderr)
     shutil.rmtree(root)
 
     print("missing spec.md:")

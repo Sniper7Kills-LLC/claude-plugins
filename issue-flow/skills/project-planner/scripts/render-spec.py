@@ -66,8 +66,9 @@ def split_front_matter(text):
         if kv:
             key, value = kv.group(1), kv.group(2)
             if value in ("", "[]"):
-                meta[key] = [] if value == "[]" else []
-                current_list = key
+                meta[key] = []
+                # only a bare `key:` opens a block list; `[]` is a closed empty list
+                current_list = key if value == "" else None
             else:
                 meta[key] = value.strip("\"'")
                 current_list = None
@@ -82,8 +83,28 @@ def inline(text):
     text = re.sub(r"`([^`]+)`", r"<code>\1</code>", text)
     text = re.sub(r"\*\*([^*]+)\*\*", r"<strong>\1</strong>", text)
     text = re.sub(r"(?<!\*)\*([^*\s][^*]*)\*(?!\*)", r"<em>\1</em>", text)
-    text = re.sub(r"\[([^\]]+)\]\(([^)\s]+)\)", r'<a href="\2">\1</a>', text)
+    text = re.sub(
+        r"\[([^\]]+)\]\(([^)\s]+)\)",
+        lambda m: '<a href="%s">%s</a>' % (html.escape(m.group(2), quote=True), m.group(1)),
+        text,
+    )
     return text
+
+
+def split_cells(row):
+    """Split a table row on `|`, ignoring pipes inside backtick code spans —
+    `pending | running` in a cell is one cell, not two."""
+    cells, current, in_code = [], [], False
+    for ch in row.strip().strip("|"):
+        if ch == "`":
+            in_code = not in_code
+        if ch == "|" and not in_code:
+            cells.append("".join(current).strip())
+            current = []
+        else:
+            current.append(ch)
+    cells.append("".join(current).strip())
+    return cells
 
 
 def md_to_html(body, demote=0, slug_prefix=""):
@@ -91,10 +112,14 @@ def md_to_html(body, demote=0, slug_prefix=""):
     feature files nest under the page's own hierarchy."""
     out, lines, i = [], body.splitlines(), 0
     list_stack = []  # open list tags, innermost last
+    li_open = []  # parallel: is an <li> awaiting its </li> at that level
 
     def close_lists(to_depth=0):
         while len(list_stack) > to_depth:
+            if li_open[-1]:
+                out.append("</li>")
             out.append("</%s>" % list_stack.pop())
+            li_open.pop()
 
     while i < len(lines):
         line = lines[i]
@@ -134,20 +159,30 @@ def md_to_html(body, demote=0, slug_prefix=""):
                 item = re.match(r"(\s*)([-*]|\d+\.)\s+(.*)$", lines[i])
                 if not item:
                     break
-                depth = len(item.group(1)) // 2 + 1
+                # 2- and 4-space indents both mean "one level deeper": raw depth is
+                # clamped to one step below the current level, so indent width never
+                # fabricates an empty intermediate list.
+                depth = min(len(item.group(1).expandtabs(4)) // 2 + 1, len(list_stack) + 1)
                 tag = "ol" if item.group(2).rstrip(".").isdigit() else "ul"
-                close_lists(depth)
-                while len(list_stack) < depth:
+                if depth > len(list_stack):
+                    # nest inside the still-open parent <li>
                     list_stack.append(tag)
+                    li_open.append(False)
                     out.append("<%s>" % tag)
-                out.append("<li>%s</li>" % inline(item.group(3)))
+                else:
+                    close_lists(depth)
+                    if li_open[-1]:
+                        out.append("</li>")
+                        li_open[-1] = False
+                out.append("<li>%s" % inline(item.group(3)))
+                li_open[-1] = True
                 i += 1
             close_lists()
             continue
         if line.startswith("|"):
             rows = []
             while i < len(lines) and lines[i].startswith("|"):
-                rows.append([c.strip() for c in lines[i].strip("|").split("|")])
+                rows.append(split_cells(lines[i]))
                 i += 1
             rows = [r for r in rows if not all(re.fullmatch(r":?-+:?", c) for c in r)]
             if rows:
@@ -337,13 +372,26 @@ def main():
     with open(out_path, "w", encoding="utf-8") as f:
         f.write(page)
 
-    stamped = re.sub(
-        r"^html_generated:.*$",
-        "html_generated: %s" % datetime.date.today().isoformat(),
-        open(spec_path, encoding="utf-8").read(),
-        count=1,
-        flags=re.M,
-    )
+    today = datetime.date.today().isoformat()
+    source = open(spec_path, encoding="utf-8").read()
+    if re.search(r"^html_generated:", source, re.M):
+        stamped = re.sub(
+            r"^html_generated:.*$",
+            "html_generated: %s" % today,
+            source,
+            count=1,
+            flags=re.M,
+        )
+    elif source.startswith("---") and "\n---" in source[3:]:
+        # key was hand-removed from the front-matter: insert it rather than
+        # silently skipping the stamp — freshness tracking is the field's point
+        stamped = source.replace("\n---", "\nhtml_generated: %s\n---" % today, 1)
+        print("render-spec: html_generated was missing from spec.md — inserted",
+              file=sys.stderr)
+    else:
+        stamped = source
+        print("render-spec: spec.md has no front-matter — html_generated not stamped",
+              file=sys.stderr)
     with open(spec_path, "w", encoding="utf-8") as f:
         f.write(stamped)
 

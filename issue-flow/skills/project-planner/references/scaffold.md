@@ -111,6 +111,7 @@ This bound exists because it was measured missing: a project hardened the plugin
 1,500+ lines of agreement tests, and the two most-contended files in the repository
 became a mandatory edit for every member. The obligation firing per member, not per
 finding, regenerates the churn regardless of what the filing gate says.
+
 ### docs/adr/ and docs/external.md
 
 Two documentation homes the spec cannot cover, scaffolded now so the loop has somewhere

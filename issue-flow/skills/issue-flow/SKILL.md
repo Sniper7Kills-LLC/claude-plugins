@@ -481,15 +481,20 @@ back in `notesForPM`.
 ## Stage B — Form batches & schedule work
 
 1. **Form batches from the ready pool — after checking the review WIP cap.** Count the
-   tracking issues currently `status:awaiting-review`. At or above `reviewWipLimit`
+   **batches with anything parked `status:awaiting-review`** — a batch counts when its
+   tracking issue carries the label (the C2 hold under `batch-review`) **or any of its
+   members does** (the C1 per-PR hold under `review-all` / `propose-only`; a batch with
+   three held members is still one batch). At or above `reviewWipLimit`
    ([session-config.md](references/session-config.md), default 2), **form no new batch**:
    finished-but-unreviewed batches are inventory stacked in front of the pipeline's real
    bottleneck — the human reviewer — and another parallel batch adds inventory, not
    throughput, while its conflicts against the unreviewed work compound. Keep filling
    worker slots for batches already in flight, work the parked questions, and notify the
-   operator **once per cap event** (digest + push) that reviews are the constraint; an
-   approval or merge frees the cap. The cap is soft and binds only under an authority
-   setting that parks batches for review — under `autonomous` it never triggers.
+   operator **once per cap event** (digest + push) that reviews are the constraint —
+   naming the setting and its value (`reviewWipLimit: 2`), since it is a default most
+   operators never chose; an approval or merge frees the cap. The cap is soft and binds
+   only under an authority setting that parks work for review — under `autonomous` it
+   never triggers.
    (Skip this step entirely when `prGranularity` is
    `per-issue`: each ready issue goes straight to a worker on its own branch off dev with
    `ci: run`, and Stage C2 never runs.)

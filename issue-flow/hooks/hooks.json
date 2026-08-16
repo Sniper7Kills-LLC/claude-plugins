@@ -5,7 +5,8 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/hooks/preflight.py\""
+            "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/hooks/preflight.py\"",
+            "timeout": 55
           }
         ]
       }
