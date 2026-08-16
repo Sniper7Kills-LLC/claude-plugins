@@ -76,27 +76,51 @@ missing deploy.
 
 ```bash
 # ONE Bash call, run_in_background: true. Watches the deployment of $SHA.
+# Only the three <>-placeholders on the assignment lines are substituted; everything
+# below them is literal shell, run as written.
 SHA=<head of the deploy branch after the merge>
-seen=0
+STATUS_CMD=<the deploy block's statusCmd, e.g. ./scripts/deploy-status.sh>
+POLL_SECONDS=<pollSeconds from the deploy block, default 30>
+MAX_MINUTES=<maxMinutes from the deploy block, default 30>
+seen=0; newest=""
 for _ in $(seq 1 $((MAX_MINUTES*60/POLL_SECONDS))); do
-  line=$(<statusCmd>) || { echo "watch-error: status command failed"; exit 1; }
-  set -- $line; state=$1; job=$2; sha=$3
+  line=$($STATUS_CMD) || { echo "watch-error: status command failed"; exit 1; }
+  set -- $line; state=$1; job=$2; sha=$3; newest=$sha
   if [ "$sha" = "$SHA" ]; then
     case "$state" in
       succeeded|failed|rolled-back) echo "$state $job $sha"; exit 0 ;;
       pending|running) seen=1 ;;
     esac
   fi
-  sleep <POLL_SECONDS>
+  sleep "$POLL_SECONDS"
 done
-[ "$seen" = 1 ] && echo "timed-out $SHA" || echo "no-deployment-observed $SHA"
+if [ "$seen" = 1 ]; then echo "timed-out $SHA"
+elif [ -n "$newest" ] && [ "$newest" != "$SHA" ]; then echo "superseded $newest $SHA"
+else echo "no-deployment-observed $SHA"
+fi
 ```
 
-Four properties worth keeping if you rewrite it:
+**The parse contract** — the PM reads exactly one line, and the first
+whitespace-separated token is the verdict:
+
+| line shape | meaning |
+|---|---|
+| `succeeded\|failed\|rolled-back <jobId> <sha>` | terminal state observed for our SHA |
+| `timed-out <sha>` | ours was seen `pending`/`running` but never terminal in budget |
+| `superseded <newestSha> <sha>` | ours was never observed; the branch's newest deployment is a different commit |
+| `no-deployment-observed <sha>` | nothing deployed at all during the watch |
+| `watch-error: <text>` (exit 1) | the status query itself failed — never a verdict |
+
+Five properties worth keeping if you rewrite it:
 
 - **The SHA anchor** — a stale or unrelated deployment can never be mistaken for yours.
 - **`no-deployment-observed` distinct from `timed-out`** — "nothing ever started" and
   "started but never finished" have opposite remedies (see the reaction table).
+- **`superseded` distinct from `no-deployment-observed`** — the status command returns
+  the branch's *newest* deployment, so a deploy replaced before the first poll (the
+  hotfix-after-failed-batch shape) is invisible to the anchor. Without this verdict it
+  reads as "nothing deployed", whose remedy pushes a recovery commit — an empty push
+  per iteration against a pipeline that is running normally.
 - **`watch-error` distinct from both** — a failed query is never a verdict.
 - **Success is proven, not assumed** — only an observed terminal `succeeded` counts.
 
@@ -119,7 +143,8 @@ removes it when the fix deploys and verifies.
 | `failed` / `rolled-back` (cause `code-regression`) | `forge.issue.status.set <n> status:deploy-failed` (removes `status:deploying`), then open a `priority:high` `type:hotfix` `status:ready` **hotfix issue** citing the failed deploy, commit, failing step, and log excerpt. Hotfixes **bypass batching**: schedule a standalone worker immediately (`ci: run`, normal PR straight to dev — the merge gate follows the batch-PR column of `prAuthority`, [session-config.md](session-config.md)). |
 | `failed` (cause `config`/`secret`/`quota`/`infra`) | `forge.issue.status.set <n> status:deploy-failed` (removes `status:deploying`), then route for **human input as a comment** — `needs human input: <what>` naming the cause — and surface it to the user per the feedback policy. **No second `status:` label:** `deploy-failed` stays the only one, so no park is added here for Stage A0 step 3b to destroy. The cost is that the issue is not in the Stage A step 4 `status:needs-feedback` gather; the surfacing is what reaches the user. Do not guess at infra/secret changes. |
 | `timed-out` | A deployment was observed but never reached a terminal state in the budget. Re-query once (run the status command directly). Still not terminal → surface to the user with the job id/link — never assume success. Leave `status:deploying` in place. |
-| `no-deployment-observed` | Nothing ever built this SHA. First re-run the merged-head token check (SKILL.md Stage C2 step 5): a suppressed head starts no deploy — push the clean recovery commit and watch the new SHA. A clean head with no deployment is a wiring problem (webhook, platform config) — surface it. Never a pass. |
+| `superseded` | The branch's newest deployment is a different commit — ours was replaced before it was observed (typically a hotfix landing right behind the batch). Confirm the newer SHA contains ours (`git merge-base --is-ancestor $SHA <newestSha>`), then watch the **newest** SHA instead — its verdict covers both commits. If the newer SHA does *not* contain ours, the branch was force-moved: surface that to the user. Never push a recovery commit on this verdict. |
+| `no-deployment-observed` | Nothing deployed at all during the watch. First run the status command **once, directly**: a newer deployment now in flight means this is really `superseded` — follow that row, push nothing. Then re-run the merged-head token check (SKILL.md Stage C2 step 5): a suppressed head starts no deploy — push the clean recovery commit and watch the new SHA, **once**; a second `no-deployment-observed` on the recovery SHA is a wiring problem (webhook, platform config) — surface it, do not push again. Never a pass. |
 | `watch-error` | The status command itself failed — usually a permission refusal or an auth problem. Fix the cause (allow-list the exact command, re-authenticate) and relaunch the watch. Never a pass. |
 
 **Classify the cause before routing a failure.** Delegate the log read to a short-lived

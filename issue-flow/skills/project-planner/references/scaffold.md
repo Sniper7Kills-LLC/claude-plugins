@@ -83,6 +83,24 @@ rule requiring every change set to record a changelog row, or its own guard that
 issue for each stale citation, regenerates backlog faster than it clears it — this rule is
 what stops that before the first issue is filed.
 
+**Bound the changelog obligation in the same block.** The documentation duty this plugin
+ships attaches to a **decision at the batch gate** — never to a member, never to a change
+set. Write that as a rule alongside the gate:
+
+```markdown
+- A changelog or spec-changelog entry records a **decision**, made at a batch gate. No
+  rule, hook, CI check, or test may require a changelog row, a spec edit, or a
+  docs-accuracy pass **per change set or per batch member** — a batch that shipped as
+  planned earns no line. A test that asserts per-member bookkeeping agreement re-creates
+  the churn the filing gate exists to prevent, and fails review here.
+```
+
+This bound exists because it was measured missing: a project hardened the plugin's
+"cheap, always" changelog mechanism into a per-member two-file mandate held together by
+1,500+ lines of agreement tests, and the two most-contended files in the repository
+became a mandatory edit for every member. The obligation firing per member, not per
+finding, regenerates the churn regardless of what the filing gate says.
+
 ### .claude/
 
 ```

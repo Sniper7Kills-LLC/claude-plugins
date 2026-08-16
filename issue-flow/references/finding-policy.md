@@ -15,11 +15,19 @@ then regenerates at about the rate it closes, and the loop never reaches "no wor
 issues remain".
 
 The failure is measurable. On one project that ran without this policy, 19% of the last
-300 commits touched library code. The two most-edited files in the repository were the
-specification and the changelog, each edited in more than 60% of commits, at under four
-lines per edit. The bookkeeping had become the deliverable. A sibling project that adopted
-the policy held the same measure at 51%, with a comparable issue count and a larger
-library.
+300 commits touched library code, and the two most-edited files in the repository were
+the specification and the changelog — each edited in more than 60% of commits **at under
+four lines per edit**. The pairing is the discriminator, not either number alone: a
+healthy repo can reach a high edit share honestly when each edit is a section landing
+(a third, unrelated project measured its spec at 21% of commits, 27 lines per edit,
+`+1310/−19` add/delete shape — growth, not record-patching), but high edit count times
+low lines-per-edit is a file being patched a sentence at a time. The bookkeeping had
+become the deliverable. A sibling project that adopted the policy held library-touching
+at 51%, with a comparable issue count and a larger library.
+
+A large test surface, by itself, is **not** evidence of over-guarding — TDD mandates and
+test fakes standing in for absent external systems both inflate test LOC legitimately.
+The only test that matters is case 3 below: does the guard assert behavior?
 
 ## The five cases
 
@@ -101,3 +109,55 @@ the code is wrong is exactly the case the tracker is for.
   way it always was.
 - It does not apply to work the user asks for directly. A user asking for a documentation
   pass gets one.
+
+## How to measure
+
+The numbers above came from these commands. Configure the three regexes per repo before
+trusting any output — a product-dir set that misses `api/`, `cmd/` or `web/src/` silently
+reports a false "healthy" reading.
+
+```bash
+# Configure per repo. This is the one thing that must be right.
+PRODUCT_RE='^(src|lib|pkg|internal|api|cmd|app|web/src)/'
+TEST_RE='(_test\.go$|\.test\.[jt]sx?$|^tests?/|/tests?/|test_.*\.py$|_spec\.rb$)'
+DOC_RE='(\.md$|^docs/)'
+
+N=300
+COUNT=$(git rev-list --count HEAD)
+[ "$COUNT" -lt "$N" ] && N=$COUNT          # shallow or young history is the common case
+SHAS=$(git rev-list -n "$N" HEAD)
+
+lib=0; bookonly=0
+for s in $SHAS; do
+  f=$(git show --name-only --format= "$s")
+  if echo "$f" | grep -vE "$TEST_RE" | grep -qE "$PRODUCT_RE"; then
+    lib=$((lib+1))
+  elif echo "$f" | grep -qE "$DOC_RE"; then
+    bookonly=$((bookonly+1))               # touched docs, touched no product code
+  fi
+done
+echo "bookkeeping-only:  $bookonly/$N"
+echo "library-touching:  $lib/$N"
+
+# Per-file: edit count x lines-per-edit x add/delete shape
+for s in $SHAS; do git show --numstat --format= "$s"; done \
+  | awk '$3!=""{a[$3]+=$1; d[$3]+=$2; n[$3]++}
+         END{for(f in n) printf "%4d edits  +%-6d -%-6d  %5.1f ln/edit  %s\n",
+                                n[f], a[f], d[f], (a[f]+d[f])/n[f], f}' \
+  | sort -rn | head -15
+```
+
+Read the signals in this order, strongest first:
+
+1. **Per-file lines-per-edit** (the table): a most-edited file at a few lines per edit
+   with balanced adds/deletes is record-patching; `+thousands/−tens` is honest growth.
+   This is the one signal that **survives the gate itself** — once repairs ride inside
+   product PRs, bookkeeping-only commit share and the convergence check both read
+   healthy whether or not the churn stopped, but a spec file being patched four lines
+   at a time stays visible here.
+2. **Bookkeeping-only commit share**: commits touching docs and no product code.
+3. **Library-touching commit share**: the coarsest signal; use it for trend, not verdict.
+
+No LOC ratio appears here on purpose. Guard-LOC vs product-LOC moves severalfold on the
+choice of `PRODUCT_RE` alone and false-positives on TDD-heavy or fake-heavy repos, so it
+cannot be a threshold; case 3 of the gate is the test that replaces it.
