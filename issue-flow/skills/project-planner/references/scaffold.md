@@ -4,9 +4,9 @@ How to generate `spec.html`, `CLAUDE.md`, the `.claude/` directory and `.gitigno
 `SKILL.md` Phase 3 points here. Nothing in `.claude/` is written before the user
 approves it in the Phase 4 review round.
 
-### spec.html — generated from the markdown, never hand-authored
+### spec.html + html/ — generated from the markdown, never hand-authored
 
-The markdown package **is** the spec; `spec.html` is a build product. Copy the
+The markdown package **is** the spec; the generated site is a build product. Copy the
 renderer shipped with this skill — `scripts/render-spec.py`, relative to this file at
 [`../scripts/render-spec.py`](../scripts/render-spec.py) — into the project as
 `docs/specs/render-spec.py`, then generate with:
@@ -15,25 +15,34 @@ renderer shipped with this skill — `scripts/render-spec.py`, relative to this 
 python3 docs/specs/render-spec.py
 ```
 
-The script reads `spec.md` plus every feature file its front-matter lists, renders the
-**full content of every file in place** — the whole spec readable top to bottom, never
-a summary that links out to the `.md` files — and writes a single self-contained
-`spec.html` (inline CSS/JS, responsive, light + dark, no external requests). It also
-embeds each feature's mockups **both ways**: an `<iframe>` *and* a visible
-`Open in new tab` link (browsers treat local files as opaque origins, so an iframe can
-silently render blank — the link is the guaranteed path), styles `Assumptions` /
-`Risks & open questions` as call-outs, and stamps `html_generated` in `spec.md`.
+The script reads `spec.md`, every feature file its front-matter lists, and every
+supplement page in its optional `pages:` list, renders the **full content of every
+file** — never a summary that links out to the `.md` files — and writes a multi-page
+site: `spec.html` is the index (the whole `spec.md` with a site sidebar), and each
+feature and supplement page gets its own `html/feature-<id>.html` /
+`html/page-<id>.html` with prev/next navigation. Relative links between the package's
+`.md` files rewrite to the generated pages; stale pages in `html/` are deleted on the
+next render. The output is **self-contained as a folder** — inline CSS, no external
+requests, mermaid referenced relatively from `assets/` — so `docs/specs/` travels as a
+unit, but `spec.html` alone is no longer enough. It also embeds each feature's mockups
+**both ways**: an `<iframe>` *and* a visible `Open in new tab` link (browsers treat
+local files as opaque origins, so an iframe can silently render blank — the link is
+the guaranteed path), styles `Assumptions` / `Risks & open questions` as call-outs,
+carries the in-page review layer (`spec-format.md` § Review comments), and stamps
+`html_generated` in `spec.md`.
 
-Two planner duties around it:
+Planner duties around it:
 
 - **Vendor mermaid once.** Download a pinned mermaid build (for example
   `https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js`) to
-  `docs/specs/assets/mermaid.min.js` and commit it — the renderer inlines it so the
-  spec's diagrams render offline. If the download is impossible, say so: the page still
-  builds, with each diagram shown as its readable source.
-- **Regenerate at the end of every revision round** — a stale `spec.html` is worse
-  than none. Edit the markdown, rerun the script; never edit `spec.html` directly,
-  the next run overwrites it.
+  `docs/specs/assets/mermaid.min.js` and commit it — every generated page references
+  it relatively so the spec's diagrams render offline. If the download is impossible,
+  say so: the pages still build, with each diagram shown as its readable source.
+- **Regenerate at the end of every revision round** — a stale render is worse
+  than none. Edit the markdown, rerun the script; never edit `spec.html` or anything
+  in `html/` directly, the next run overwrites them.
+- **Commit the whole render** — `spec.html`, `html/`, and `review-comments.md` when it
+  exists. Workers and reviewers see tracked files only.
 
 ### CLAUDE.md
 

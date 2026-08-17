@@ -79,9 +79,12 @@ Interviews you, then writes the project brief and the project scaffold.
 - `docs/specs/` — the index `spec.md`, one detailed `features/*.md` per feature set,
   mermaid diagrams for the architecture, the data model and every user flow, and
   self-contained HTML mockups.
-- `spec.html` — a generated single-page website of the whole spec (full content,
-  rendered diagrams, embedded mockups), built from the markdown by a committed
-  `render-spec.py` so a revision is always one script run away from a fresh review page.
+- `spec.html` + `html/` — a generated multi-page website of the whole spec (full
+  content, rendered diagrams, embedded mockups, one page per feature), built from the
+  markdown by a committed `render-spec.py` so a revision is always one script run away
+  from a fresh review site. Every page carries an in-page review layer: comment on any
+  section as you read, export `review-comments.md`, and the next render shows each
+  comment answered in place.
 - `CLAUDE.md`, the `.claude/` scaffold (permissions, hooks, path-scoped rules, project
   skills such as `/run` and `/test`), and the Claude Code `.gitignore` block.
 - A review cycle. You see every permission, hook and skill before the planner writes it.

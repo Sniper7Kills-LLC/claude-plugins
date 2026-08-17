@@ -21,6 +21,9 @@ features:                     # ordered, must match features/ exactly
     file: features/00-foundation.md
   - id: <feature-id>
     file: features/01-<feature>.md
+pages:                        # optional: supplement pages, rendered like features
+  - id: implementation-plan   #   (own html/ page + sidebar entry) but never issued —
+    file: pages/implementation-plan.md   # spec-to-issues reads features/ only
 ---
 
 # <Project Name>
@@ -108,6 +111,16 @@ mockups: [mockups/03-<screen>.html]
 ## Open questions        — blank if none
 ```
 
+### pages/\<name\>.md — supplement pages (optional)
+
+Free-form pages for material that is neither the index nor a feature: an
+implementation plan (epic-by-epic work breakdown with its dependency graph),
+infrastructure, repository layout, library choices. Front-matter is `id:` (stable,
+kebab-case) and `title:`; the body is unconstrained but still STE. List each page in
+`spec.md`'s `pages:` front-matter — unlisted files are not rendered. **Nothing
+downstream reads them**: `spec-to-issues` derives work from `features/` only, so
+anything that must become an issue belongs in a feature file, not a page.
+
 ### Epic 0 — Foundation (mandatory on a greenfield project)
 
 **The first epic is always the foundation, and it is not optional.** Everything
@@ -182,6 +195,36 @@ Rules:
 - The prose next to a diagram states what the picture cannot: constraints, quantities,
   exact field names, error copy. Never let diagram and prose disagree — on a revision
   round, whichever one you edit, update the other.
+- No semicolons in sequence-diagram message text — mermaid parses `;` as a statement
+  separator and the diagram fails to render. Reword or use a comma.
+
+### Review comments — the in-place feedback loop
+
+Every page `render-spec.py` generates carries a review layer: the reviewer hovers a
+heading to attach a comment, or types into the floating Review drawer (its section
+target follows the scroll). Comments persist in the browser between sessions, and
+**Export** downloads the full set as `review-comments.md`. The round-trip:
+
+1. The reviewer reads the rendered spec, comments in place, exports, and saves the
+   file as `docs/specs/review-comments.md`.
+2. The reviser reads that file, acts on each `status: open` comment, flips it to
+   `status: resolved` in place, and re-renders.
+3. The next render embeds every comment under its section, so the reviewer sees each
+   one answered in context and can reopen or delete from the page.
+
+File format — one block per comment, body runs to the next `##`:
+
+```markdown
+## [<page-id>] <section-slug>
+status: open | resolved
+date: YYYY-MM-DD
+<comment body>
+```
+
+`<page-id>` is `index`, `feature-<id>` or `page-<id>`; `<section-slug>` is the
+heading's anchor id. Commit `review-comments.md` with the spec — it is the durable
+record of the review round, and the parser keeps malformed blocks as page-level
+comments rather than dropping them.
 
 ### Mockups
 
