@@ -24,12 +24,21 @@ belief that it did the swap.
 
 import argparse
 import json
+import os
 import subprocess
 import sys
 
 
-def run(args, cwd, input_bytes=None, check=False):
-    result = subprocess.run(args, cwd=cwd, input=input_bytes, capture_output=True)
+COMMIT_ENV = {
+    "GIT_AUTHOR_NAME": "issue-flow state_cas",
+    "GIT_AUTHOR_EMAIL": "noreply@issue-flow.invalid",
+    "GIT_COMMITTER_NAME": "issue-flow state_cas",
+    "GIT_COMMITTER_EMAIL": "noreply@issue-flow.invalid",
+}
+
+
+def run(args, cwd, input_bytes=None, check=False, env=None):
+    result = subprocess.run(args, cwd=cwd, input=input_bytes, capture_output=True, env=env)
     if check and result.returncode != 0:
         raise RuntimeError(f"{' '.join(args)} failed: {result.stderr.decode()}")
     return result
@@ -62,7 +71,7 @@ def write_commit(repo, key, value, parent_sha):
     commit_args = ["git", "commit-tree", tree_sha, "-m", f"state: {key}"]
     if parent_sha:
         commit_args += ["-p", parent_sha]
-    commit = run(commit_args, repo, check=True)
+    commit = run(commit_args, repo, check=True, env=dict(os.environ, **COMMIT_ENV))
     return commit.stdout.decode().strip()
 
 
