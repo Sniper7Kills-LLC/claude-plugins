@@ -7,6 +7,8 @@ batch-status swaps) — no external lock service, no server.
         --expect '{"status":"open"}' --value '{"status":"merging"}'
     python3 "${CLAUDE_PLUGIN_ROOT}/scripts/state_cas.py" set --repo . --remote origin --key issue-17 \
         --expect absent --value '{"owner":"worker-a"}'
+    python3 "${CLAUDE_PLUGIN_ROOT}/scripts/state_cas.py" delete --repo . --remote origin --key issue-17 \
+        --expect '{"owner":"worker-a"}'
 
 State lives as an orphan commit chain under refs/issue-flow/state/<key> (one
 commit per write, each holding a single state.json blob — no working-tree
@@ -48,16 +50,28 @@ def ref_name(key):
     return f"refs/issue-flow/state/{key}"
 
 
+def local_fetch_ref(key):
+    """A private, per-key landing ref for fetches — never FETCH_HEAD, which is one
+    shared file per worktree and gets clobbered by a concurrent invocation's fetch
+    for a different key before this one reads it."""
+    return f"refs/issue-flow/fetched/{key}"
+
+
 def fetch_current(repo, remote, key):
     """Returns (commit_sha_or_None, value_dict_or_None)."""
-    result = run(["git", "fetch", remote, ref_name(key)], repo)
+    ref = ref_name(key)
+    local_ref = local_fetch_ref(key)
+    result = run(["git", "fetch", "--force", remote, f"{ref}:{local_ref}"], repo)
     if result.returncode != 0:
-        stderr = result.stderr.decode()
-        if "couldn't find remote ref" in stderr or "not found" in stderr:
+        # Don't infer "absent" from git's (locale-dependent, overly broad) stderr text.
+        # `ls-remote --exit-code` has a defined, non-localized exit status: 2 means the
+        # ref genuinely doesn't exist; anything else (network, auth, unknown repo) is a
+        # real error the caller must not mistake for an unclaimed key.
+        probe = run(["git", "ls-remote", "--exit-code", remote, ref], repo)
+        if probe.returncode == 2:
             return None, None
-        raise RuntimeError(f"fetch failed: {stderr.strip()}")
-    fetch_head = run(["git", "rev-parse", "FETCH_HEAD"], repo, check=True)
-    commit_sha = fetch_head.stdout.decode().strip()
+        raise RuntimeError(f"fetch failed: {result.stderr.decode().strip()}")
+    commit_sha = run(["git", "rev-parse", local_ref], repo, check=True).stdout.decode().strip()
     blob = run(["git", "cat-file", "-p", f"{commit_sha}:state.json"], repo, check=True)
     return commit_sha, json.loads(blob.stdout.decode())
 
@@ -102,23 +116,65 @@ def cmd_set(args):
     return 0
 
 
+def cmd_delete(args):
+    """CAS-guarded release: deletes the key's ref only if its current value still
+    matches --expect, so a worker can only release the claim it actually holds (or,
+    for takeover, only the claim whose value it just read)."""
+    parent_sha, current = fetch_current(args.repo, args.remote, args.key)
+    expect = None if args.expect == "absent" else json.loads(args.expect)
+    if current != expect:
+        print(json.dumps({"ok": False, "reason": "stale", "current": current}))
+        return 2
+
+    if parent_sha is None:
+        print(json.dumps({"ok": True, "key": args.key, "value": None}))
+        return 0
+
+    push = run(["git", "push", args.remote, f":{ref_name(args.key)}"], args.repo)
+    if push.returncode != 0:
+        print(json.dumps({"ok": False, "reason": "race-lost", "detail": push.stderr.decode().strip()}))
+        return 3
+
+    print(json.dumps({"ok": True, "key": args.key, "value": None}))
+    return 0
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--repo", default=".")
     parser.add_argument("--remote", default="origin")
     sub = parser.add_subparsers(dest="command", required=True)
 
+    # --repo/--remote are also accepted on each subparser (default=SUPPRESS, so an
+    # omitted subcommand-level flag never clobbers a value already set at the top
+    # level) so both `state_cas.py --repo . get --key k` and
+    # `state_cas.py get --repo . --key k` parse — the module docstring and
+    # parallelism.md both use the latter order, which the parent-only parser rejected.
     get_p = sub.add_parser("get")
+    get_p.add_argument("--repo", default=argparse.SUPPRESS)
+    get_p.add_argument("--remote", default=argparse.SUPPRESS)
     get_p.add_argument("--key", required=True)
 
     set_p = sub.add_parser("set")
+    set_p.add_argument("--repo", default=argparse.SUPPRESS)
+    set_p.add_argument("--remote", default=argparse.SUPPRESS)
     set_p.add_argument("--key", required=True)
     set_p.add_argument("--expect", required=True, help="JSON of expected current value, or 'absent'")
     set_p.add_argument("--value", required=True, help="JSON of new value")
 
+    delete_p = sub.add_parser("delete")
+    delete_p.add_argument("--repo", default=argparse.SUPPRESS)
+    delete_p.add_argument("--remote", default=argparse.SUPPRESS)
+    delete_p.add_argument("--key", required=True)
+    delete_p.add_argument("--expect", required=True, help="JSON of expected current value, or 'absent'")
+
     args = parser.parse_args()
     try:
-        return cmd_get(args) if args.command == "get" else cmd_set(args)
+        if args.command == "get":
+            return cmd_get(args)
+        if args.command == "set":
+            return cmd_set(args)
+        return cmd_delete(args)
     except RuntimeError as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 4

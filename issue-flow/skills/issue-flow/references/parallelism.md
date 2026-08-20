@@ -113,9 +113,31 @@ replace the forge label swap, it decides who is allowed to attempt it:
       --key issue-<n> --expect absent --value '{"owner":"<worker-id>"}'
 
 Only the worker whose call exits 0 proceeds to set `status:in-progress` and
-the assignee on the forge. A nonzero exit means either someone already holds
-it (`reason: stale`) or a push race was lost (`reason: race-lost`) — either
-way, abandon and pick the next issue rather than racing the forge write too.
+the assignee on the forge. Exit 2 (`reason: stale`) or exit 3
+(`reason: race-lost`) both mean someone already holds it or won the race —
+abandon and pick the next issue rather than racing the forge write too. Exit
+4 is different: it means the fetch/push itself failed (network, auth) —
+**not** that the key is claimed. Retry rather than treating it as a lock.
+
+**Release on completion or abandonment**, or the key is claimed forever —
+`set`'s gate is always `--expect absent`, so once a key has ever been
+written, no future `set` for it can succeed. When a worker finishes an
+issue, or abandons a claim it made (crash, reassignment, the issue getting
+reopened), release the key with the CAS-guarded `delete`:
+
+    python3 "${CLAUDE_PLUGIN_ROOT}/scripts/state_cas.py" delete --repo . --remote origin \
+      --key issue-<n> --expect '{"owner":"<worker-id>"}'
+
+**Takeover**, for when the forge says unclaimed but the ref still says
+claimed (the release above was skipped — a crashed worker, a session that
+never got to run it): `get` the current value and `set` with that exact
+value as `--expect`, so the takeover only succeeds against the state you
+actually observed, not a guess:
+
+    python3 "${CLAUDE_PLUGIN_ROOT}/scripts/state_cas.py" get --repo . --remote origin --key issue-<n>
+    # → {"key": "issue-<n>", "value": {"owner": "worker-a"}}
+    python3 "${CLAUDE_PLUGIN_ROOT}/scripts/state_cas.py" set --repo . --remote origin \
+      --key issue-<n> --expect '{"owner":"worker-a"}' --value '{"owner":"<worker-id>"}'
 
 ## Specialist reviewers (worker self-review)
 
@@ -156,11 +178,14 @@ a CI job that never started reports a check, a binary file shows an empty diff. 
 signal is not a pass.** Wherever a gate reports green, confirm the thing it was gating
 actually ran or was actually read.
 
-Detect this mechanically instead of relying on a reviewer to notice: `git
-diff --numstat <base> <head>` reports `-\t-` for any file git treats as
-binary, and any file with a byte delta but no line-count delta is the
-oversized-diff case. Route those paths to a direct-read step before the
-review agent ever sees the PR diff, rather than trusting it to catch the gap.
+Detect the binary case mechanically instead of relying on a reviewer to notice: `git
+diff --numstat <base> <head>` reports `-\t-` for any file git treats as binary. (It has
+no byte-delta column, so it cannot by itself surface an oversized-diff omission — for
+that, compare `git cat-file -s <base>:<path>` against `<head>:<path>` for files whose
+line-count delta looks implausibly small next to their blob-size delta, or check the
+file against the host's diff-size cap directly.) Route flagged paths to a direct-read
+step before the review agent ever sees the PR diff, rather than trusting it to catch
+the gap.
 
 ### Example Workflow script (self-review fan-out)
 
