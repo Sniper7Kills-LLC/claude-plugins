@@ -104,6 +104,19 @@ must be atomic-ish. Just before swapping `status:ready → status:in-progress`,
 it (label gone, or assignee set), abandon it and pick the next. Assign `@me` as part
 of the claim so the assignee acts as the lock signal.
 
+For an issue claim across machines, re-read-and-hope has a real gap: two
+workers can both read "unclaimed" and both proceed to set the forge labels.
+Gate entry to that write with the git-native CAS helper first — it doesn't
+replace the forge label swap, it decides who is allowed to attempt it:
+
+    python3 "${CLAUDE_PLUGIN_ROOT}/scripts/state_cas.py" set --repo . --remote origin \
+      --key issue-<n> --expect absent --value '{"owner":"<worker-id>"}'
+
+Only the worker whose call exits 0 proceeds to set `status:in-progress` and
+the assignee on the forge. A nonzero exit means either someone already holds
+it (`reason: stale`) or a push race was lost (`reason: race-lost`) — either
+way, abandon and pick the next issue rather than racing the forge write too.
+
 ## Specialist reviewers (worker self-review)
 
 Run reviewers as a Workflow fan-out over the PR diff. Default lenses, pruned to what
@@ -142,6 +155,12 @@ same failure the loop meets elsewhere in other clothes: a self-skipping test sui
 a CI job that never started reports a check, a binary file shows an empty diff. **Absence of
 signal is not a pass.** Wherever a gate reports green, confirm the thing it was gating
 actually ran or was actually read.
+
+Detect this mechanically instead of relying on a reviewer to notice: `git
+diff --numstat <base> <head>` reports `-\t-` for any file git treats as
+binary, and any file with a byte delta but no line-count delta is the
+oversized-diff case. Route those paths to a direct-read step before the
+review agent ever sees the PR diff, rather than trusting it to catch the gap.
 
 ### Example Workflow script (self-review fan-out)
 

@@ -447,6 +447,15 @@ it finishes, so the meaning of the code does not change with the launch mode.
 `[no ci]`, `[skip actions]` and `[actions skip]` in the head commit message from 1.20
 onward. The "CI runs once per batch" invariant needs no Gitea-specific workaround.
 
+### Verifying CI actually executed
+
+A green or red check can exist with zero jobs having run — see the measured
+failure modes above. `issue-flow/scripts/verify_ci_ran.py` mechanizes the
+check: it fetches runs for a SHA (via `gh` for GitHub, the Actions REST API
+for Gitea) and requires retrievable log bytes, not just a status field,
+before reporting `ran: true`. Use it at the point SKILL.md's CI section
+requires it — before trusting any check as evidence the commit was tested.
+
 ## Capability gaps
 
 **Gitea has no sub-issue API.** Checked against 1.25.3: `/repos/{owner}/{repo}/issues/{index}`
