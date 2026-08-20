@@ -42,5 +42,14 @@ jobs:
       - name: Test the spec renderer
         run: python3 scripts/test-render-spec.py
 
+      - name: Test the claim verifier
+        run: python3 scripts/test-verify-claim.py
+
+      - name: Test the state CAS helper
+        run: python3 scripts/test-state-cas.py
+
+      - name: Test the CI-execution verifier
+        run: python3 scripts/test-verify-ci-ran.py
+
       - name: Validate manifests, frontmatter and links
         run: python3 scripts/validate-manifests.py
