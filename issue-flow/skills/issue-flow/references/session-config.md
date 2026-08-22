@@ -30,7 +30,7 @@ this decision has its input.)
 ```json
 {
   "version": 1,
-  "pluginVersion": "0.15.0",
+  "pluginVersion": "0.15.1",
   "forge": {
     "type": "gitea",
     "host": "http://gitea.example:3000",
