@@ -146,6 +146,26 @@ actually observed, not a guess:
     python3 "${CLAUDE_PLUGIN_ROOT}/scripts/state_cas.py" set --repo . --remote origin \
       --key issue-<n> --expect '{"owner":"worker-a"}' --value '{"owner":"<worker-id>"}'
 
+**What this actually guards, today.** `issue-flow` documents one PM per repo per
+session; nothing here coordinates two PM sessions against the same tracker.
+Under that model the PM's own sequencing already serializes every claim it
+issues, and the CAS's load-bearing case is a *user* starting a second,
+overlapping `issue-flow` session by hand (nothing prevents that) — not an
+intentional multi-machine deployment this plugin sets up or documents
+elsewhere. Treat "possibly several machines" above as describing that
+accidental-overlap case, not a supported feature, until a real multi-PM mode
+exists.
+
+**Reverse skew has no reconciliation.** The Invariant 6 sweep (SKILL.md,
+Stage A0/A) re-derives an issue's `status:`/assignee from the forge on every
+cycle, but it never reads a CAS ref — so a ref left `claimed` after a crashed
+or abandoned worker, with the forge already showing the issue unassigned, is
+invisible to that sweep. Nothing currently notices; it waits for a human or a
+future worker to run Takeover by hand. Folding a CAS check into the sweep
+(for each `status:ready` issue about to be claimed, `get` its key and
+Takeover if the ref's owner no longer matches the forge assignee) would close
+this, but is not implemented.
+
 ## Specialist reviewers (worker self-review)
 
 Run reviewers as a Workflow fan-out over the PR diff. Default lenses, pruned to what
