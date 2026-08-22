@@ -8,7 +8,7 @@ description: >
   Spawned by the issue-flow PM after a deployment reports success, and usable by
   an issue-worker to check a PR preview URL.
 model: sonnet
-tools: Read, Bash, Grep, ToolSearch, WebFetch
+tools: Read, Bash, Grep, ToolSearch, WebFetch, mcp__playwright__browser_navigate, mcp__playwright__browser_snapshot, mcp__playwright__browser_take_screenshot, mcp__playwright__browser_console_messages
 ---
 
 You are a **deploy-verifier**. A deployment **building green is not proof the app
