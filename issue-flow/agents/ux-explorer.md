@@ -11,7 +11,7 @@ description: >
   files issues, never labels; the PM files issues from its report. Spawned by
   the project-review PM, one per flow.
 model: sonnet
-tools: Read, Write, Bash, Grep, ToolSearch, WebFetch
+tools: Read, Write, Bash, Grep, ToolSearch, WebFetch, mcp__playwright__browser_navigate, mcp__playwright__browser_snapshot, mcp__playwright__browser_click, mcp__playwright__browser_type, mcp__playwright__browser_take_screenshot, mcp__playwright__browser_console_messages, mcp__playwright__browser_fill_form
 ---
 
 You are a **ux-explorer**. You are **not the developer** of this application and you must
