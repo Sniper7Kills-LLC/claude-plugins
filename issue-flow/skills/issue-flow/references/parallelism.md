@@ -116,14 +116,21 @@ Only the worker whose call exits 0 proceeds to set `status:in-progress` and
 the assignee on the forge. Exit 2 (`reason: stale`) or exit 3
 (`reason: race-lost`) both mean someone already holds it or won the race —
 abandon and pick the next issue rather than racing the forge write too. Exit
-4 is different: it means the fetch/push itself failed (network, auth) —
-**not** that the key is claimed. Retry rather than treating it as a lock.
+4 is different: it means the fetch/push itself failed (network, auth, or a
+push rejected for a reason other than someone else's write) — **not** that
+the key is claimed. Retry rather than treating it as a lock. Branch on the
+printed `reason`, not the bare exit code: a malformed invocation (a typo'd
+flag) also exits 2, from argparse itself, with no JSON on stdout at all — a
+caller that only checks the exit code reads that the same way as
+`reason: stale` and wrongly abandons a claimable issue.
 
 **Release on completion or abandonment**, or the key is claimed forever —
-`set`'s gate is always `--expect absent`, so once a key has ever been
-written, no future `set` for it can succeed. When a worker finishes an
-issue, or abandons a claim it made (crash, reassignment, the issue getting
-reopened), release the key with the CAS-guarded `delete`:
+the **claim** gate above is always `--expect absent`, so a key that is still
+written blocks the next claim until it is released or taken over (`set`
+itself takes any JSON as `--expect`, including a value read back from a
+prior `get` — that's what Takeover below relies on). When a worker finishes
+an issue, or abandons a claim it made (crash, reassignment, the issue
+getting reopened), release the key with the CAS-guarded `delete`:
 
     python3 "${CLAUDE_PLUGIN_ROOT}/scripts/state_cas.py" delete --repo . --remote origin \
       --key issue-<n> --expect '{"owner":"<worker-id>"}'

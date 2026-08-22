@@ -16,6 +16,17 @@ checkout needed). git's own non-fast-forward push rejection is the race
 arbiter across concurrent workers/machines: `set` fetches the current value,
 refuses to proceed if it doesn't match --expect, and if the push is rejected
 because someone else wrote first, that's a lost race, not a partial write.
+Every push (`set` and `delete`) targets the remote ref directly by commit SHA
+or --force-with-lease, never through a local ref of the same name — linked
+worktrees (isolation: "worktree") share one ref store, and a local
+update-ref + push-by-name lets a concurrent invocation for a different key
+clobber the ref in between, defeating the race arbiter entirely.
+
+Exit codes for `set`/`delete`: 0 = succeeded, 2 = stale (--expect didn't
+match, incl. argparse errors — check for JSON on stdout, not just the code),
+3 = race-lost (the push was rejected because the ref moved), 4 = the push or
+fetch itself failed for another reason (network, auth) — retry, don't treat
+as claimed.
 
 This replaces the "re-read the issue's labels and assignees, hope nobody
 raced you" pattern (references/parallelism.md's Claim race section) and the
@@ -48,6 +59,14 @@ def run(args, cwd, input_bytes=None, check=False, env=None):
 
 def ref_name(key):
     return f"refs/issue-flow/state/{key}"
+
+
+def is_ref_rejection(stderr_text):
+    """True when a push failed because the remote ref moved (someone else won the
+    race), as opposed to a transport/auth/infra failure. Git's rejection message for
+    both a plain non-fast-forward and a --force-with-lease mismatch always contains
+    "[rejected]"; other failures (network, auth, unknown repo) don't."""
+    return "[rejected]" in stderr_text
 
 
 def local_fetch_ref(key):
@@ -104,13 +123,25 @@ def cmd_set(args):
 
     new_value = json.loads(args.value)
     new_commit = write_commit(args.repo, args.key, new_value, parent_sha)
-    run(["git", "update-ref", ref_name(args.key), new_commit], args.repo, check=True)
 
-    push_spec = f"{ref_name(args.key)}:{ref_name(args.key)}"
+    # Push the commit object directly by SHA, naming no local ref. Linked worktrees
+    # (isolation: "worktree" gives every worker one) share a single ref store, so a
+    # local `update-ref` + push-by-name lets a concurrent invocation for a different
+    # key clobber this one's ref between the two steps — both callers then push
+    # whatever the ref last pointed at, and git's non-fast-forward check never gets a
+    # chance to arbitrate because both sides push the same object. Pushing the SHA
+    # itself needs no local ref, so there is nothing to clobber: git still requires
+    # the remote ref to be at parent_sha (or absent) for this to land as a
+    # fast-forward, which is exactly the CAS condition.
+    push_spec = f"{new_commit}:{ref_name(args.key)}"
     push = run(["git", "push", args.remote, push_spec], args.repo)
     if push.returncode != 0:
-        print(json.dumps({"ok": False, "reason": "race-lost", "detail": push.stderr.decode().strip()}))
-        return 3
+        stderr = push.stderr.decode().strip()
+        if is_ref_rejection(stderr):
+            print(json.dumps({"ok": False, "reason": "race-lost", "detail": stderr}))
+            return 3
+        print(json.dumps({"ok": False, "reason": "push-failed", "detail": stderr}))
+        return 4
 
     print(json.dumps({"ok": True, "key": args.key, "value": new_value}))
     return 0
@@ -130,10 +161,20 @@ def cmd_delete(args):
         print(json.dumps({"ok": True, "key": args.key, "value": None}))
         return 0
 
-    push = run(["git", "push", args.remote, f":{ref_name(args.key)}"], args.repo)
+    # A plain `git push <remote> :<ref>` deletes unconditionally, regardless of what
+    # the remote currently holds — the value check above runs against the value this
+    # call fetched, but by the time the delete lands the remote may hold something
+    # else (a takeover's `set` landed in between). --force-with-lease makes the
+    # deletion itself conditional on the remote ref still being at parent_sha.
+    lease = f"--force-with-lease={ref_name(args.key)}:{parent_sha}"
+    push = run(["git", "push", lease, args.remote, f":{ref_name(args.key)}"], args.repo)
     if push.returncode != 0:
-        print(json.dumps({"ok": False, "reason": "race-lost", "detail": push.stderr.decode().strip()}))
-        return 3
+        stderr = push.stderr.decode().strip()
+        if is_ref_rejection(stderr):
+            print(json.dumps({"ok": False, "reason": "race-lost", "detail": stderr}))
+            return 3
+        print(json.dumps({"ok": False, "reason": "push-failed", "detail": stderr}))
+        return 4
 
     print(json.dumps({"ok": True, "key": args.key, "value": None}))
     return 0

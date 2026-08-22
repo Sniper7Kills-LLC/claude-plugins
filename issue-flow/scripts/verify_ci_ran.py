@@ -3,8 +3,7 @@
 status exists.
 
     python3 "${CLAUDE_PLUGIN_ROOT}/scripts/verify_ci_ran.py" --forge github --repo owner/name --sha SHA
-    python3 "${CLAUDE_PLUGIN_ROOT}/scripts/verify_ci_ran.py" --forge gitea --gitea-url https://gitea.example \
-        --owner o --repo r --gitea-token "$TOKEN" --sha SHA
+    python3 "${CLAUDE_PLUGIN_ROOT}/scripts/verify_ci_ran.py" --forge gitea --repo-path . --sha SHA
     python3 "${CLAUDE_PLUGIN_ROOT}/scripts/verify_ci_ran.py" --fixture runs.json --sha SHA   # test/dry-run
 
 A red or green check can be reported with zero jobs having ever run — a
@@ -14,14 +13,17 @@ typed (see references/forge.md's Actions and CI section). `decide_ran` is the
 mechanized version of "does retrievable log output exist for this SHA,"
 independent of whatever the status field claims — kept pure and
 fixture-testable, separate from the forge-specific fetch below it.
+
+Exit codes: 0 = ran, 1 = never ran, 2 = still in progress or an infra error
+fetching status (retry later), 5 = the invocation itself is malformed (missing
+required flags for the chosen --forge) — kept apart from 2 so a misconfigured
+command doesn't loop forever misread as "check back later".
 """
 
 import argparse
 import json
 import subprocess
 import sys
-import urllib.error
-import urllib.request
 
 
 def decide_ran(runs_for_sha):
@@ -30,7 +32,15 @@ def decide_ran(runs_for_sha):
     with_logs = [r for r in runs_for_sha if r.get("log_bytes", 0) > 0]
     if with_logs:
         return {"ran": True, "reason": f"{len(with_logs)} run(s) with retrievable logs", "runs": with_logs}
-    still_running = [r for r in runs_for_sha if r.get("status") in ("queued", "in_progress")]
+    # GitHub's non-terminal statuses aren't just queued/in_progress — an
+    # approval-gated deployment sits in "waiting", and "requested"/"pending" occur
+    # too. Gitea emits "waiting" for its own blocked state. None of these are
+    # evidence CI didn't run; treating them as such is the false-never-ran case this
+    # function exists to avoid.
+    still_running = [
+        r for r in runs_for_sha
+        if r.get("status") in ("queued", "in_progress", "waiting", "requested", "pending")
+    ]
     if still_running:
         return {
             "ran": False,
@@ -63,34 +73,42 @@ def fetch_github(repo, sha):
     return out
 
 
-def _gitea_api(base_url, path, token, timeout=10):
-    req = urllib.request.Request(f"{base_url}{path}", headers={"Authorization": f"token {token}"})
-    with urllib.request.urlopen(req, timeout=timeout) as resp:
-        return json.loads(resp.read())
+def _tea_api(repo_path, path):
+    # `tea api` (references/forge.md's documented Gitea client) resolves host and
+    # credentials from the checkout's git remote — there is no other configuration
+    # path in this plugin for a Gitea token, so a hand-rolled urllib client had
+    # nowhere real to get one from. Routing through `tea api` inherits the auth the
+    # rest of the plugin already uses instead of inventing a second one.
+    result = subprocess.run(["tea", "api", path], cwd=repo_path, capture_output=True, text=True)
+    if result.returncode != 0:
+        raise RuntimeError(f"tea api {path} failed: {result.stderr.strip()}")
+    return json.loads(result.stdout)
 
 
-def fetch_gitea(base_url, owner, repo, token, sha):
+def fetch_gitea(repo_path, sha):
     # The commit-status API's `target_url` is the run's HTML web-UI page, which
     # returns bytes whether or not any job ever executed (the zero-jobs-run case —
-    # disabled runner, unparseable workflow — this tool exists to catch) and, being
-    # fetched unauthenticated, either 403s or serves a login page on a private
-    # instance. Use the Actions runs API (references/forge.md's documented endpoint)
-    # instead, and treat a run's dispatched jobs — not a scraped page — as evidence.
-    payload = _gitea_api(base_url, f"/api/v1/repos/{owner}/{repo}/actions/runs?head_sha={sha}", token)
+    # disabled runner, unparseable workflow — this tool exists to catch). Use the
+    # Actions runs API instead, and treat a run's dispatched jobs — not a scraped
+    # page — as evidence. `{owner}`/`{repo}` are substituted by `tea api` itself from
+    # the current checkout's remote (forge.md's own usage pattern).
+    payload = _tea_api(repo_path, f"/repos/{{owner}}/{{repo}}/actions/runs?head_sha={sha}")
     runs = payload.get("workflow_runs") or payload.get("runs") or []
     out = []
     for run in runs:
         run_id = run.get("id")
         status = run.get("status")
-        jobs_started = 0
-        try:
-            jobs_payload = _gitea_api(base_url, f"/api/v1/repos/{owner}/{repo}/actions/runs/{run_id}/jobs", token)
-            jobs = jobs_payload.get("jobs") if isinstance(jobs_payload, dict) else jobs_payload
-            # A job only counts as evidence once it has actually been dispatched —
-            # still-queued/blocked jobs exist as objects without ever running.
-            jobs_started = sum(1 for j in (jobs or []) if j.get("status") not in ("waiting", "blocked"))
-        except Exception:
-            jobs_started = 0
+        # Gitea serializes GitHub's status vocabulary over the wire, not its own
+        # internal names: "waiting" means blocked (never dispatched), "queued" means
+        # not yet dispatched, and a job only actually executed once it reaches
+        # "completed" with a real conclusion — Gitea's own HasRun() predicate is
+        # StatusSuccess || StatusFailure. cancelled/skipped are terminal but never ran.
+        jobs_payload = _tea_api(repo_path, f"/repos/{{owner}}/{{repo}}/actions/runs/{run_id}/jobs")
+        jobs = jobs_payload.get("jobs") if isinstance(jobs_payload, dict) else jobs_payload
+        jobs_started = sum(
+            1 for j in (jobs or [])
+            if j.get("status") == "completed" and j.get("conclusion") in ("success", "failure")
+        )
         out.append({"id": run_id, "status": status, "log_bytes": jobs_started})
     return out
 
@@ -99,10 +117,8 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--sha", required=True)
     parser.add_argument("--forge", choices=["github", "gitea"])
-    parser.add_argument("--repo")
-    parser.add_argument("--owner")
-    parser.add_argument("--gitea-url")
-    parser.add_argument("--gitea-token")
+    parser.add_argument("--repo", help="github only: owner/name")
+    parser.add_argument("--repo-path", default=".", help="gitea only: local checkout tea api resolves auth/owner/repo from")
     parser.add_argument("--fixture")
     args = parser.parse_args()
 
@@ -113,25 +129,14 @@ def main():
         elif args.forge == "github":
             if not args.repo:
                 print("error: --forge github requires --repo owner/name", file=sys.stderr)
-                return 2
+                return 5
             runs = fetch_github(args.repo, args.sha)
         elif args.forge == "gitea":
-            missing = [
-                name for name, value in (
-                    ("--gitea-url", args.gitea_url),
-                    ("--owner", args.owner),
-                    ("--repo", args.repo),
-                    ("--gitea-token", args.gitea_token),
-                ) if not value
-            ]
-            if missing:
-                print(f"error: --forge gitea requires {', '.join(missing)}", file=sys.stderr)
-                return 2
-            runs = fetch_gitea(args.gitea_url, args.owner, args.repo, args.gitea_token, args.sha)
+            runs = fetch_gitea(args.repo_path, args.sha)
         else:
             print("error: specify --forge or --fixture", file=sys.stderr)
-            return 2
-    except (subprocess.CalledProcessError, urllib.error.URLError, OSError, ValueError) as exc:
+            return 5
+    except (subprocess.CalledProcessError, RuntimeError, OSError, ValueError) as exc:
         # An infra failure (auth, rate limit, network) must not read as "CI never
         # ran" — that's exit 1 and this is exit 2, same as the other infra-error case.
         print(json.dumps({"error": f"fetch failed: {exc}"}), file=sys.stderr)
