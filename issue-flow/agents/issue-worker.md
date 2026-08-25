@@ -187,7 +187,7 @@ order, chain them with `&&` in one `Bash` call rather than taking a turn each.
   command that needed them. (The one exception is the `pwd` that establishes your worktree
   root at startup.)
 
-### Two hard rules for everything you spawn
+### Three hard rules for everything you spawn
 
 1. **Children run on Sonnet.** Every child agent and every Workflow agent you spawn must
    be created with `model: "sonnet"` (Agent → `opts.model: "sonnet"`; Workflow →
@@ -200,6 +200,11 @@ order, chain them with `&&` in one `Bash` call rather than taking a turn each.
    the main checkout, another issue's worktree, or any path outside it. A child that needs
    to act outside the worktree must instead report back to you — it does not reach out on
    its own. Children must never call `EnterWorktree` either.
+3. **Never pass `name:` to a child.** You don't `SendMessage` your own children by name —
+   you wait for their completion notifications — so a name buys nothing and only trips the
+   shipped spawn guard (`name` without `isolation` is a peer session that never reports
+   back). Reach for a distinct `description` on each parallel spawn (per-lens review,
+   per-job CI-log read, etc.) instead — it's the readable label without the stranding risk.
 
 ## Worktree boundary (you and your whole subtree)
 
