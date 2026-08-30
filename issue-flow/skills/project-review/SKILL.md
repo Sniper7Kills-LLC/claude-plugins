@@ -122,6 +122,11 @@ it — the review-scribe creates one in Phase 4.
 
 # Phase 2 — Fan out the reviewers
 
+**Spawn every reviewer unnamed — never pass `name:`.** The spawn guard denies a named
+agent without worktree isolation, and none of these agents need `SendMessage`
+addressability; a verdict-shaped label belongs in the brief or your own tracking, not
+the spawn call. Use `description` for a readable label instead.
+
 **The browser is a singleton.** The browser MCP (Playwright / Chrome DevTools) is one
 shared browser session — every agent's `browser_*` calls hit the same tabs. Two
 browser-driving agents in flight at once stomp each other's navigation and screenshots.
