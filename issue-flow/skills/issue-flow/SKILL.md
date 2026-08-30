@@ -597,6 +597,15 @@ back in `notesForPM`.
    than a reminder. Launch with `Agent`,
    `agentType: "issue-flow:issue-worker"`, **`isolation: "worktree"`**, `name: "worker-<issue>"` (the harness creates and pins the worker's worktree; a worker that makes its own with `EnterWorktree` drags the PM and every sibling into it; the name keeps it addressable by `SendMessage` for rework), passing only the handoff brief (issue number, branch, **base = the integration branch**, `ci: skip`, batch ref, **`members` = the batch's member count** — it is how the worker knows whether `crossCheck` may legally be `n/a` — remote, the plan you commented, conventions, the session's **`practices` block** — TDD/DDD/E2E/coverage/commit style/docs, which are part of the worker's definition of done — and **`steRule`**, the path to the writing standard the worker's comments, docstrings, test names and PR body must follow: `.claude/rules/ste.md` when the project has one, else this plugin's `references/ste.md`) — its runbook is self-contained. The brief format is in [references/issue-worker.md](references/issue-worker.md).
 
+   **Never dispatch a build with `subagent_type: "fork"`.** A fork inherits this entire
+   session verbatim — the full PM/autonomous-loop instructions, not just the one issue's
+   brief — and nothing in that inherited text tells it to stop after one issue. Measured
+   in a live run: a fork dispatched for a single issue kept running the PM loop on its
+   own for 52 minutes, claiming and building two more issues from a different epic,
+   running its own batch review, and merging everything straight to `dev` — all without
+   the actual PM claiming, planning, cross-checking, or gating any of it. `issue-worker`
+   is a fresh agent with no PM context; it only ever does what its brief says.
+
    **As each member actually launches, complete its held claim**: `forge.issue.status.set <n> status:in-progress` (removes `status:ready`) — this is the swap step 3 deferred, and nothing else performs it. An issue left on `status:ready` while its worker runs re-enters the ready pool at the next triage and can be scheduled twice; the assignee alone does not stop *you*, because the claim CAS only abandons issues assigned to someone **else**.
 
    Sequenced members launch **after** their predecessor sub-merges (their branch then forks the updated integration branch). Return to orchestrating. (If the agent type can't be resolved, fall back to `general-purpose` and prepend the worker brief with: "You are a decision-free issue-worker; never merge; return the verdict JSON.")
