@@ -246,6 +246,169 @@ print(json.dumps({"message": "Not Found"}))
         check(proc.returncode == 2 and proc.stdout == "", f"{forge_type} API error body exits 2 with no stdout, got {proc.returncode}")
         check("permission" in proc.stderr, f"{forge_type} error names the API message: {proc.stderr!r}")
 
+# ---------------------------------------------------------------- render
+import copy
+import re
+
+DATA_TAG = re.compile(r'<script id="tl-data" type="application/json">(.*?)</script>', re.S)
+
+
+def payload(html_text):
+    found = DATA_TAG.search(html_text)
+    return json.loads(found.group(1)) if found else None
+
+
+def doc_urls(doc):
+    return {i["url"] for i in doc["issues"].values()}
+
+
+html_gh = timeline.render_html(gh_doc)
+html_gt = timeline.render_html(gt_doc)
+
+# Self-contained: no external fetch of any kind. Tracker URLs are the only URLs.
+for name, page, source in (("github", html_gh, gh_doc), ("gitea", html_gt, gt_doc)):
+    check(page.startswith("<!DOCTYPE html>"), f"{name} page is a full HTML document")
+    for bad in ('<script src', '<link', '@import', '<img', '<iframe', 'url(', 'fetch(', 'XMLHttpRequest'):
+        check(bad not in page, f"{name} page contains {bad!r}")
+    found_urls = set(re.findall(r"https?://[^\s\"'\\<>]+", page))
+    check(found_urls <= doc_urls(source), f"{name} page holds a URL that is not a tracker link: {found_urls - doc_urls(source)}")
+    check(payload(page) is not None and payload(page)["events"] == source["events"], f"{name} embedded events round-trip")
+    check('name="viewport"' in page and "prefers-color-scheme: dark" in page, f"{name} page has viewport and dark theme")
+    for preset in ("24h", "7d", "30d", "all"):
+        check(f'data-preset="{preset}"' in page, f"{name} page has the {preset} preset")
+    check('<p id="empty" hidden>' in page, f"{name} page hides the empty state when events exist")
+
+# The GitHub and Gitea runs of one story build the same lanes.
+check(payload(html_gh)["groups"] == payload(html_gt)["groups"], "GitHub and Gitea render the same lanes")
+groups = payload(html_gh)["groups"]
+check([g["key"] for g in groups] == ["50", None], f"batch 50, then the unbatched flow:status issue: {[g['key'] for g in groups]}")
+lane_ids = [lane["id"] for lane in groups[0]["lanes"]]
+check(lane_ids[0] == "batch:50" and "issue:51" in lane_ids and "issue:50" in lane_ids,
+      f"batch lane leads the group; the tracking issue joins it: {lane_ids}")
+check("batch/50-bar" in groups[0]["label"] and groups[0]["lanes"][0]["kind"] == "batch", f"group label shows the branch: {groups[0]}")
+issue_lane = next(lane for lane in groups[0]["lanes"] if lane["id"] == "issue:51")
+check(issue_lane["url"] == "https://x/issues/51" and issue_lane["kind"] == "issue", f"issue lane: {issue_lane}")
+check(len(issue_lane["events"]) > 3 and all(isinstance(i, int) for i in issue_lane["events"]), "lane lists event indexes")
+
+# A branch of null still groups by the batch key.
+nobranch = copy.deepcopy(gh_doc)
+nobranch["batches"]["50"]["branch"] = None
+check(payload(timeline.render_html(nobranch))["groups"][0]["label"].startswith("Batch #50"), "null branch still labels the batch")
+
+# A dataset spanning several batches: groups sort by batch number, unbatched events go last.
+multi = copy.deepcopy(gh_doc)
+multi["issues"]["71"] = {"title": "Other batch member", "url": "https://x/issues/71", "state": "open",
+                         "labels": [], "status_at_start": None}
+multi["batches"]["70"] = {"tracking": 70, "branch": "epic/70-x", "members": [71], "pr": None, "prs": []}
+extra = [{"ts": "2026-05-03T10:00:00Z", "kind": "status", "issue": 71, "pr": None, "batch": 70, "actor": "a",
+          "from": None, "to": "in-progress", "detail": None},
+         {"ts": "2026-05-03T11:00:00Z", "kind": "status", "issue": 71, "pr": None, "batch": 70, "actor": "a",
+          "from": "in-progress", "to": "needs-feedback", "detail": None},
+         {"ts": "2026-05-04T10:00:00Z", "kind": "issue.opened", "issue": 80, "pr": None, "batch": None, "actor": "a",
+          "from": None, "to": None, "detail": "Loose issue"}]
+multi["events"] = multi["events"] + extra
+mg = payload(timeline.render_html(multi))["groups"]
+check([g["key"] for g in mg] == ["50", "70", None], f"groups across batches: {[g['key'] for g in mg]}")
+check(mg[2]["label"] == "No batch", f"unbatched group label: {mg[2]['label']}")
+
+# Lane kinds are data. The table names issue, batch, worktree and agent; an unknown kind still renders.
+kinds_doc = copy.deepcopy(gh_doc)
+kinds_doc["events"] = kinds_doc["events"] + [
+    {"ts": "2026-05-02T09:00:00Z", "kind": "agent.spawned", "issue": 51, "pr": None, "batch": 50, "actor": None,
+     "from": None, "to": None, "detail": "worker", "agent": "issue-worker", "session": "s1"},
+    {"ts": "2026-05-02T09:30:00Z", "kind": "worktree.created", "issue": 51, "pr": None, "batch": 50, "actor": None,
+     "from": None, "to": None, "detail": None, "worktree": "wt-51"},
+    {"ts": "2026-05-02T10:00:00Z", "kind": "zzz.thing", "issue": None, "pr": None, "batch": None, "actor": None,
+     "from": None, "to": None, "detail": "odd", "extra_key": 1}]
+kp = payload(timeline.render_html(kinds_doc))
+lane_kinds = {lane["kind"] for g in kp["groups"] for lane in g["lanes"]}
+check({"agent", "worktree", "zzz", "issue", "batch"} <= lane_kinds, f"lane kinds: {lane_kinds}")
+check(kp["kinds"]["agent"]["label"] == "Agent" and kp["kinds"]["worktree"]["label"] == "Worktree", f"kind table: {kp['kinds']}")
+check(kp["kinds"]["zzz"]["style"] == "marks" and kp["kinds"]["zzz"]["label"], f"unknown kind gets a generic row: {kp['kinds']['zzz']}")
+check(set(timeline.LANE_KINDS) >= {"issue", "batch", "worktree", "agent"}, "LANE_KINDS names the documented kinds")
+
+# Hostile text cannot close the data tag or break out of the page.
+hostile = copy.deepcopy(gh_doc)
+hostile["issues"]["51"]["title"] = 'x </script><b id="pwn">&'
+hostile["events"][0]["detail"] = "<!-- </SCRIPT>"
+hostile["forge"]["repo"] = "<i>r</i>"
+page = timeline.render_html(hostile)
+check(payload(page)["issues"]["51"]["title"] == hostile["issues"]["51"]["title"], "title with </script> round-trips")
+check(payload(page)["events"][0]["detail"] == "<!-- </SCRIPT>", "detail with a comment opener round-trips")
+check('<b id="pwn">' not in page and "<i>r</i>" not in page, "markup in data is escaped")
+check(page.lower().count("</script>") == 2, "only the page's own two script tags close")
+
+# Empty and filtered-empty states.
+empty_page = timeline.render_html({"version": 1, "forge": {"type": "github", "owner": "o", "repo": "r"},
+                                   "range": {"since": None, "until": None}, "issues": {}, "batches": {},
+                                   "convergence": [], "events": []})
+check('<p id="empty">No events in this range.</p>' in empty_page, "empty events show the empty state")
+check(payload(empty_page)["groups"] == [], "empty events give no lanes")
+
+# Convergence strip: shown only when the data has it.
+check('class="convergence"' in html_gh and "Gate 12" in html_gh and "3 filed" in html_gh and "5 closed" in html_gh,
+      "convergence strip lists gate 12")
+check("Gate 13" in html_gh and "2 filed" in html_gh and "– closed" in html_gh, "a null count shows a dash")
+check('class="convergence"' not in empty_page, "no convergence data, no strip")
+
+# --refresh writes a meta refresh; default writes none.
+check('http-equiv="refresh"' not in html_gh, "no refresh by default")
+check('<meta http-equiv="refresh" content="5">' in timeline.render_html(gh_doc, refresh=5), "--refresh 5 writes the meta tag")
+
+# Legend: it comes from the same table as the bar colors, so every drawable state is in it.
+STATES_WANTED = ["ready", "in-progress", "in-review", "awaiting-review", "needs-feedback", "blocked", "batched",
+                 "deploying", "deploy-failed", "merged", "closed"]
+lp = payload(html_gh)
+check([s["key"] for s in lp["states"]] == STATES_WANTED or set(STATES_WANTED) <= {s["key"] for s in lp["states"]},
+      f"legend states: {[s['key'] for s in lp['states']]}")
+check(set(lp["states"][0]) >= {"key", "label"} and {s["key"] for s in lp["states"]} == set(timeline.STATE_COLORS),
+      "the page's state list is the STATE_COLORS table")
+for key in timeline.STATE_COLORS:
+    check(f"--st-{key}:" in html_gh, f"CSS defines the color of state {key}")
+for theme in (0, 1):
+    colors = [pair[theme] for pair in timeline.STATE_COLORS.values()]
+    check(len(set(colors)) == len(colors), f"state colors are distinct (theme {theme}): {colors}")
+    marks = [pair[theme] for pair in timeline.MARKER_COLORS.values()]
+    check(len(set(marks)) == len(marks), f"marker colors are distinct (theme {theme}): {marks}")
+check(timeline.STATE_COLORS["merged"] != timeline.STATE_COLORS["closed"], "merged and closed differ")
+check({m["key"] for m in lp["markers"]} == set(timeline.MARKER_COLORS) and all(m["label"] for m in lp["markers"]),
+      "the page's marker list is the MARKER_COLORS table")
+for key in timeline.MARKER_COLORS:
+    check(f"--mk-{key}:" in html_gh, f"CSS defines the color of marker {key}")
+# A status the table does not know still gets a legend entry through the data, not a silent grey bar.
+odd = copy.deepcopy(gh_doc)
+odd["events"] = odd["events"] + [{"ts": "2026-05-02T09:00:00Z", "kind": "status", "issue": 51, "pr": None, "batch": 50,
+                                  "actor": None, "from": None, "to": "mystery", "detail": None}]
+check("mystery" in [s["key"] for s in payload(timeline.render_html(odd))["states"]], "an unknown status is added to the legend")
+
+# CLI: render from a file, from stdin, and behind collect.
+with tempfile.TemporaryDirectory() as tmp:
+    src = os.path.join(tmp, "events.json")
+    with open(src, "w") as handle:
+        json.dump(gh_doc, handle)
+    out = os.path.join(tmp, "timeline.html")
+    proc = run(["render", "--in", src, "--out", out])
+    check(proc.returncode == 0 and proc.stdout == "" and os.path.exists(out), f"render --out writes a file: {proc.stderr}")
+    if os.path.exists(out):
+        with open(out) as handle:
+            check(payload(handle.read())["events"] == gh_doc["events"], "rendered file carries the events")
+    with open(src) as handle:
+        proc = subprocess.run([sys.executable, SCRIPT, "render", "--refresh", "9"], stdin=handle,
+                              capture_output=True, text=True)
+    check(proc.returncode == 0 and 'content="9"' in proc.stdout, f"render reads stdin and prints HTML: {proc.stderr}")
+    fx2 = os.path.join(tmp, "gt.json")
+    with open(fx2, "w") as handle:
+        json.dump(build("gitea"), handle)
+    collected = run(["collect", "--fixture", fx2])
+    piped = subprocess.run([sys.executable, SCRIPT, "render"], input=collected.stdout, capture_output=True, text=True)
+    check(piped.returncode == 0 and payload(piped.stdout)["events"] == gt_doc["events"], "collect | render works")
+    bad = os.path.join(tmp, "bad.json")
+    with open(bad, "w") as handle:
+        handle.write("{not json")
+    check(run(["render", "--in", bad]).returncode == 2, "unreadable JSON exits 2")
+    check(run(["render", "--in", os.path.join(tmp, "missing.json")]).returncode == 2, "a missing --in file exits 2")
+    check(run(["render", "--in", src, "--refresh", "0"]).returncode == 5, "--refresh 0 exits 5")
+
 if failures:
     for failure in failures:
         print(f"FAIL {failure}")

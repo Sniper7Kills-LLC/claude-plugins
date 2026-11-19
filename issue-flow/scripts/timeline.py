@@ -7,6 +7,17 @@
         --pr-repo owner/pr-repo --batch 78
     python3 "${CLAUDE_PLUGIN_ROOT}/scripts/timeline.py" collect --fixture bundle.json   # test/dry-run
 
+Render the document as one HTML page (no server, no external requests):
+
+    python3 "${CLAUDE_PLUGIN_ROOT}/scripts/timeline.py" render --in timeline.json --out timeline.html
+    python3 "${CLAUDE_PLUGIN_ROOT}/scripts/timeline.py" collect --fixture bundle.json | python3 "${CLAUDE_PLUGIN_ROOT}/scripts/timeline.py" render --out timeline.html --refresh 30
+
+`render` reads --in (default stdin) and writes --out (default stdout). --refresh <seconds>
+adds a meta refresh, for a page that something rewrites while it is open. The page filters
+by timeframe in the browser (24h, 7d, 30d, all, or a date range). Exit codes: 0 = page
+written, 2 = unreadable or malformed input, 5 = malformed invocation. Lane kinds are
+documented in references/timeline.md.
+
 `collect` is read-only. It reads issues, issue timelines and pull requests (paged until
 an empty page) and prints one JSON document, or writes it to --out. The schema is in
 references/timeline.md; this script is its only producer.
@@ -28,6 +39,7 @@ body (nothing is printed to stdout), 5 = the invocation is malformed.
 """
 
 import argparse
+import html
 import json
 import os
 import re
@@ -427,6 +439,420 @@ def cmd_collect(args):
     return 0
 
 
+# ------------------------------------------------------------------ render
+
+# Lane kinds are data. A row here sets how a lane looks; another producer adds a lane type
+# by adding a row. `bar` lanes draw a coloured status bar. `marks` lanes draw one marker per
+# event. A kind that has no row still renders, as a generic `marks` lane.
+LANE_KINDS = {
+    "issue": {"label": "Issue", "style": "bar"},
+    "batch": {"label": "Batch", "style": "marks"},
+    "worktree": {"label": "Worktree", "style": "marks"},
+    "agent": {"label": "Agent", "style": "marks"},
+}
+# Event kinds from `collect` that belong on an issue lane. `batch.*` belongs on the batch lane.
+ISSUE_PREFIXES = {"status", "issue", "pr", "checkpoint"}
+
+
+def lane_kind_of(event_kind):
+    prefix = (event_kind or "").split(".")[0]
+    if prefix in ISSUE_PREFIXES:
+        return "issue"
+    return prefix or "other"
+
+
+def build_model(doc):
+    """Return the lane model for a document: groups of lanes, each lane listing event indexes.
+
+    Issue lanes sit under their batch. The batch lane leads its group and holds the
+    batch.merged marker. Events with no batch go to the "No batch" group, which sorts last.
+    """
+    issues = doc.get("issues") or {}
+    batches = doc.get("batches") or {}
+    member_of = {str(m): str(key) for key, info in batches.items() for m in (info.get("members") or [])}
+    member_of.update({str(key): str(key) for key in batches})  # the tracking issue sits in its own batch
+    groups = {}
+    kinds = {}
+    for index, event in enumerate(doc.get("events") or []):
+        kind = lane_kind_of(event.get("kind"))
+        if kind not in kinds:
+            kinds[kind] = LANE_KINDS.get(kind) or {"label": kind.capitalize(), "style": "marks"}
+        issue = None if event.get("issue") is None else str(event["issue"])
+        batch = None if event.get("batch") is None else str(event["batch"])
+        if kind == "batch":
+            batch = batch or issue
+            lane_id, label, url, title = f"batch:{batch}", f"Batch #{batch}", None, None
+        elif kind == "issue" and issue is not None:
+            batch = batch or member_of.get(issue)
+            info = issues.get(issue) or {}
+            lane_id, label, url, title = f"issue:{issue}", f"#{issue}", info.get("url"), info.get("title")
+        else:
+            ident = event.get("worktree") or event.get("agent") or event.get("session") or ""
+            batch = batch or (member_of.get(issue) if issue else None)
+            lane_id, label, url, title = f"{kind}:{ident}", f"{kinds[kind]['label']} {ident}".strip(), None, None
+        group = groups.setdefault(batch, {"key": batch, "lanes": {}})
+        lane = group["lanes"].setdefault(lane_id, {"id": lane_id, "kind": kind, "label": label, "title": title,
+                                                    "url": url, "events": []})
+        lane["events"].append(index)
+    ordered = sorted(groups.values(), key=lambda g: (g["key"] is None, int(g["key"]) if g["key"] else 0))
+    result = []
+    for group in ordered:
+        key = group["key"]
+        if key is None:
+            label = "No batch"
+        else:
+            branch = (batches.get(key) or {}).get("branch")
+            label = f"Batch #{key}" + (f" — {branch}" if branch else "")
+        lanes = sorted(group["lanes"].values(), key=lambda lane: (lane["kind"] != "batch", lane["events"][0]))
+        result.append({"key": key, "label": label, "lanes": lanes})
+    return result, kinds
+
+
+def _json_for_script(value):
+    """Dump JSON that cannot close the surrounding <script> tag."""
+    text = json.dumps(value, ensure_ascii=True)
+    return text.replace("<", "\\u003c").replace(">", "\\u003e").replace("&", "\\u0026")
+
+
+def _convergence_strip(rows):
+    if not rows:
+        return ""
+    cells = []
+    for row in rows:
+        filed = "–" if row.get("filed") is None else row["filed"]
+        closed = "–" if row.get("closed") is None else row["closed"]
+        cells.append(f'<li><b>Gate {html.escape(str(row.get("gate")))}</b> {html.escape(str(filed))} filed, '
+                     f'{html.escape(str(closed))} closed</li>')
+    return '<section class="convergence" aria-label="Convergence"><h2>Convergence</h2><ul>' + "".join(cells) + "</ul></section>"
+
+
+# One table drives the bar colors, the marker colors and the legend. Each value is
+# (light, dark). Every color in a theme is distinct, and a test enforces it.
+STATE_COLORS = {
+    "ready": ("#57606a", "#8b949e"),
+    "in-progress": ("#0969da", "#388bfd"),
+    "in-review": ("#8250df", "#a371f7"),
+    "awaiting-review": ("#bf3989", "#db61a2"),
+    "needs-feedback": ("#bf8700", "#d29922"),
+    "blocked": ("#cf222e", "#f85149"),
+    "batched": ("#b6bec8", "#4a525c"),
+    "deploying": ("#1b7c83", "#39c5cf"),
+    "deploy-failed": ("#8a1c2b", "#ff9492"),
+    "merged": ("#1a7f37", "#3fb950"),
+    "closed": ("#24292f", "#c9d1d9"),
+}
+MARKER_COLORS = {
+    "pr": ("#8250df", "#a371f7"),
+    "merge": ("#1a7f37", "#3fb950"),
+    "batch": ("#0550ae", "#79c0ff"),
+    "cp": ("#bf8700", "#d29922"),
+    "park": ("#cf222e", "#f85149"),
+    "dot": ("#656d76", "#6e7681"),
+}
+MARKER_LABELS = {"pr": "PR opened", "merge": "PR merged", "batch": "Batch merged", "cp": "Checkpoint",
+                 "park": "Parked (needs feedback or blocked)", "dot": "Other event"}
+
+
+def _theme_vars(theme):
+    pairs = [f"--st-{k}:{v[theme]};" for k, v in STATE_COLORS.items()]
+    pairs += [f"--mk-{k}:{v[theme]};" for k, v in MARKER_COLORS.items()]
+    return " ".join(pairs)
+
+
+PAGE_CSS = """
+:root { --bg:#fff; --fg:#1f2328; --muted:#656d76; --line:#d0d7de; --panel:#f6f8fa; --accent:#0969da;
+  --st-none:#d0d7de; """ + _theme_vars(0) + """ }
+@media (prefers-color-scheme: dark) {
+  :root { --bg:#0d1117; --fg:#e6edf3; --muted:#8b949e; --line:#30363d; --panel:#161b22; --accent:#58a6ff;
+    --st-none:#30363d; """ + _theme_vars(1) + """ } }
+* { box-sizing:border-box; }
+body { margin:0; padding:1rem; background:var(--bg); color:var(--fg); font:14px/1.45 system-ui,sans-serif; }
+h1 { font-size:1.25rem; margin:0 0 .25rem; } h2 { font-size:.95rem; margin:0 0 .25rem; }
+.sub { color:var(--muted); margin:0 0 .75rem; }
+.controls { display:flex; flex-wrap:wrap; gap:.5rem; align-items:center; margin-bottom:.75rem; }
+.controls button, .controls input { font:inherit; color:var(--fg); background:var(--panel); border:1px solid var(--line);
+  border-radius:6px; padding:.25rem .6rem; }
+.controls button[aria-pressed="true"] { border-color:var(--accent); color:var(--accent); }
+.convergence { background:var(--panel); border:1px solid var(--line); border-radius:6px; padding:.5rem .75rem; margin-bottom:.75rem; }
+.convergence ul { list-style:none; margin:0; padding:0; display:flex; flex-wrap:wrap; gap:.25rem 1.25rem; }
+.legend { display:flex; flex-wrap:wrap; gap:.25rem 1rem; color:var(--muted); font-size:.85rem; margin-bottom:.75rem; }
+.legend i { display:inline-block; width:.8rem; height:.6rem; border-radius:2px; margin-right:.3rem; vertical-align:baseline; }
+#chart { overflow-x:auto; }
+.board { min-width:640px; }
+.axis, .lane { display:grid; grid-template-columns:12rem 1fr; align-items:center; }
+.axis .ticks { position:relative; height:1.2rem; color:var(--muted); font-size:.75rem; }
+.axis .ticks span { position:absolute; transform:translateX(-50%); white-space:nowrap; }
+.axis .ticks span:first-child { transform:none; } .axis .ticks span:last-child { transform:translateX(-100%); }
+.group { margin-top:.75rem; font-weight:600; border-bottom:1px solid var(--line); padding-bottom:.15rem; }
+.lane { border-bottom:1px solid var(--line); min-height:1.9rem; }
+.lane .name { padding-right:.5rem; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.lane .name a { color:var(--accent); text-decoration:none; }
+.lane .name small { color:var(--muted); }
+.track { position:relative; height:1.5rem; }
+.seg { position:absolute; top:.45rem; height:.6rem; border-radius:3px; background:var(--st-none); opacity:.9; }
+.mk { position:absolute; top:.2rem; width:.7rem; height:.7rem; transform:translateX(-50%) rotate(45deg); background:var(--fg);
+  border:2px solid var(--bg); cursor:default; }
+.mk-pr { background:var(--mk-pr); } .mk-merge { background:var(--mk-merge); }
+.mk-batch { background:var(--mk-batch); width:.9rem; height:.9rem; top:.1rem; }
+.mk-cp { background:var(--mk-cp); border-radius:50%; } .mk-park { background:var(--mk-park); border-radius:50%; }
+.mk-dot { background:var(--mk-dot); border-radius:50%; }
+.legend .mk { position:static; display:inline-block; vertical-align:middle; margin:0 .35rem 0 0; transform:rotate(45deg) scale(.8); }
+.legend .mk-batch { width:.8rem; height:.8rem; }
+#tip { position:fixed; z-index:10; max-width:24rem; background:var(--panel); border:1px solid var(--line); border-radius:6px;
+  padding:.4rem .6rem; white-space:pre-line; pointer-events:none; box-shadow:0 2px 8px rgba(0,0,0,.25); }
+#empty { color:var(--muted); padding:1rem; border:1px dashed var(--line); border-radius:6px; text-align:center; }
+@media (max-width:640px) { .axis, .lane { grid-template-columns:7rem 1fr; } .board { min-width:520px; } }
+"""
+
+PAGE_JS = r"""
+(function () {
+  "use strict";
+  var D = JSON.parse(document.getElementById("tl-data").textContent);
+  var MARK = {"pr.opened": "pr", "pr.merged": "merge", "batch.merged": "batch", "checkpoint": "cp"};
+  var PARK = {"needs-feedback": 1, "blocked": 1};
+  var times = D.events.map(function (e) { return Date.parse(e.ts); });
+  var win = {lo: null, hi: null};
+  var $ = function (id) { return document.getElementById(id); };
+
+  function cls(text) { return String(text).toLowerCase().replace(/[^a-z0-9]+/g, "-"); }
+  function el(tag, className, text) {
+    var node = document.createElement(tag);
+    if (className) { node.className = className; }
+    if (text !== undefined) { node.textContent = text; }
+    return node;
+  }
+  function stamp(ms) { return new Date(ms).toISOString().slice(0, 16).replace("T", " "); }
+  function stateAfter(e) {
+    if (e.kind === "status") { return e.to || null; }
+    if (e.kind === "pr.merged") { return "merged"; }
+    if (e.kind === "issue.closed") { return "closed"; }
+    if (e.kind === "issue.reopened") { return null; }
+    return undefined;
+  }
+  function describe(e, lane) {
+    var lines = [e.kind + "  " + e.ts];
+    if (lane.title) { lines.push(lane.title); }
+    if (e.from || e.to) { lines.push((e.from || "none") + " -> " + (e.to || "none")); }
+    if (e.detail) { lines.push(e.detail); }
+    if (e.pr) { lines.push("PR #" + e.pr); }
+    if (e.actor) { lines.push("by " + e.actor); }
+    return lines.join("\n");
+  }
+  function bounds() {
+    var lo = win.lo, hi = win.hi;
+    if (times.length) {
+      if (lo === null) { lo = Math.min.apply(null, times); }
+      if (hi === null) { hi = Math.max.apply(null, times); }
+    }
+    if (lo === null || hi === null) { return null; }
+    if (hi <= lo) { hi = lo + 3600000; }
+    return {lo: lo, hi: hi};
+  }
+  function pos(ms, b) { return (100 * (ms - b.lo) / (b.hi - b.lo)).toFixed(3) + "%"; }
+
+  function laneNode(lane, b, visible) {
+    var kind = D.kinds[lane.kind];
+    var row = el("div", "lane lane-" + cls(lane.kind));
+    var name = el("div", "name");
+    if (lane.url && /^https?:\/\//.test(lane.url)) {
+      var link = el("a", null, lane.label);
+      link.href = lane.url; link.rel = "noopener"; link.title = lane.title || "";
+      name.appendChild(link);
+    } else { name.appendChild(document.createTextNode(lane.label)); }
+    if (lane.title) { name.appendChild(el("small", null, " " + lane.title)); }
+    row.appendChild(name);
+    var track = el("div", "track");
+    var evs = lane.events.map(function (i) { return {e: D.events[i], t: times[i]}; });
+    if (kind.style === "bar") {
+      var current = null;
+      evs.forEach(function (x) { if (x.t < b.lo) { var s = stateAfter(x.e); if (s !== undefined) { current = s; } } });
+      var info = D.issues[lane.id.split(":")[1]] || {};
+      if (current === null && !evs.some(function (x) { return x.t < b.lo; }) && info.status_at_start) { current = info.status_at_start; }
+      var points = [{t: b.lo, s: current, e: null}];
+      visible.forEach(function (x) { var s = stateAfter(x.e); if (s !== undefined) { points.push({t: x.t, s: s, e: x.e}); } });
+      points.forEach(function (p, i) {
+        if (!p.s) { return; }
+        var end = i + 1 < points.length ? points[i + 1].t : b.hi;
+        var seg = el("div", "seg");
+        seg.style.left = pos(p.t, b); seg.style.width = (100 * (end - p.t) / (b.hi - b.lo)).toFixed(3) + "%";
+        seg.style.background = "var(--st-" + cls(p.s) + ", var(--st-none))";
+        seg.setAttribute("data-tip", p.s + "\nfrom " + stamp(p.t) + " to " + stamp(end) + (lane.title ? "\n" + lane.title : ""));
+        track.appendChild(seg);
+      });
+    }
+    visible.forEach(function (x) {
+      var mark = null;
+      if (kind.style === "bar") {
+        mark = MARK[x.e.kind] || null;
+        if (x.e.kind === "status" && PARK[x.e.to]) { mark = "park"; }
+      } else { mark = MARK[x.e.kind] || "dot"; }
+      if (!mark) { return; }
+      var node = el("div", "mk mk-" + mark);
+      node.style.left = pos(x.t, b);
+      node.setAttribute("data-tip", describe(x.e, lane));
+      track.appendChild(node);
+    });
+    row.appendChild(track);
+    return row;
+  }
+
+  function draw() {
+    var chart = $("chart"), b = bounds();
+    chart.textContent = "";
+    var shown = 0;
+    if (b) {
+      var axis = el("div", "axis"), ticks = el("div", "ticks");
+      axis.appendChild(el("div"));
+      for (var k = 0; k <= 4; k++) {
+        var tick = el("span", null, stamp(b.lo + (b.hi - b.lo) * k / 4));
+        tick.style.left = (k * 25) + "%"; ticks.appendChild(tick);
+      }
+      axis.appendChild(ticks);
+      var board = el("div", "board"); board.appendChild(axis);
+      D.groups.forEach(function (group) {
+        var rows = [];
+        group.lanes.forEach(function (lane) {
+          var visible = lane.events.map(function (i) { return {e: D.events[i], t: times[i]}; })
+            .filter(function (x) { return x.t >= b.lo && x.t <= b.hi; });
+          if (visible.length) { shown += visible.length; rows.push(laneNode(lane, b, visible)); }
+        });
+        if (rows.length) {
+          board.appendChild(el("div", "group", group.label));
+          rows.forEach(function (r) { board.appendChild(r); });
+        }
+      });
+      chart.appendChild(board);
+    }
+    var empty = $("empty");
+    empty.hidden = shown > 0;
+    empty.textContent = "No events in this range." + (b && !shown ? " Range: " + stamp(b.lo) + " to " + stamp(b.hi) + " UTC." : "");
+    chart.hidden = shown === 0;
+    if (b) { $("from").value = new Date(b.lo).toISOString().slice(0, 10); $("to").value = new Date(b.hi).toISOString().slice(0, 10); }
+  }
+
+  var PRESETS = {"24h": 86400000, "7d": 7 * 86400000, "30d": 30 * 86400000};
+  document.querySelectorAll("[data-preset]").forEach(function (button) {
+    button.addEventListener("click", function () {
+      var name = button.getAttribute("data-preset");
+      if (name === "all") { win.lo = null; win.hi = null; }
+      else { win.hi = Date.now(); win.lo = win.hi - PRESETS[name]; }
+      document.querySelectorAll("[data-preset]").forEach(function (other) { other.setAttribute("aria-pressed", String(other === button)); });
+      draw();
+    });
+  });
+  function fromInputs() {
+    var from = Date.parse($("from").value + "T00:00:00Z"), to = Date.parse($("to").value + "T23:59:59Z");
+    win.lo = isNaN(from) ? null : from; win.hi = isNaN(to) ? null : to;
+    document.querySelectorAll("[data-preset]").forEach(function (other) { other.setAttribute("aria-pressed", "false"); });
+    draw();
+  }
+  $("from").addEventListener("change", fromInputs);
+  $("to").addEventListener("change", fromInputs);
+
+  var tip = $("tip");
+  document.addEventListener("mousemove", function (ev) {
+    var target = ev.target.closest ? ev.target.closest("[data-tip]") : null;
+    if (!target) { tip.hidden = true; return; }
+    tip.textContent = target.getAttribute("data-tip");
+    tip.hidden = false;
+    tip.style.left = Math.min(ev.clientX + 12, window.innerWidth - tip.offsetWidth - 8) + "px";
+    tip.style.top = (ev.clientY + 14) + "px";
+  });
+
+  var legend = $("legend");
+  D.states.forEach(function (s) {
+    var item = el("span", null, s.label), swatch = el("i"); swatch.style.background = "var(--st-" + cls(s.key) + ", var(--st-none))";
+    item.insertBefore(swatch, item.firstChild); legend.appendChild(item);
+  });
+  D.markers.forEach(function (m) {
+    var item = el("span", null, m.label), swatch = el("span", "mk mk-" + m.key);
+    item.insertBefore(swatch, item.firstChild); legend.appendChild(item);
+  });
+  draw();
+})();
+"""
+
+
+def render_html(doc, refresh=None, now=None):
+    """Return one self-contained HTML page for a timeline document.
+
+    The page embeds the document and draws it with inline JavaScript, so the timeframe
+    filter works offline. `refresh` (seconds) adds a meta refresh for a page that is
+    rewritten while open.
+    """
+    groups, kinds = build_model(doc)
+    events = doc.get("events") or []
+    forge = doc.get("forge") or {}
+    where = "/".join(str(forge[k]) for k in ("owner", "repo") if forge.get(k)) or "workflow"
+    rng = doc.get("range") or {}
+    span = f"{rng.get('since') or 'start'} to {rng.get('until') or 'now'}"
+    stamped = (now or datetime.now(timezone.utc)).strftime("%Y-%m-%dT%H:%M:%SZ")
+    seen = [k for k in STATE_COLORS]
+    for event in events:  # a status the table does not know still gets a legend entry (grey bar)
+        for value in (event.get("to"),) if event.get("kind") == "status" else ():
+            if value and value not in seen:
+                seen.append(value)
+    states = [{"key": k, "label": k} for k in seen]
+    markers = [{"key": k, "label": MARKER_LABELS[k]} for k in MARKER_COLORS]
+    data = {"states": states, "markers": markers, "events": events, "issues": doc.get("issues") or {}, "batches": doc.get("batches") or {},
+            "range": rng, "groups": groups, "kinds": kinds}
+    meta = f'<meta http-equiv="refresh" content="{int(refresh)}">\n' if refresh else ""
+    empty = '<p id="empty">No events in this range.</p>' if not events else '<p id="empty" hidden>No events in this range.</p>'
+    return f"""<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+{meta}<title>Workflow timeline — {html.escape(where)}</title>
+<style>{PAGE_CSS}</style>
+</head>
+<body>
+<h1>Workflow timeline — {html.escape(where)}</h1>
+<p class="sub">Data range: {html.escape(span)} · generated {html.escape(stamped)} · times are UTC</p>
+<div class="controls">
+<button type="button" data-preset="24h" aria-pressed="false">24h</button>
+<button type="button" data-preset="7d" aria-pressed="false">7d</button>
+<button type="button" data-preset="30d" aria-pressed="false">30d</button>
+<button type="button" data-preset="all" aria-pressed="true">all</button>
+<label>From <input type="date" id="from"></label>
+<label>To <input type="date" id="to"></label>
+</div>
+{_convergence_strip(doc.get("convergence"))}
+<div class="legend" id="legend" aria-label="Status colors"></div>
+<div id="chart"></div>
+{empty}
+<div id="tip" hidden></div>
+<script id="tl-data" type="application/json">{_json_for_script(data)}</script>
+<script>{PAGE_JS}</script>
+</body>
+</html>
+"""
+
+
+def cmd_render(args):
+    if args.refresh is not None and args.refresh < 1:
+        print("error: --refresh takes a whole number of seconds, 1 or more", file=sys.stderr)
+        return 5
+    try:
+        if args.infile and args.infile != "-":
+            with open(args.infile) as handle:
+                doc = json.load(handle)
+        else:
+            doc = json.load(sys.stdin)
+        if not isinstance(doc, dict) or not isinstance(doc.get("events"), list):
+            raise ValueError("not a timeline document: no events list")
+        page = render_html(doc, refresh=args.refresh)
+    except (OSError, ValueError) as exc:
+        print(json.dumps({"error": f"render failed: {exc}"}), file=sys.stderr)
+        return 2
+    if args.out:
+        with open(args.out, "w") as handle:
+            handle.write(page)
+    else:
+        sys.stdout.write(page)
+    return 0
+
+
 def main(argv=None):
     parser = Parser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     sub = parser.add_subparsers(dest="command", required=True, parser_class=Parser)
@@ -442,6 +868,11 @@ def main(argv=None):
     collect.add_argument("--batch", type=int, help="tracking-issue number of one batch or epic")
     collect.add_argument("--out", help="write the document here instead of stdout")
     collect.set_defaults(func=cmd_collect)
+    render = sub.add_parser("render", help="turn a timeline document into one self-contained HTML page")
+    render.add_argument("--in", dest="infile", help="timeline JSON from `collect` (default: stdin)")
+    render.add_argument("--out", help="write the page here instead of stdout")
+    render.add_argument("--refresh", type=int, help="seconds between automatic page reloads (default: off)")
+    render.set_defaults(func=cmd_render)
     args = parser.parse_args(argv)
     return args.func(args)
 

@@ -95,4 +95,32 @@ that `issue`. `--batch <n>` keeps the events with that `batch`.
 
 `0` document written. `2` a fetch failed, or the forge returned an error body (`tea api`
 exits 0 on an API error, so `collect` checks the body). Nothing goes to stdout. `5` the
-invocation is malformed.
+invocation is malformed. `render` uses the same codes: `2` for unreadable or malformed
+input.
+
+## Lane kinds (the renderer)
+
+`timeline.py render` draws one lane per issue, grouped under its batch. A lane kind is a row
+in `LANE_KINDS` in `timeline.py`. The renderer reads the kind from the event `kind` prefix.
+Another producer adds a lane type by adding a row and using that prefix.
+
+| Lane kind | Events | Style |
+|---|---|---|
+| `issue` | `status`, `issue.*`, `pr.*`, `checkpoint` | `bar`: a bar coloured by status. Markers show PR open, PR merge, checkpoint and park (a `status` event whose `to` is `needs-feedback` or `blocked`). The bar at the left edge starts with the status the issue had at the range start (`status_at_start`, or the last earlier event). |
+| `batch` | `batch.*` | `marks`: one marker per event. The lane leads its group and shows the batch merge. The tracking issue's own events sit in the same group. |
+| `worktree` | `worktree.*` | `marks`: one lane per `worktree` key, one marker per event. |
+| `agent` | `agent.*` | `marks`: one lane per `agent` key, or per `session` key when there is no `agent`. |
+| any other prefix | the same prefix | `marks`: a generic lane, labelled with the prefix. |
+
+Events with no batch go in a final group named "No batch". A batch with no `branch` shows
+only its number. The page ignores event keys it does not know.
+
+**Colors and legend.** `STATE_COLORS` (one row per status) and `MARKER_COLORS` in
+`timeline.py` set every bar and marker color for both themes. The legend reads the same
+tables, so a state cannot draw without a legend entry. A status that is not in the table
+draws grey and gets its own legend entry.
+
+**Page behavior.** The page embeds the document and draws it in the browser. It makes no
+network request: the tracker links on issue lanes are the only URLs. The timeframe filter
+(24h, 7d, 30d, all, or a UTC date range) re-draws without a new render. A range with no
+events shows "No events in this range." `--refresh <seconds>` adds a meta refresh.
