@@ -228,6 +228,12 @@ It filters by timeframe in the browser (24 hours, 7 days, 30 days, all, or a dat
   more) for up to 4 hours, and the open page reloads itself. Stop it with `SIGTERM`; the
   last page stays.
 
+Click a lane to open its detail panel: a summary, **What needed fixing** (each rework request,
+changes-requested review or failed CI run, with the commits that fixed it), and a log of commits,
+comments, reviews, CI runs and agent events that you can filter by kind. Each file of a commit
+expands into its diff. On a batch lane the panel also lists the cross-check findings and plan
+amendments.
+
 The skill is read-only and needs only the tracker, so it works outside a run. It writes
 to `<git common dir>/issue-flow/timeline.html` (no commit carries it, and every worktree
 shares it) or to the `--out` path you give. It publishes nothing. The script is
