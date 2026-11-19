@@ -24,7 +24,7 @@ still classifies the comment by the prefix.
 
 ## A rework request
 
-One comment, one marker, one numbered line per problem. `problem=<k>` names the round
+One comment, one marker, one problem. The numbered lines are for the human reader: the timeline does not split them. `problem=<k>` names the round
 (`r1`, `r2`, …), so the problem id is `<issue>:<k>`. A worker cites the comment URL in the
 `Fixes:` trailer of each commit that answers it ([issue-worker.md](issue-worker.md)).
 

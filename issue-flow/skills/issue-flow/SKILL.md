@@ -666,8 +666,8 @@ Triggered by a worker's final notification with its verdict — read it as above
      `<!-- issue-flow:event role=gate.pass issue=<n> pr=<n> -->` and then `PM gate: pass`.
      A rework request starts with
      `<!-- issue-flow:event role=gate.rework issue=<n> pr=<n> problem=<k> -->` and then
-     `PM gate: rework requested`. `<k>` is a short key for the round, for example `r1`. A rework request
-     names each problem on its own numbered line, so the timeline can split it, and the worker
+     `PM gate: rework requested`. `<k>` is a short key for the round, for example `r1`. One rework comment
+     is one problem for the timeline. Number the lines inside it for the human reader. The worker
      cites the comment URL in a `Fixes:` trailer ([event-markers.md](references/event-markers.md)).
      Send the same text to the worker with `SendMessage`. This one comment is the gate's
      tracker trace (invariant 6); do not post a second one for the same result.

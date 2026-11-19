@@ -435,7 +435,7 @@ The plugin ships three hooks in `hooks/hooks.json`. Claude Code loads them with 
 | Hook | Event | What it does |
 |---|---|---|
 | `preflight.py` | `SessionStart` | Fetches the remote and reports drift to the PM. |
-| `guard-spawn.py` | `PreToolUse` on `Agent` | Refuses two spawn shapes that strand a result. |
+| `guard-spawn.py` | `PreToolUse` on `Agent\|Task` | Refuses two spawn shapes that strand a result. |
 | `record-event.py` | `PostToolUse` on `Agent`, `SendMessage` and `Bash`; `SubagentStop` | Logs local orchestration events for the timeline. |
 
 ### Local event log

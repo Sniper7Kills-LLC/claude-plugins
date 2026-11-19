@@ -1214,6 +1214,23 @@ for index, theme in enumerate(("light", "dark")):
             check(distance >= 28, f"{theme}: marker {keys[a]} is only {distance:.1f} from marker {keys[b]}")
 check(delta_e(timeline.MARKER_COLORS["review"][1], timeline.MARKER_COLORS["merge"][1]) >= 60, "dark: changes-requested does not read as merged")
 
+# 7. Review fixes for batch #78: one lane per agent, and a marked checkpoint comment still parses.
+agent_ids = [lane["id"] for group in lane_model for lane in group["lanes"] if lane["kind"] == "agent"]
+check(agent_ids == ["agent:a1"], f"agent.spawned and agent.stopped share one lane: {agent_ids}")
+worktree_ids = [lane["id"] for group in lane_model for lane in group["lanes"] if lane["kind"] == "worktree"]
+check(worktree_ids == ["worktree:/w/51"], f"worktree events keep their own lane: {worktree_ids}")
+
+marked_bundle = {
+    "forge": {"type": "github", "host": None, "owner": "o", "repo": "r"},
+    "issues": [{"issue": issue_raw(7, "Seven", ["status:in-progress"], "2026-05-01T10:00:00Z"),
+                "timeline": [{"event": "commented", "created_at": "2026-05-01T11:00:00Z", "user": {"login": "w"},
+                              "body": "<!-- issue-flow:event role=checkpoint issue=7 -->\ncheckpoint 2: tests green"}]}],
+    "pulls": [],
+}
+marked = kinds_of(timeline.normalize(marked_bundle), "checkpoint")
+check(len(marked) == 1 and marked[0]["k"] == 2 and marked[0]["detail"] == "tests green",
+      f"a checkpoint comment with a marker gives a checkpoint event: {marked}")
+
 if failures:
     for failure in failures:
         print(f"FAIL {failure}")

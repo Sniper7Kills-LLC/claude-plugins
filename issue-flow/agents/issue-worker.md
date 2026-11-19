@@ -436,8 +436,9 @@ costs one turn and is always the cheaper error.
    ```
 
    With `ci: skip`, the `[skip ci]` token stays the last line of the message. Put it after the
-   trailers. In a rework round, name in each commit which problem it answers through `Fixes:`;
-   a commit with no `Fixes:` is read as answering every open problem on the issue.
+   trailers. In a rework round, name in each commit the rework comment it answers through `Fixes:`.
+   The timeline counts one problem per rework comment, not one per numbered line. A commit with no
+   `Fixes:` is read as answering every open problem on the issue.
 
    **Build vertically, not horizontally.** When the issue crosses layers (data → service
    → API → UI), build one thin end-to-end slice first — a stubbed endpoint, the minimal

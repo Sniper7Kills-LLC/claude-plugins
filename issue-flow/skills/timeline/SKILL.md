@@ -5,11 +5,12 @@ description: Show what an issue-flow run did as one local HTML page - issue lane
 
 # Timeline — see what the run did
 
-This skill draws the tracker's history as one HTML page. The page has one lane per issue,
+This skill draws the run's history as one HTML page. The page has one lane per issue,
 a lane for each batch, and markers for status changes, pull requests, checkpoints and
 merges. The page filters by timeframe in the browser.
 
-The skill is **read-only**. It reads issues, issue timelines and pull requests. It needs
+The skill is **read-only**. It reads issues, issue timelines, pull requests (with their
+comments, commits, reviews and CI runs) and the local-event log. It needs
 no issue-flow run to be active, and it changes nothing on the tracker.
 
 The output is a **local file only**. Never publish it, never upload it, and never create
@@ -92,7 +93,8 @@ python3 "${CLAUDE_PLUGIN_ROOT}/scripts/timeline.py" watch --forge <forge> --repo
 
 ## Limits
 
-- The page shows what the tracker records. Work that left no label, comment or pull
-  request change does not appear.
+- The page shows what the tracker records (issues, issue timelines, pull requests, comments,
+  commits, reviews and CI runs) and the local-event log of agents and worktrees. Work that left
+  no trace in either place does not appear.
 - A snapshot is a copy of one moment. Run the skill again for a newer copy.
 - The skill does not start or stop an issue-flow run.

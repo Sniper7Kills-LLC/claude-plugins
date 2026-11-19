@@ -1,12 +1,12 @@
 # The workflow timeline — document schema
 
-`scripts/timeline.py collect` rebuilds what an issue-flow run did, from the tracker alone.
-It prints one JSON document. The renderer, the `watch` command and the local-event hook
-all read this schema, and `timeline.py` is its only producer. The tracker reads it uses are
+`scripts/timeline.py collect` rebuilds what an issue-flow run did, from the tracker and the local-event log.
+It prints one JSON document. The renderer and the `watch` command read this schema. The local-event hook writes its
+own kinds into it, and `timeline.py` is its only producer. The tracker reads it uses are
 in [forge.md](forge.md) (`forge.issue.timeline`, `forge.issue.list.all`, `forge.pr.list.all`).
 
 The collector works because issue-flow leaves a tracker trace for every state change: a
-label, a comment, a PR state.
+label, a comment, a PR state. The local-event log adds what the tracker does not see: agents and worktrees.
 
 ## Document
 
@@ -257,10 +257,10 @@ Another producer adds a lane type by adding a row and using that prefix.
 
 | Lane kind | Events | Style |
 |---|---|---|
-| `issue` | `status`, `issue.*`, `pr.*`, `checkpoint` | `bar`: a bar coloured by status. Markers show PR open, PR merge, checkpoint and park (a `status` event whose `to` is `needs-feedback` or `blocked`). The bar at the left edge starts with the status the issue had at the range start (`status_at_start`, or the last earlier event). |
-| `batch` | `batch.*` | `marks`: one marker per event. The lane leads its group and shows the batch merge. The tracking issue's own events sit in the same group. |
+| `issue` | `status`, `issue.*`, `pr.*`, `checkpoint`, and the `comment`, `commit`, `review` and `ci` events of the issue or its PR | `bar`: a bar coloured by status. Markers show PR open, PR merge, checkpoint and park (a `status` event whose `to` is `needs-feedback` or `blocked`). The bar at the left edge starts with the status the issue had at the range start (`status_at_start`, or the last earlier event). |
+| `batch` | `batch.*` | `marks`: one marker per event. The lane leads its group and shows the batch merge. The tracking issue's own events sit in the same group. The detail events of a tracking issue (`comment`, `commit`, `review`, `ci`) go to its batch lane, not to an issue lane. |
 | `worktree` | `worktree.*` | `marks`: one lane per `worktree` key, one marker per event. |
-| `agent` | `agent.*` | `marks`: one lane per `agent` key, or per `session` key when there is no `agent`. |
+| `agent` | `agent.*` | `marks`: one lane per `agent` key, or per `session` key when there is no `agent`. `agent.stopped` carries a `worktree` too, but the lane key stays `agent`. |
 | any other prefix | the same prefix | `marks`: a generic lane, labelled with the prefix. |
 
 Events with no batch go in a final group named "No batch". A batch with no `branch` shows

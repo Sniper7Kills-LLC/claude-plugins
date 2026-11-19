@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Rebuild what an issue-flow run did from the tracker alone, as normalized events.
+"""Rebuild what an issue-flow run did from the tracker and the local-event log, as normalized events.
 
     python3 "${CLAUDE_PLUGIN_ROOT}/scripts/timeline.py" collect --forge github --repo owner/name --since 7d
     python3 "${CLAUDE_PLUGIN_ROOT}/scripts/timeline.py" collect --forge gitea --repo owner/name --out timeline.json
@@ -586,7 +586,7 @@ def normalize(bundle, since=None, until=None, only_issue=None, only_batch=None, 
             events.append(_event(s["ts"], "status", n, None, batch, s["actor"], s["from"], s["to"]))
         for item in (i for i in items if i["op"] == "comment"):
             events.append(_comment_event(item, n, None, batch))
-            m = CHECKPOINT.match(item["body"])
+            m = CHECKPOINT.match(MARKER.sub("", item["body"] or "", count=1).lstrip())
             if m:
                 events.append(_event(item["ts"], "checkpoint", n, None, batch, item["actor"],
                                      detail=m.group(2).strip(), k=int(m.group(1))))
@@ -670,32 +670,32 @@ class Api:
     def path(self, repo, suffix):
         return f"{'repos' if self.forge_type == 'github' else '/repos'}/{repo}{suffix}"
 
-    def get(self, path):
+    def _run(self, path):
+        """Run one `api` call and return its stdout. A failed call raises FetchError."""
         try:
             result = subprocess.run([self.cmd, "api", path], cwd=self.repo_path, capture_output=True, text=True)
         except OSError as exc:
             raise FetchError(f"cannot run {self.cmd}: {exc}")
         if result.returncode != 0:
             raise FetchError(f"{self.cmd} api {path} failed: {(result.stderr or result.stdout).strip()}")
+        return result.stdout
+
+    def get(self, path):
+        out = self._run(path)
         try:
-            body = json.loads(result.stdout)
+            body = json.loads(out)
         except ValueError:
-            raise FetchError(f"{self.cmd} api {path} returned a body that is not JSON: {result.stdout[:200]!r}")
+            raise FetchError(f"{self.cmd} api {path} returned a body that is not JSON: {out[:200]!r}")
         if isinstance(body, dict) and "message" in body and "number" not in body:
             raise FetchError(f"{self.cmd} api {path} returned an error: {body['message']}")
         return body
 
     def text(self, path):
         """Read a plain-text body (a `.diff` route). An error object is JSON, so it is still caught."""
-        try:
-            result = subprocess.run([self.cmd, "api", path], cwd=self.repo_path, capture_output=True, text=True)
-        except OSError as exc:
-            raise FetchError(f"cannot run {self.cmd}: {exc}")
-        if result.returncode != 0:
-            raise FetchError(f"{self.cmd} api {path} failed: {(result.stderr or result.stdout).strip()}")
-        if result.stdout.lstrip().startswith("{") and '"message"' in result.stdout[:200]:
-            raise FetchError(f"{self.cmd} api {path} returned an error: {result.stdout[:200]!r}")
-        return result.stdout
+        out = self._run(path)
+        if out.lstrip().startswith("{") and '"message"' in out[:200]:
+            raise FetchError(f"{self.cmd} api {path} returned an error: {out[:200]!r}")
+        return out
 
     def paged(self, path, keep_going=None, key=None):
         """Read every page. An empty page ends the walk; a short page does not (server caps vary).
@@ -848,7 +848,7 @@ def merge_local(doc, rows, since=None, until=None, only_issue=None, only_batch=N
         if (since and row["ts"] < since) or (until and row["ts"] > until):
             continue
         issue = row["issue"]
-        batch = row.get("batch") if isinstance(row.get("batch"), int) else member_of.get(issue)
+        batch = member_of.get(issue)
         if (only_issue is not None and issue != only_issue) or (only_batch is not None and batch != only_batch):
             continue
         event = _event(row["ts"], row["kind"], issue=issue, batch=batch)
@@ -1100,7 +1100,9 @@ def build_model(doc):
             info = issues.get(issue) or {}
             lane_id, label, url, title = f"issue:{issue}", f"#{issue}", info.get("url"), info.get("title")
         else:
-            ident = event.get("worktree") or event.get("agent") or event.get("session") or ""
+            # A lane names its own key: agent.stopped carries a worktree too, and must stay on its agent's lane.
+            keys = {"agent": ("agent", "session"), "worktree": ("worktree",)}.get(kind, ("worktree", "agent", "session"))
+            ident = next((event[key] for key in keys if event.get(key)), "")
             batch = batch or (member_of.get(issue) if issue else None)
             lane_id, label, url, title = f"{kind}:{ident}", f"{kinds[kind]['label']} {ident}".strip(), None, None
         group = groups.setdefault(batch, {"key": batch, "lanes": {}})
@@ -1376,8 +1378,9 @@ VIEW_JS = r"""
 PAGE_JS = r"""
 (function () {
   "use strict";
+  var THEME_KEY = /*THEME_KEY*/;
   /*VIEW_JS*/
-  var D = JSON.parse(document.getElementById("tl-data").textContent);
+  var D =JSON.parse(document.getElementById("tl-data").textContent);
   var sel = null;
   var on = {};
   D.logGroups.forEach(function (g) { on[g.key] = true; });
@@ -1391,7 +1394,7 @@ PAGE_JS = r"""
   // ---- theme: auto follows the browser, light and dark are explicit. The page works without storage.
   var MODES = ["auto", "light", "dark"];
   var mode = "auto";
-  try { var saved = localStorage.getItem("tl-theme"); if (MODES.indexOf(saved) > 0) { mode = saved; } } catch (e) { mode = "auto"; }
+  try { var saved = localStorage.getItem(THEME_KEY); if (MODES.indexOf(saved) > 0) { mode = saved; } } catch (e) { mode = "auto"; }
   function applyMode() {
     var root = document.documentElement, next = MODES[(MODES.indexOf(mode) + 1) % MODES.length], button = $("theme");
     if (mode === "auto") { root.removeAttribute("data-theme"); } else { root.setAttribute("data-theme", mode); }
@@ -1400,7 +1403,7 @@ PAGE_JS = r"""
   }
   $("theme").addEventListener("click", function () {
     mode = MODES[(MODES.indexOf(mode) + 1) % MODES.length];
-    try { localStorage.setItem("tl-theme", mode); } catch (e) { /* storage is blocked: the choice lasts for this page only */ }
+    try { localStorage.setItem(THEME_KEY, mode); } catch (e) { /* storage is blocked: the choice lasts for this page only */ }
     applyMode();
   });
   applyMode();
@@ -1966,7 +1969,7 @@ PAGE_JS = r"""
 """
 
 
-PAGE_JS = PAGE_JS.replace("/*VIEW_JS*/", VIEW_JS)
+PAGE_JS = PAGE_JS.replace("/*VIEW_JS*/", VIEW_JS).replace("/*THEME_KEY*/", json.dumps(THEME_KEY))
 
 
 def render_html(doc, refresh=None, now=None):
