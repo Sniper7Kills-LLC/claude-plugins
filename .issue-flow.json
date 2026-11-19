@@ -1,0 +1,30 @@
+{
+  "version": 1,
+  "pluginVersion": "0.17.0",
+  "forge": {
+    "type": "github",
+    "host": "github.com",
+    "owner": "Sniper7Kills-LLC",
+    "repo": "claude-plugins",
+    "interface": "cli"
+  },
+  "concurrency": 2,
+  "batchSize": 4,
+  "runLength": { "mode": "issues", "value": 4 },
+  "prGranularity": "batch",
+  "prAuthority": "batch-review",
+  "planReview": false,
+  "reviewWipLimit": 2,
+  "review": { "when": "never" },
+  "deploy": null,
+  "docsMcp": { "offered": [], "installed": [], "marketplacesAdded": [], "declined": false, "restartPending": false },
+  "practices": {
+    "tdd": true,
+    "ddd": false,
+    "e2e": "none",
+    "coverage": null,
+    "commitStyle": "issue-flow: <imperative summary>",
+    "docs": "all"
+  },
+  "notes": "Fork topology: issues live upstream (Sniper7Kills-LLC/claude-plugins). Integration branches and member draft PRs live on the fork (Crank-Git/claude-plugins, git remote `fork`). The batch PR goes from the fork into upstream dev. The batch PR is merged by the operator, because GitHub does not let Crank-Git approve its own PR. Python is stdlib-only; each new script gets a scripts/test-*.py suite wired into .github/workflows/validate.yml."
+}
