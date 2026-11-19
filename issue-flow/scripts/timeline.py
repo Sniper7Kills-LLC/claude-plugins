@@ -998,6 +998,78 @@ def lane_summary(events):
     return summary
 
 
+# Marker keys that show a problem. A lane with one of these in view is a "lane with problems".
+PROBLEM_MARKS = ("rework", "review", "ci")
+PROBLEM_TYPES = {"comment": "Rework requested", "review": "Changes requested", "ci.run": "CI failed"}
+# How a status counts in the working-versus-waiting split. A status in no class (ready, batched,
+# deploying) still shows in the per-status totals.
+STATUS_CLASSES = {"working": ("in-progress",), "waiting": ("in-review", "awaiting-review", "needs-feedback"), "parked": ("blocked",)}
+
+
+def _range_end(doc, now):
+    """Return the moment open intervals and open problems run to: the range end, else `now`."""
+    until = (doc.get("range") or {}).get("until")
+    return _parse_dt(until) if until else (now or datetime.now(timezone.utc))
+
+
+def problem_rows(doc, now=None):
+    """Return one row per problem, open ones first (oldest first), then resolved ones (newest first).
+
+    `seconds` is the age of an open problem, or the time from a resolved problem to its first fix commit.
+    """
+    end = _range_end(doc, now)
+    commits = {e.get("sha"): e for e in doc.get("events") or [] if e.get("kind") == "commit" and e.get("sha")}
+    rows = []
+    for key, info in (doc.get("issues") or {}).items():
+        for problem in info.get("problems") or []:
+            opened = _parse_dt(problem["ts"])
+            fixes = [{"sha": sha, "url": (commits.get(sha) or {}).get("url"), "subject": (commits.get(sha) or {}).get("subject")}
+                     for sha in problem.get("resolved_by") or []]
+            fixed_at = [_parse_dt(commits[s]["ts"]) for s in problem.get("resolved_by") or [] if s in commits]
+            if problem.get("resolved"):
+                seconds = max(0, int((min(fixed_at) - opened).total_seconds())) if fixed_at else None
+            else:
+                seconds = max(0, int((end - opened).total_seconds()))
+            rows.append({"id": problem["id"], "issue": str(key), "lane": f"issue:{key}", "label": f"#{key}", "title": info.get("title"),
+                         "url": problem.get("url"), "source": problem["source"], "type": PROBLEM_TYPES.get(problem["source"], "Problem"),
+                         "text": (problem.get("text") or "").strip().split("\n")[0], "ts": problem["ts"],
+                         "resolved": bool(problem.get("resolved")), "seconds": seconds, "fixes": fixes})
+    open_rows = sorted((r for r in rows if not r["resolved"]), key=lambda r: r["ts"])
+    resolved_rows = sorted((r for r in rows if r["resolved"]), key=lambda r: r["ts"], reverse=True)
+    return open_rows + resolved_rows
+
+
+def time_in_status(doc, now=None):
+    """Return {issue: {by_status, by_class, open}} in whole seconds, summed from the status events.
+
+    Each `status` event starts an interval that a later status, a merge, a close or a label removal ends.
+    The last open interval runs to the range end, else to `now`. Merged and closed time is not a status.
+    """
+    end = _range_end(doc, now)
+    steps, has_status = {}, set()
+    for event in sorted(doc.get("events") or [], key=lambda e: e["ts"]):
+        if event.get("issue") is None:
+            continue
+        kind = event.get("kind")
+        state = event.get("to") if kind == "status" else None if kind in ("pr.merged", "issue.closed", "issue.reopened") else False
+        if state is not False:
+            steps.setdefault(str(event["issue"]), []).append((_parse_dt(event["ts"]), state))
+            if kind == "status":
+                has_status.add(str(event["issue"]))
+    result = {}
+    for key, rows in steps.items():
+        if key not in has_status:
+            continue
+        by_status = {}
+        for index, (start, state) in enumerate(rows):
+            stop = min(rows[index + 1][0], end) if index + 1 < len(rows) else end
+            if state and stop > start:
+                by_status[state] = by_status.get(state, 0) + int((stop - start).total_seconds())
+        by_class = {name: sum(by_status.get(s, 0) for s in states) for name, states in STATUS_CLASSES.items()}
+        result[key] = {"by_status": by_status, "by_class": by_class, "open": rows[-1][1]}
+    return result
+
+
 def build_model(doc):
     """Return the lane model for a document: groups of lanes, each lane listing event indexes.
 
@@ -1097,7 +1169,7 @@ MARKER_COLORS = {
     "rework": ("#e17083", "#e619e5"),
     "fix": ("#1919e6", "#c3e619"),
     "ci": ("#e619e5", "#77862d"),
-    "review": ("#a112a1", "#19e619"),
+    "review": ("#a112a1", "#f2740d"),
     "note": ("#80931f", "#d9e892"),
     "msg": ("#b77dd4", "#1f936d"),
     "dot": ("#592d86", "#86592d"),
@@ -1155,6 +1227,24 @@ button[aria-pressed="true"] { border-color:var(--accent); color:var(--accent); f
 .controls button[aria-pressed="true"]::before, .filters button[aria-pressed="true"]::before { content:"\2713\00a0"; }
 .controls { display:flex; flex-wrap:wrap; gap:.5rem; align-items:center; margin-bottom:.75rem; }
 .controls input { font:inherit; color:var(--fg); background:var(--panel); border:1px solid var(--line); border-radius:6px; padding:.25rem .6rem; }
+#lanesearch { min-width:14rem; }
+#problemsview { background:var(--panel); border:1px solid var(--line); border-radius:6px; padding:.5rem .75rem; margin-bottom:.75rem; }
+#problemsview > summary { cursor:pointer; font-weight:600; }
+#pvcount { color:var(--muted); font-weight:400; }
+#pvlist { list-style:none; margin:.5rem 0 0; padding:0; display:grid; gap:.25rem; max-height:15rem; overflow:auto; }
+.pv-item { display:flex; flex-wrap:wrap; gap:.15rem .75rem; align-items:baseline; border-left:3px solid var(--diff-del); padding:.1rem .5rem; }
+.pv-item.is-resolved { border-left-color:var(--diff-add); }
+.pv-row { display:flex; flex-wrap:wrap; gap:.15rem .5rem; align-items:baseline; text-align:left; min-width:0; flex:1 1 24rem; border:0; background:transparent; padding:.15rem .25rem; }
+.pv-row:hover { background:var(--bg); }
+.pv-text { flex:1 1 14rem; min-width:0; max-height:2.9em; overflow:hidden; overflow-wrap:anywhere; }
+.pv-time { color:var(--muted); white-space:nowrap; }
+.pv-fixes { color:var(--muted); font-size:.85rem; }
+#problems > li.hit { outline:2px solid var(--accent); outline-offset:-2px; }
+.stackbar { display:flex; height:.6rem; border-radius:3px; overflow:hidden; border:1px solid var(--line); margin:.25rem 0; }
+.stackbar span { display:block; height:100%; } .stackbar span + span { border-left:2px solid var(--bg); }
+.sb-working { background:var(--st-in-progress); } .sb-waiting { background:var(--st-in-review); } .sb-parked { background:var(--st-blocked); }
+.sblist { display:flex; flex-wrap:wrap; gap:.15rem .9rem; margin:0; padding:0; list-style:none; font-size:.85rem; }
+.sblist i { display:inline-block; width:.8rem; height:.6rem; border-radius:2px; margin-right:.3rem; }
 .convergence { background:var(--panel); border:1px solid var(--line); border-radius:6px; padding:.5rem .75rem; margin-bottom:.75rem; }
 .convergence ul { list-style:none; margin:0; padding:0; display:flex; flex-wrap:wrap; gap:.25rem 1.25rem; }
 .legend { display:grid; gap:.3rem; color:var(--muted); font-size:.85rem; margin-bottom:.75rem; }
@@ -1213,7 +1303,7 @@ body.has-panel #layout { display:grid; grid-template-columns:minmax(0,1fr) minma
 #log > li.k-reviews { border-left-color:var(--mk-review); } #log > li.k-agents { border-left-color:var(--mk-msg); }
 .when { color:var(--muted); font-size:.75rem; }
 .badge { display:inline-block; font-size:.7rem; line-height:1.3; padding:0 .4rem; border:1px solid var(--line); border-radius:999px; margin-right:.25rem; background:var(--panel); }
-.b-fix, .b-gate-rework, .b-changes-requested, .b-failure, .b-timed-out, .b-truncated { border-color:var(--diff-del); color:var(--diff-del); }
+.b-fix, .b-open, .b-gate-rework, .b-changes-requested, .b-failure, .b-timed-out, .b-truncated { border-color:var(--diff-del); color:var(--diff-del); }
 .b-approved, .b-success, .b-gate-pass, .b-resolved { border-color:var(--diff-add); color:var(--diff-add); }
 .pre { white-space:pre-wrap; }
 .why { color:var(--muted); font-style:italic; }
@@ -1237,15 +1327,65 @@ THEME_KEY = "tl-theme"
 THEME_HEAD_JS = ('(function(){try{var t=localStorage.getItem("' + THEME_KEY + '");'
                  'if(t==="light"||t==="dark"){document.documentElement.setAttribute("data-theme",t);}}catch(e){}})();')
 
+# Pure helpers of the page script. They touch no DOM, so a test runs them alone in node.
+VIEW_JS = r"""
+  // ---- the shared view lives in the URL hash: lane=..&from=..&to=..&kinds=..&q=..&p=..
+  function esc(text) { return encodeURIComponent(text).replace(/%3A/g, ":"); }
+  function encodeView(v) {
+    var parts = [];
+    if (v.lane) { parts.push("lane=" + esc(v.lane)); }
+    if (v.from) { parts.push("from=" + esc(v.from)); }
+    if (v.to) { parts.push("to=" + esc(v.to)); }
+    if (v.kinds) { parts.push("kinds=" + esc(v.kinds.join(","))); }
+    if (v.q) { parts.push("q=" + esc(v.q)); }
+    if (v.p) { parts.push("p=1"); }
+    return parts.join("&");
+  }
+  function decodeView(text) {
+    var view = {lane: null, from: null, to: null, kinds: null, q: "", p: false};
+    String(text || "").replace(/^#/, "").split("&").forEach(function (pair) {
+      var at = pair.indexOf("=");
+      if (at < 1) { return; }
+      var key = pair.slice(0, at), value;
+      try { value = decodeURIComponent(pair.slice(at + 1)); } catch (e) { return; }
+      if (key === "lane" && value) { view.lane = value; }
+      else if ((key === "from" || key === "to") && !isNaN(Date.parse(value))) { view[key] = value; }
+      else if (key === "kinds") { view.kinds = value === "" ? [] : value.split(","); }
+      else if (key === "q") { view.q = value; }
+      else if (key === "p" && value === "1") { view.p = true; }
+    });
+    return view;
+  }
+  // A search matches the lane label (for example #81) or its title. A leading # in the query is ignored.
+  function laneMatches(lane, query) {
+    var q = String(query || "").trim().toLowerCase().replace(/^#/, "");
+    if (!q) { return true; }
+    return ((lane.label || "") + " " + (lane.title || "")).toLowerCase().replace("#", "").indexOf(q) >= 0;
+  }
+  function fmtDuration(seconds) {
+    var s = Math.max(0, Math.floor(seconds || 0));
+    if (s === 0) { return "0m"; }
+    if (s < 60) { return "<1m"; }
+    var d = Math.floor(s / 86400), h = Math.floor(s % 86400 / 3600), m = Math.floor(s % 3600 / 60);
+    if (d) { return d + "d" + (h ? " " + h + "h" : ""); }
+    if (h) { return h + "h" + (m ? " " + m + "m" : ""); }
+    return m + "m";
+  }
+"""
+
 PAGE_JS = r"""
 (function () {
   "use strict";
+  /*VIEW_JS*/
   var D = JSON.parse(document.getElementById("tl-data").textContent);
   var sel = null;
   var on = {};
   D.logGroups.forEach(function (g) { on[g.key] = true; });
   var times = D.events.map(function (e) { return Date.parse(e.ts); });
   var win = {lo: null, hi: null};
+  var query = "", onlyProblems = false, restoring = false;
+  var PM = {};
+  D.problemMarks.forEach(function (k) { PM[k] = true; });
   var $ = function (id) { return document.getElementById(id); };
 
   // ---- theme: auto follows the browser, light and dark are explicit. The page works without storage.
@@ -1284,6 +1424,12 @@ PAGE_JS = r"""
     if (e.kind === "issue.closed") { return "closed"; }
     if (e.kind === "issue.reopened") { return null; }
     return undefined;
+  }
+  var CLASS_NAMES = [["working", "Working"], ["waiting", "Waiting"], ["parked", "Parked"]];
+  function statusOf(laneId) { return laneId.indexOf("issue:") === 0 ? (D.statusTime || {})[laneId.slice(6)] || null : null; }
+  function statusLine(t) {
+    return "Time in status: " + CLASS_NAMES.filter(function (c) { return c[0] !== "parked" || t.by_class.parked; })
+      .map(function (c) { return c[1].toLowerCase() + " " + fmtDuration(t.by_class[c[0]]); }).join(", ");
   }
   function describe(e, lane) {
     var lines = [e.kind + "  " + e.ts];
@@ -1396,7 +1542,9 @@ PAGE_JS = r"""
         var seg = el("div", "seg seg-" + cls(p.s));
         seg.style.left = pos(p.t, b); seg.style.width = (100 * (end - p.t) / (b.hi - b.lo)).toFixed(3) + "%";
         if (p.s !== "batched") { seg.style.background = "var(--st-" + cls(p.s) + ", var(--st-none))"; }
-        seg.setAttribute("data-tip", p.s + "\nfrom " + stamp(p.t) + " to " + stamp(end) + (lane.title ? "\n" + lane.title : ""));
+        var spent = statusOf(lane.id), tip = p.s + "\nfrom " + stamp(p.t) + " to " + stamp(end) + (lane.title ? "\n" + lane.title : "");
+        if (spent) { tip += "\nTotal in " + p.s + ": " + fmtDuration(spent.by_status[p.s]) + "\n" + statusLine(spent); }
+        seg.setAttribute("data-tip", tip);
         track.appendChild(seg);
       });
     }
@@ -1415,10 +1563,10 @@ PAGE_JS = r"""
     return track.children.length ? row : null;
   }
 
-  function draw() {
+  function draw(keepPanel) {
     var chart = $("chart"), b = bounds();
     chart.textContent = "";
-    var shown = 0;
+    var shown = 0, inRange = 0;
     drawn.ticks = null; drawn.bounds = null;
     if (b) {
       var axis = el("div", "axis"), ticks = el("div", "ticks");
@@ -1431,6 +1579,9 @@ PAGE_JS = r"""
           var visible = lane.events.map(function (i) { return {e: D.events[i], t: times[i], i: i}; })
             .filter(function (x) { return x.t >= b.lo && x.t <= b.hi; });
           if (!visible.length) { return; }
+          inRange += visible.length;
+          if (!laneMatches(lane, query)) { return; }
+          if (onlyProblems && !visible.some(function (x) { return PM[D.marks[x.i]]; })) { return; }
           shown += visible.length;
           var row = laneNode(lane, b, visible);
           if (row) { rows.push(row); }
@@ -1448,9 +1599,12 @@ PAGE_JS = r"""
     }
     var empty = $("empty");
     empty.hidden = shown > 0;
-    empty.textContent = "No events in this range." + (b && !shown ? " Range: " + stamp(b.lo) + " to " + stamp(b.hi) + " UTC." : "");
+    empty.textContent = inRange && !shown ? "No lanes match the search or the problems filter."
+      : "No events in this range." + (b && !shown ? " Range: " + stamp(b.lo) + " to " + stamp(b.hi) + " UTC." : "");
     chart.hidden = shown === 0;
-    renderPanel();
+    if (!keepPanel) { renderPanel(); }
+    problemsView();
+    writeHash();
     if (b) { $("from").value = new Date(b.lo).toISOString().slice(0, 10); $("to").value = new Date(b.hi).toISOString().slice(0, 10); }
   }
 
@@ -1523,11 +1677,21 @@ PAGE_JS = r"""
     return parent;
   }
   // Focus moves into the panel when it opens and back to the lane's button when it closes.
-  function openLane(lane) {
+  function openLane(lane, problemId) {
     sel = lane;
     document.body.classList.add("has-panel");
     draw();
-    $("ptitle").focus();
+    var hit = null;
+    if (problemId) {
+      Array.prototype.forEach.call($("problems").children, function (li) { if (li.getAttribute("data-problem") === problemId) { hit = li; } });
+    }
+    if (hit) { hit.classList.add("hit"); hit.setAttribute("tabindex", "-1"); hit.scrollIntoView({block: "start"}); hit.focus({preventScroll: true}); }
+    else { $("ptitle").focus(); }
+  }
+  function findLane(id) {
+    var found = null;
+    D.groups.forEach(function (g) { g.lanes.forEach(function (l) { if (l.id === id) { found = l; } }); });
+    return found;
   }
   function closePanel() {
     var lane = sel;
@@ -1595,6 +1759,7 @@ PAGE_JS = r"""
   }
   function problemItem(p) {
     var li = el("li");
+    li.setAttribute("data-problem", p.id);
     var top = el("div", "when", stamp(Date.parse(p.ts)) + " · ");
     top.appendChild(badge(p.source === "ci.run" ? "ci" : p.source));
     if (p.state || p.role) { top.appendChild(badge(p.state || p.role)); }
@@ -1614,6 +1779,35 @@ PAGE_JS = r"""
     li.appendChild(fix);
     return li;
   }
+  // Time in status: a stacked bar for working, waiting and parked, and the same numbers as text.
+  function stackBar(t) {
+    var wrap = el("div"), total = 0, names = [];
+    CLASS_NAMES.forEach(function (c) { total += t.by_class[c[0]]; });
+    wrap.appendChild(el("h3", null, "Time in status"));
+    var bar = el("div", "stackbar");
+    bar.setAttribute("role", "img");
+    CLASS_NAMES.forEach(function (c) {
+      var secs = t.by_class[c[0]];
+      names.push(c[1] + " " + fmtDuration(secs));
+      if (!secs) { return; }
+      var part = el("span", "sb-" + c[0]);
+      part.style.width = (100 * secs / total).toFixed(2) + "%";
+      part.setAttribute("data-tip", c[1] + ": " + fmtDuration(secs));
+      bar.appendChild(part);
+    });
+    bar.setAttribute("aria-label", "Time in status: " + names.join(", "));
+    if (total) { wrap.appendChild(bar); }
+    var list = el("ul", "sblist");
+    CLASS_NAMES.forEach(function (c) {
+      var item = el("li", null, c[1] + " " + fmtDuration(t.by_class[c[0]])), swatch = el("i", "sb-" + c[0]);
+      item.insertBefore(swatch, item.firstChild); list.appendChild(item);
+    });
+    wrap.appendChild(list);
+    var each = Object.keys(t.by_status).map(function (k) { return k + " " + fmtDuration(t.by_status[k]); });
+    if (each.length) { wrap.appendChild(el("p", "sub", "By status: " + each.join(" · "))); }
+    if (!total) { wrap.appendChild(el("p", "sub", "No working or waiting time recorded in this range.")); }
+    return wrap;
+  }
   function renderPanel() {
     var panel = $("panel");
     if (!sel) { panel.hidden = true; return; }
@@ -1626,6 +1820,10 @@ PAGE_JS = r"""
       cell.appendChild(el("dt", null, pair[1])); cell.appendChild(el("dd", null, String(sum[pair[0]] || 0)));
       dl.appendChild(cell);
     });
+    var spent = statusOf(sel.id), box = $("pstatus");
+    box.textContent = "";
+    box.hidden = !spent;
+    if (spent) { box.appendChild(stackBar(spent)); }
     var isIssue = sel.kind === "issue", problems = isIssue ? ((D.issues[sel.id.split(":")[1]] || {}).problems || []) : [];
     $("pfix").hidden = !isIssue;
     var list = $("problems"); list.textContent = "";
@@ -1651,14 +1849,95 @@ PAGE_JS = r"""
       on[key] = !on[key];
       button.setAttribute("aria-pressed", String(on[key]));
       renderPanel();
+      writeHash();
     });
   });
   $("pclose").addEventListener("click", closePanel);
   document.addEventListener("keydown", function (ev) {
+    var t = ev.target, typing = t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.tagName === "SELECT" || t.isContentEditable);
+    if (ev.key === "/" && !typing && !ev.ctrlKey && !ev.metaKey && !ev.altKey) {
+      ev.preventDefault();
+      $("lanesearch").focus();
+      return;
+    }
     if (ev.key !== "Escape") { return; }
+    if (t === $("lanesearch") && t.value) { t.value = ""; setQuery(""); return; }
     hideTip();
     if (sel) { closePanel(); }
   });
+
+  // ---- lane search and the problems-only toggle
+  function setQuery(text) { query = text; draw(true); }
+  $("lanesearch").addEventListener("input", function () { setQuery($("lanesearch").value); });
+  $("onlyprob").addEventListener("click", function () {
+    onlyProblems = !onlyProblems;
+    $("onlyprob").setAttribute("aria-pressed", String(onlyProblems));
+    draw(true);
+  });
+
+  // ---- the problems view: every problem in the timeframe, open ones first. A click opens the lane at the problem.
+  function openProblem(row) {
+    var lane = findLane(row.lane);
+    if (lane) { openLane(lane, row.id); }
+  }
+  function problemsView() {
+    var b = bounds(), list = $("pvlist"), open = 0, done = 0;
+    list.textContent = "";
+    D.problemRows.forEach(function (row) {
+      var t = Date.parse(row.ts);
+      if (!b || t < b.lo || t > b.hi) { return; }
+      if (row.resolved) { done++; } else { open++; }
+      var li = el("li", "pv-item " + (row.resolved ? "is-resolved" : "is-open"));
+      var main = el("button", "pv-row");
+      main.type = "button";
+      main.setAttribute("data-problem", row.id);
+      add(main, el("strong", null, row.label), badge(row.type), badge(row.resolved ? "resolved" : "open"), el("span", "pv-text", row.text),
+        el("span", "pv-time", row.resolved ? (row.seconds === null ? "fixed" : "fixed in " + fmtDuration(row.seconds)) : "open for " + fmtDuration(row.seconds)));
+      main.addEventListener("click", function () { openProblem(row); });
+      li.appendChild(main);
+      if (row.fixes.length) {
+        var fixes = el("span", "pv-fixes", "Fix: ");
+        row.fixes.forEach(function (f, n) {
+          if (n) { fixes.appendChild(document.createTextNode(", ")); }
+          fixes.appendChild(link(f.url, String(f.sha).slice(0, 7)));
+        });
+        li.appendChild(fixes);
+      }
+      list.appendChild(li);
+    });
+    $("pvcount").textContent = "(" + open + " open, " + done + " resolved)";
+    $("pvempty").hidden = open + done > 0;
+  }
+
+  // ---- the shared view: the hash holds the open lane, the timeframe, the log filters and the search.
+  function currentView() {
+    var all = D.logGroups.every(function (g) { return on[g.key]; });
+    return {lane: sel ? sel.id : null, from: win.lo === null ? null : new Date(win.lo).toISOString(),
+      to: win.hi === null ? null : new Date(win.hi).toISOString(),
+      kinds: all ? null : D.logGroups.filter(function (g) { return on[g.key]; }).map(function (g) { return g.key; }),
+      q: query, p: onlyProblems};
+  }
+  // replaceState keeps the back button free of view changes. The refresh reload of `watch` keeps the hash.
+  function writeHash() {
+    if (restoring) { return; }
+    var text = encodeView(currentView());
+    try { history.replaceState(null, "", text ? "#" + text : location.pathname + location.search); } catch (e) { /* a sandboxed page cannot rewrite its URL */ }
+  }
+  function applyView(v) {
+    restoring = true;
+    query = v.q; $("lanesearch").value = v.q;
+    onlyProblems = v.p; $("onlyprob").setAttribute("aria-pressed", String(v.p));
+    win.lo = v.from ? Date.parse(v.from) : null; win.hi = v.to ? Date.parse(v.to) : null;
+    document.querySelectorAll("[data-preset]").forEach(function (button) {
+      button.setAttribute("aria-pressed", String(button.getAttribute("data-preset") === "all" && win.lo === null && win.hi === null));
+    });
+    D.logGroups.forEach(function (g) { on[g.key] = v.kinds === null || v.kinds.indexOf(g.key) >= 0; });
+    document.querySelectorAll("[data-log]").forEach(function (button) { button.setAttribute("aria-pressed", String(on[button.getAttribute("data-log")])); });
+    sel = v.lane ? findLane(v.lane) : null;
+    document.body.classList.toggle("has-panel", !!sel);
+    restoring = false;
+  }
+  window.addEventListener("hashchange", function () { applyView(decodeView(location.hash)); draw(); });
 
   // ---- the legend: States, Events and Problems, each its own labelled row.
   var legend = $("legend");
@@ -1681,9 +1960,13 @@ PAGE_JS = r"""
     swatch.setAttribute("aria-hidden", "true");
     item.insertBefore(swatch, item.firstChild); (rows[m.group] || rows.events).appendChild(item);
   });
+  applyView(decodeView(location.hash));
   draw();
 })();
 """
+
+
+PAGE_JS = PAGE_JS.replace("/*VIEW_JS*/", VIEW_JS)
 
 
 def render_html(doc, refresh=None, now=None):
@@ -1708,6 +1991,7 @@ def render_html(doc, refresh=None, now=None):
     states = [{"key": k, "label": k} for k in seen]
     group_of = {k: name for name, keys in MARKER_GROUPS.items() for k in keys}
     markers = [{"key": k, "label": MARKER_LABELS[k], "group": group_of[k]} for k in MARKER_COLORS]
+    problems = problem_rows(doc, now)
     summaries = {lane["id"]: lane_summary([events[i] for i in lane["events"]]) for group in groups for lane in group["lanes"]}
     notes = {}  # batch key -> indexes of its cross-check and plan-amendment comments, whichever issue holds them
     for index, event in enumerate(events):
@@ -1716,9 +2000,11 @@ def render_html(doc, refresh=None, now=None):
     data = {"states": states, "markers": markers, "events": events, "issues": doc.get("issues") or {}, "batches": doc.get("batches") or {},
             "range": rng, "groups": groups, "kinds": kinds, "marks": [marker_for(e) for e in events],
             "logs": [log_group_of(e) for e in events], "logGroups": [{"key": k, "label": label} for k, label, _ in LOG_GROUPS],
-            "summaries": summaries, "notes": notes}
+            "summaries": summaries, "notes": notes, "problemRows": problems, "problemMarks": list(PROBLEM_MARKS),
+            "statusTime": time_in_status(doc, now)}
     filters = "".join(f'<button type="button" data-log="{html.escape(k)}" aria-pressed="true">{html.escape(label)}</button>'
                       for k, label, _ in LOG_GROUPS)
+    pv_open, pv_hidden = (" open", " hidden") if problems else ("", "")
     meta = f'<meta http-equiv="refresh" content="{int(refresh)}">\n' if refresh else ""
     empty = '<p id="empty">No events in this range.</p>' if not events else '<p id="empty" hidden>No events in this range.</p>'
     return f"""<!DOCTYPE html>
@@ -1745,7 +2031,15 @@ def render_html(doc, refresh=None, now=None):
 <button type="button" data-preset="all" aria-pressed="true">all</button>
 <label>From <input type="date" id="from"></label>
 <label>To <input type="date" id="to"></label>
+<label for="lanesearch">Search lanes</label>
+<input type="search" id="lanesearch" placeholder="number or title, or press /" autocomplete="off" aria-keyshortcuts="/">
+<button type="button" id="onlyprob" aria-pressed="false">Only lanes with problems</button>
 </div>
+<details id="problemsview"{pv_open}>
+<summary>Problems <span id="pvcount"></span></summary>
+<ul id="pvlist"></ul>
+<p id="pvempty" class="sub"{pv_hidden}>No problems in this range.</p>
+</details>
 {_convergence_strip(doc.get("convergence"))}
 <div class="legend" id="legend" role="group" aria-label="Legend"></div>
 <div id="layout">
@@ -1756,6 +2050,7 @@ def render_html(doc, refresh=None, now=None):
 <aside id="panel" aria-label="Lane detail" hidden>
 <div class="phead"><h2 id="ptitle" tabindex="-1"></h2><button type="button" id="pclose">Close</button></div>
 <dl id="psummary"></dl>
+<div id="pstatus" hidden></div>
 <section id="pfix"><h3>What needed fixing</h3><ul id="problems"></ul><p id="pnone" class="sub">Nothing needed fixing.</p></section>
 <section id="pnotes" hidden><h3>Cross-checks and amendments</h3><ul id="notes"></ul><p id="pnonotes" class="sub">None recorded.</p></section>
 <h3>Log</h3>

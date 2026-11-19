@@ -234,6 +234,13 @@ comments, reviews, CI runs and agent events that you can filter by kind. Each fi
 expands into its diff. On a batch lane the panel also lists the cross-check findings and plan
 amendments.
 
+The **Problems** section at the top lists every rework request, changes-requested review and failed
+CI run in the timeframe: open ones first, then resolved ones, each with its age or time to fix and its
+fix commits. A click on a row opens that issue's panel at the problem. **Search lanes** (press `/`)
+filters lanes by number or title, and **Only lanes with problems** keeps the lanes that show one. The
+address bar holds the view (open lane, timeframe, log filters, search), so you can share the link, and
+`watch` reloads keep it. The panel summary shows the time the issue spent working, waiting and parked.
+
 The **Theme** button in the page header cycles auto (the browser setting), light and dark. The page
 remembers the choice in the browser. Every lane and marker works from the keyboard.
 

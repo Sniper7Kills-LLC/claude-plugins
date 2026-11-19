@@ -1091,6 +1091,129 @@ check("--diff-add-bg" in timeline.LAYOUT_CSS and "--diff-del-bg" in timeline.LAY
 check('[aria-pressed="true"]::before' in timeline.LAYOUT_CSS, "a pressed filter shows a mark, not only a colour")
 check("var(--visited)" in timeline.LAYOUT_CSS and "a:hover" in timeline.LAYOUT_CSS, "links have visited and hover states")
 
+# ---------------------------------------------------------------- problems view, shared views, search, time in status (#84)
+import shutil
+
+NOW84 = datetime(2026, 11, 20, 0, 0, 0, tzinfo=timezone.utc)
+
+# 1. The problems view lists every problem of the data. Open problems come first, then resolved ones by time.
+rows78 = timeline.problem_rows(doc78, NOW84)
+check(len(rows78) == sum(len(i.get("problems") or []) for i in doc78["issues"].values()) == 1, f"one row per problem in the batch #78 fixture: {len(rows78)}")
+r78 = rows78[0] if rows78 else {}
+check(r78.get("issue") == "75" and r78.get("lane") == "issue:75" and r78.get("label") == "#75" and r78.get("resolved") is True, f"the #75 rework row is resolved: {r78}")
+check(r78.get("type") == "Rework requested" and r78.get("text", "").startswith("PM gate: rework requested."), f"row type and first line: {r78.get('type')!r}")
+check(r78.get("seconds") == 44, f"time to fix is first fix commit minus problem: {r78.get('seconds')}")
+check(len(r78.get("fixes", [])) == 1 and r78["fixes"][0]["sha"].startswith("e733766") and r78["fixes"][0]["subject"] and "url" in r78["fixes"][0],
+      "the row carries its fix commit with subject and url")
+check(r78.get("url") and r78.get("id") == "75:auto-1", "the row carries the problem url and id")
+
+pv_doc = copy.deepcopy(dd_doc)
+pv_doc["issues"]["51"]["problems"][1].update(resolved=False, resolved_by=[])      # the CI failure stays open
+pv_doc["issues"]["51"]["problems"].append(dict(pv_doc["issues"]["51"]["problems"][0], id="51:auto-9", ts="2026-06-01T12:00:00Z",
+                                               resolved=False, resolved_by=[]))      # a newer open problem
+pv_rows = timeline.problem_rows(pv_doc, NOW84)
+check([r["id"] for r in pv_rows][:2] == ["51:auto-2", "51:auto-9"], f"open problems lead, oldest first: {[r['id'] for r in pv_rows]}")
+check([r["resolved"] for r in pv_rows] == [False, False, True, True], f"open first, then resolved: {[r['resolved'] for r in pv_rows]}")
+check([r["ts"] for r in pv_rows[2:]] == sorted((r["ts"] for r in pv_rows[2:]), reverse=True), "resolved rows sort newest first")
+check(pv_rows[0]["seconds"] == int((NOW84 - datetime(2026, 6, 1, 9, 45, 30, tzinfo=timezone.utc)).total_seconds()), "an open problem shows its age")
+check(pv_rows[0]["type"] == "CI failed" and {r["type"] for r in pv_rows} == {"CI failed", "Changes requested", "Rework requested"}, "row types by source")
+check(timeline.problem_rows({"events": [], "issues": {}}, NOW84) == [], "no problems gives no rows")
+check(timeline.problem_rows({"events": [], "issues": {"5": {"title": "x"}}}, NOW84) == [], "an issue without a problems key gives no rows")
+pv_page = timeline.render_html(pv_doc, now=NOW84)
+pv_data = payload(pv_page)
+check(pv_data["problemRows"] == pv_rows, "the page embeds the rows")
+body84 = pv_page.split("<body>", 1)[1]
+check(body84.index('class="controls"') < body84.index('id="problemsview"') < body84.index('id="legend"'),
+      "the problems section is the first section under the controls")
+check(re.search(r'<details id="problemsview"[^>]* open', body84) is not None, "the problems section is open when a problem exists")
+none_page = timeline.render_html({"events": [], "issues": {}}, now=NOW84)
+check(re.search(r'<details id="problemsview"[^>]* open', none_page) is None and "No problems" in none_page, "the problems section is closed and says so when there are none")
+for word in ("function problemsView", "openProblem", "data-problem", "scrollIntoView", ".pv-row"):
+    check(word in timeline.PAGE_JS or word in timeline.LAYOUT_CSS, f"the problems view script handles {word}")
+check("bounds()" in timeline.PAGE_JS.split("function problemsView")[-1].split("\n  function ")[0], "the problems view respects the timeframe")
+
+# 2. Shared view: the hash holds lane, range, log filters, search and the problems toggle.
+node = shutil.which("node")
+HELPERS_OK = all(word in getattr(timeline, "VIEW_JS", "") for word in ("encodeView", "decodeView", "laneMatches", "fmtDuration"))
+check(HELPERS_OK, "the page script defines the pure view helpers")
+for word in ("replaceState", "hashchange", "location.hash"):
+    check(word in timeline.PAGE_JS, f"the script uses {word}")
+check("pushState" not in timeline.PAGE_JS, "writing the hash never adds history entries")
+
+
+def js(expr):
+    """Run `expr` against the pure view helpers in node and return its JSON value."""
+    proc = subprocess.run([node, "-e", timeline.VIEW_JS + "\nconsole.log(JSON.stringify(" + expr + "));"],
+                          capture_output=True, text=True, timeout=30)
+    if proc.returncode != 0:
+        return {"error": proc.stderr[-300:]}
+    return json.loads(proc.stdout)
+
+
+if not node:
+    print("SKIP view-helper behaviour cases: node is not installed")
+elif HELPERS_OK:
+    view = {"lane": "issue:81", "from": "2026-11-19T22:00:00.000Z", "to": "2026-11-20T01:30:00.000Z", "kinds": ["commits", "ci"],
+            "q": "hash & more=1", "p": True}
+    enc = js("encodeView(" + json.dumps(view) + ")")
+    check(isinstance(enc, str) and enc.startswith("lane=issue:81&from=2026-11-19T22:00") and "&p=1" in enc and "kinds=commits%2Cci" in enc,
+          f"the hash writes the format lane=..&from=..&to=..&kinds=..&q=..&p=..: {enc}")
+    check(isinstance(enc, str) and "&q=hash%20%26%20more%3D1" in enc, f"search text is escaped so & and = survive: {enc}")
+    check(js("decodeView(encodeView(" + json.dumps(view) + "))") == view, "decode(encode(view)) returns the view")
+    check(js("decodeView('#' + encodeView(" + json.dumps(view) + "))") == view, "decode accepts a leading #")
+    empty = {"lane": None, "from": None, "to": None, "kinds": None, "q": "", "p": False}
+    check(js("encodeView(" + json.dumps(empty) + ")") == "", "an empty view writes an empty hash")
+    check(js("decodeView('')") == empty and js("decodeView('#')") == empty, "an empty hash decodes to the empty view")
+    check(js("decodeView('lane=issue:81&bogus=1&from=not-a-date&p=7')") == dict(empty, lane="issue:81"), "unknown keys and bad values are ignored")
+    check(js("decodeView('kinds=')")["kinds"] == [] and js("decodeView('')")["kinds"] is None, "an empty kinds list differs from an absent one")
+    check(js("decodeView('q=%E0%A4%A')")["q"] == "", "a malformed escape does not throw")
+    # 3. Lane search: number or title, case-insensitive, a leading # ignored.
+    lane81 = {"label": "#81", "title": "Timeline drill-down"}
+    for query, want in (("", True), ("81", True), ("#81", True), ("drill", True), ("DRILL-down", True), ("  drill ", True), ("82", False), ("nope", False)):
+        check(js("laneMatches(" + json.dumps(lane81) + "," + json.dumps(query) + ")") is want, f"search {query!r} matches #81: {want}")
+    check(js("laneMatches({label:'Batch activity',title:null},'batch')") is True, "a lane without a title still matches its label")
+    # 4. Durations read as days, hours, minutes.
+    for secs, want in ((0, "0m"), (45, "<1m"), (60, "1m"), (3600, "1h"), (5400, "1h 30m"), (90000, "1d 1h"), (None, "0m")):
+        check(js(f"fmtDuration({json.dumps(secs)})") == want, f"fmtDuration({secs}) is {want}")
+check('id="lanesearch"' in body84 and 'type="search"' in body84 and 'for="lanesearch"' in body84, "a labelled search box sits in the controls")
+check('id="onlyprob"' in body84 and 'aria-pressed="false"' in body84.split('id="onlyprob"')[1].split(">")[0], "the problems-only toggle is a pressed-state button")
+check(body84.index('id="lanesearch"') < body84.index('id="onlyprob"') < body84.index('id="problemsview"'), "the toggle sits next to the search, above the problems view")
+for word in ('ev.key === "/"', "isContentEditable", "lanesearch", ".focus()", "preventDefault"):
+    check(word in timeline.PAGE_JS, f"the / shortcut handles {word}")
+check("problemMarks" in timeline.PAGE_JS and set(payload(html_gh)["problemMarks"]) == {"rework", "review", "ci"}, "a lane has a problem when it shows a rework, review or CI marker")
+
+# 5. Time in status: totals equal the sums of the status intervals. The collector is unchanged.
+tis = timeline.time_in_status(gh_doc, NOW84)
+check("51" in tis, f"issues with status events get totals: {sorted(tis)}")
+t51 = tis.get("51", {})
+check(t51.get("by_status") == {"ready": 3595, "in-progress": 3600, "in-review": 5400}, f"#51 per-status seconds equal the intervals: {t51.get('by_status')}")
+check(t51.get("by_class") == {"working": 3600, "waiting": 5400, "parked": 0}, f"#51 working vs waiting: {t51.get('by_class')}")
+check(t51.get("open") is None, "a merged issue has no open interval")
+park = copy.deepcopy(gh_doc)
+park["events"] = [e for e in park["events"] if e.get("issue") != 51] + [
+    {"ts": "2026-05-01T10:00:00Z", "kind": "status", "issue": 70, "pr": None, "batch": None, "actor": None, "from": None, "to": "in-progress", "detail": None},
+    {"ts": "2026-05-01T10:10:00Z", "kind": "status", "issue": 70, "pr": None, "batch": None, "actor": None, "from": "in-progress", "to": "needs-feedback", "detail": None},
+    {"ts": "2026-05-01T10:30:00Z", "kind": "status", "issue": 70, "pr": None, "batch": None, "actor": None, "from": "needs-feedback", "to": "blocked", "detail": None},
+    {"ts": "2026-05-01T11:00:00Z", "kind": "status", "issue": 70, "pr": None, "batch": None, "actor": None, "from": "blocked", "to": "in-progress", "detail": None}]
+park["events"].sort(key=lambda e: e["ts"])
+pt = timeline.time_in_status(park, datetime(2026, 5, 1, 12, 0, tzinfo=timezone.utc)).get("70", {})
+check(pt.get("by_class") == {"working": 600 + 3600, "waiting": 1200, "parked": 1800}, f"needs-feedback waits, blocked parks, a reopened state adds up: {pt.get('by_class')}")
+check(pt.get("open") == "in-progress", "the last status runs to the end of the range")
+capped = timeline.time_in_status(park, datetime(2026, 5, 1, 10, 20, tzinfo=timezone.utc)).get("70", {"by_status": {}})
+check(capped["by_status"].get("in-progress") == 600 and capped["by_status"].get("needs-feedback") == 600, f"the end bounds the open interval: {capped['by_status']}")
+check(payload(timeline.render_html(gh_doc, now=NOW84)).get("statusTime") == tis, "the page embeds the totals")
+for word in ("statusTime", "fmtDuration", "stackbar"):
+    check(word in timeline.PAGE_JS or word in timeline.LAYOUT_CSS, f"the script shows time in status through {word}")
+
+# 6. Marker colours: no two markers read as one (the dark "changes requested" ring was green like "PR merged").
+for index, theme in enumerate(("light", "dark")):
+    keys = list(timeline.MARKER_COLORS)
+    for a in range(len(keys)):
+        for b in range(a + 1, len(keys)):
+            distance = delta_e(timeline.MARKER_COLORS[keys[a]][index], timeline.MARKER_COLORS[keys[b]][index])
+            check(distance >= 28, f"{theme}: marker {keys[a]} is only {distance:.1f} from marker {keys[b]}")
+check(delta_e(timeline.MARKER_COLORS["review"][1], timeline.MARKER_COLORS["merge"][1]) >= 60, "dark: changes-requested does not read as merged")
+
 if failures:
     for failure in failures:
         print(f"FAIL {failure}")

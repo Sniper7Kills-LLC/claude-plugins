@@ -316,6 +316,32 @@ colors. A file with `truncated: true` carries a `truncated` badge and a closing 
 `null` patch says that no diff is available. The panel sets all text with `textContent`, never as
 markup, and the data tag escapes `<`, `>` and `&`.
 
+**Problems view.** A collapsible section under the controls lists every problem of every issue. It is
+open when any problem exists. `problem_rows` builds one row per problem: open rows first (oldest first),
+then resolved rows (newest first). A row shows the issue, the type (`Rework requested`, `Changes requested`
+or `CI failed`), the first line of the text, and `seconds`. For an open problem `seconds` is its age at the
+range end, else at render time. For a resolved problem it is the time to the first commit in `resolved_by`.
+The fix commits link to their pages. A click opens the issue's panel and scrolls to the problem. The list
+follows the timeframe filter and shows "No problems in this range." when it is empty.
+
+**Shared view.** The URL hash holds the view: `#lane=<lane id>&from=<iso>&to=<iso>&kinds=<csv>&q=<text>&p=<0|1>`.
+`lane` is the open panel. `from` and `to` are the timeframe. `kinds` lists the log kinds that are on, and is
+absent when all are on. `q` is the lane search. `p=1` turns on "Only lanes with problems". The page writes
+the hash with `history.replaceState`, so the back button never steps through view changes. It reads the
+hash on load and on `hashchange`, and it ignores unknown keys and bad values. The `--refresh` reload
+keeps the hash, so `watch` keeps the open panel.
+
+**Lane search.** The search box matches the lane label or title, ignoring case and a leading `#`. A lane
+"has a problem" when it shows a `rework`, `review` or `ci` marker in the timeframe (`PROBLEM_MARKS`). `/`
+focuses the search when no field has focus. `Escape` in the search clears it.
+
+**Time in status.** `time_in_status` sums the intervals of each issue's `status` events. A status ends at
+the next `status` event, a merge, a close or a label removal, and the last open status runs to the range
+end, else to render time. `STATUS_CLASSES` groups the totals: `working` is `in-progress`; `waiting` is
+`in-review`, `awaiting-review` and `needs-feedback`; `parked` is `blocked`. Other statuses (`ready`,
+`batched`) appear in `by_status` only. The bar tooltip and a stacked bar in the panel summary show the
+totals. The collector is unchanged: the totals come from the events already in the document.
+
 **Batch lane.** Cross-check and plan-amendment comments (`NOTE_ROLES`) of the batch show in a
 separate list on the batch lane, whichever issue holds the comment. Comments, commits, reviews and CI
 runs of the tracking issue itself, and the batch merge, sit on the batch lane.
