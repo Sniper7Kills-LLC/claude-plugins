@@ -365,7 +365,7 @@ page = timeline.render_html(hostile)
 check(payload(page)["issues"]["51"]["title"] == hostile["issues"]["51"]["title"], "title with </script> round-trips")
 check(payload(page)["events"][0]["detail"] == "<!-- </SCRIPT>", "detail with a comment opener round-trips")
 check('<b id="pwn">' not in page and "<i>r</i>" not in page, "markup in data is escaped")
-check(page.lower().count("</script>") == 2, "only the page's own two script tags close")
+check(page.lower().count("</script>") == 3, "only the page's own three script tags close")
 
 # Empty and filtered-empty states.
 empty_page = timeline.render_html({"version": 1, "forge": {"type": "github", "owner": "o", "repo": "r"},
@@ -375,9 +375,12 @@ check('<p id="empty">No events in this range.</p>' in empty_page, "empty events 
 check(payload(empty_page)["groups"] == [], "empty events give no lanes")
 
 # Convergence strip: shown only when the data has it.
-check('class="convergence"' in html_gh and "Gate 12" in html_gh and "3 filed" in html_gh and "5 closed" in html_gh,
-      "convergence strip lists gate 12")
-check("Gate 13" in html_gh and "2 filed" in html_gh and "– closed" in html_gh, "a null count shows a dash")
+check('class="convergence"' in html_gh and "Gate 12: 3 issues filed, 5 closed" in html_gh,
+      "convergence strip lists gate 12 in plain words")
+check("Gate 13: 2 issues filed, closed count not recorded" in html_gh, "a null count says it was not recorded")
+check("Gate 14: 0 issues filed, none closed yet" in timeline._convergence_strip([{"gate": 14, "filed": 0, "closed": 0}]),
+      "zero counts read as plain language")
+check("1 issue filed" in timeline._convergence_strip([{"gate": 1, "filed": 1, "closed": 1}]), "one issue is singular")
 check('class="convergence"' not in empty_page, "no convergence data, no strip")
 
 # --refresh writes a meta refresh; default writes none.
@@ -931,7 +934,7 @@ for e in hostile2["events"]:
         e["excerpt"] = evil
         break
 hp = timeline.render_html(hostile2)
-check(hp.lower().count("</script>") == 2 and "<img" not in hp, "hostile patch and comment text cannot close the script or add markup")
+check(hp.lower().count("</script>") == 3 and "<img" not in hp, "hostile patch and comment text cannot close the script or add markup")
 check(any(evil in (f["patch"] or "") for e in payload(hp)["events"] if e["kind"] == "commit" for f in e["files"]), "hostile patch round-trips as data")
 check(any(e.get("excerpt") == evil for e in payload(hp)["events"]), "hostile comment round-trips as data")
 check("innerHTML" not in hp and "insertAdjacentHTML" not in hp and "document.write" not in hp, "the page never writes HTML from data")
@@ -944,7 +947,8 @@ check(found <= allowed, f"the page holds only tracker URLs: {found - allowed}")
 
 # 8. Themes and narrow widths.
 check("@media (max-width" in timeline.PAGE_CSS and "#panel" in timeline.PAGE_CSS, "panel has a narrow layout")
-check(timeline.PAGE_CSS.count("--mk-note:") == 2 and timeline.PAGE_CSS.count("--mk-msg:") == 2, "new markers set in both themes")
+check(timeline.PAGE_CSS.count("--mk-note:") == 3 and timeline.PAGE_CSS.count("--mk-msg:") == 3,
+      "new markers set in the light, the dark and the auto-dark blocks")
 
 # ---------------------------------------------------------------- rework r1 (#81)
 # Fix 3: a trailer block is never a `why`.
@@ -980,6 +984,112 @@ check(not any(k.startswith("_") for e in rw["events"] for k in e), "no private k
 
 # Fix 1: the time axis thins its labels to the width it has.
 check("function axisTicks" in timeline.PAGE_JS and "resize" in timeline.PAGE_JS, "the axis re-thins on resize")
+
+# ---------------------------------------------------------------- design pass (#83)
+def _lin(channel):
+    channel /= 255
+    return channel / 12.92 if channel <= 0.04045 else ((channel + 0.055) / 1.055) ** 2.4
+
+
+def _rgb(color):
+    color = color.lstrip("#")
+    return [int(color[i:i + 2], 16) for i in (0, 2, 4)]
+
+
+def luminance(color):
+    r, g, b = (_lin(c) for c in _rgb(color))
+    return 0.2126 * r + 0.7152 * g + 0.0722 * b
+
+
+def contrast(a, b):
+    hi, lo = sorted((luminance(a), luminance(b)), reverse=True)
+    return (hi + 0.05) / (lo + 0.05)
+
+
+def lab(color):
+    r, g, b = (_lin(c) for c in _rgb(color))
+    x = (0.4124 * r + 0.3576 * g + 0.1805 * b) / 0.95047
+    y = 0.2126 * r + 0.7152 * g + 0.0722 * b
+    z = (0.0193 * r + 0.1192 * g + 0.9505 * b) / 1.08883
+    f = lambda t: t ** (1 / 3) if t > 0.008856 else 7.787 * t + 16 / 116
+    return 116 * f(y) - 16, 500 * (f(x) - f(y)), 200 * (f(y) - f(z))
+
+
+def delta_e(a, b):
+    """CIE76 colour distance. The test asks for 20 or more between a marker and a state."""
+    return sum((p - q) ** 2 for p, q in zip(lab(a), lab(b))) ** 0.5
+
+
+page83 = timeline.render_html(gh_doc)
+head83, body83 = page83.split("<body>", 1)
+
+# 1. Theme: three states, tokens in both themes, applied before first paint.
+check(set(timeline.THEME_TOKENS) == {"light", "dark"}, "THEME_TOKENS holds a light and a dark table")
+check(':root[data-theme="dark"]' in timeline.PAGE_CSS and ':root:not([data-theme="light"])' in timeline.PAGE_CSS
+      and ':root[data-theme="light"]' in timeline.PAGE_CSS, "dark tokens sit under data-theme; the media block yields to an explicit light")
+check(timeline.PAGE_CSS.count("color-scheme:") >= 3, "each theme sets color-scheme")
+check(timeline.PAGE_CSS.count("--bg:") == 3 and timeline.PAGE_CSS.count("--accent:") == 3, "tokens are set in light, dark and auto-dark")
+check('id="theme"' in body83, "the header has a theme button")
+head_script = head83.split("</style>")[-1]
+check("localStorage" in head_script and "data-theme" in head_script, "an inline head script applies the stored theme before first paint")
+check(re.search(r"try\s*\{[^}]*localStorage", head_script) is not None, "the head script reads storage inside try")
+check(re.search(r"try\s*\{[^}]*localStorage\.setItem", timeline.PAGE_JS) is not None, "the toggle writes storage inside try")
+for word in ('"auto"', '"light"', '"dark"', "aria-label"):
+    check(word in timeline.PAGE_JS, f"the toggle script handles {word}")
+
+# 2. Contrast: every text pair in both themes is at least 4.5:1, computed from the token tables.
+PAIRS = (("fg", "bg"), ("fg", "panel"), ("muted", "bg"), ("muted", "panel"), ("accent", "bg"), ("accent", "panel"),
+         ("visited", "bg"), ("visited", "panel"), ("add", "bg"), ("add", "panel"), ("del", "bg"), ("del", "panel"),
+         ("fg", "add-bg"), ("fg", "del-bg"))
+for theme, table in timeline.THEME_TOKENS.items():
+    for fg_key, bg_key in PAIRS:
+        ratio = contrast(table[fg_key], table[bg_key])
+        check(ratio >= 4.5, f"{theme}: {fg_key} on {bg_key} is {ratio:.2f}:1, need 4.5")
+
+# 3. No colour outside the token block: the layout CSS and the script use var(--token) only.
+check(re.search(r"#[0-9a-fA-F]{3,8}\b|rgba?\(|hsla?\(", timeline.LAYOUT_CSS) is None, "no hard-coded colour in the layout CSS")
+check(re.search(r"#[0-9a-fA-F]{6}\b|rgba?\(", timeline.PAGE_JS) is None, "no hard-coded colour in the page script")
+check(timeline.PAGE_CSS == timeline.TOKEN_CSS + timeline.LAYOUT_CSS, "the page CSS is the token block plus the layout block")
+
+# 4. Markers: none equals or sits near a state colour in either theme (CIE76 distance of at least 20).
+for index, theme in enumerate(("light", "dark")):
+    for mkey, mpair in timeline.MARKER_COLORS.items():
+        for skey, spair in timeline.STATE_COLORS.items():
+            distance = delta_e(mpair[index], spair[index])
+            check(distance >= 20, f"{theme}: marker {mkey} is only {distance:.1f} from state {skey}")
+        check(contrast(mpair[index], timeline.THEME_TOKENS[theme]["bg"]) >= 3, f"{theme}: marker ring {mkey} shows on the page background")
+check({m["group"] for m in payload(page83)["markers"]} == {"events", "problems"}, "markers fall into the Events and Problems legend rows")
+check(set(timeline.MARKER_COLORS) == {k for keys in timeline.MARKER_GROUPS.values() for k in keys}, "every marker belongs to a legend group")
+check("2px solid var(--mk-" in timeline.LAYOUT_CSS, "a marker is a glyph inside a 2px coloured ring")
+for word in ("States", "Events", "Problems", '"group"'):
+    check(word in timeline.PAGE_JS or word in body83, f"the legend names {word}")
+
+# 5. Keyboard and screen reader.
+check('"role", "button"' not in timeline.PAGE_JS and "lane-open" in timeline.PAGE_JS, "a lane has a real button, not a role=button wrapper")
+check('el("button", "mk mk-' in timeline.PAGE_JS, "markers are buttons")
+for word in ("focusin", "focusout", "aria-expanded", "Escape", "ptitle", ".focus("):
+    check(word in timeline.PAGE_JS, f"the script handles {word}")
+check('tabindex="-1"' in body83, "the panel title can take focus")
+check('role="group"' in body83 or '"role", "group"' in timeline.PAGE_JS, "the legend has a role")
+check('aria-label="Filter log' in body83, "the log filter is a labelled group")
+check(":focus-visible" in timeline.LAYOUT_CSS, "focus has a visible style")
+check("intersects" in timeline.PAGE_JS and "getBoundingClientRect" in timeline.PAGE_JS, "the tooltip is placed clear of the open panel")
+
+# 6. Axis and layout.
+for word in ("function tickLabel", "ResizeObserver", "function spread", "function plain"):
+    check(word in timeline.PAGE_JS, f"the script defines {word.split()[-1]}")
+check("scrollbar-gutter:stable" in timeline.LAYOUT_CSS.replace(" ", ""), "the chart reserves its scrollbar gutter")
+check("2px dashed var(--st-batched)" in timeline.LAYOUT_CSS and "repeating-" not in timeline.LAYOUT_CSS, "batched draws as an outlined segment")
+check('"seg seg-"' in timeline.PAGE_JS, "the script classes each segment by state")
+check("alert" in timeline.PAGE_JS and ".alert" in timeline.LAYOUT_CSS, "non-zero rework, CI and review tiles get emphasis")
+
+# 7. Minor items.
+bl83 = next(lane for g in payload(html_gh)["groups"] for lane in g["lanes"] if lane["kind"] == "batch")
+check(not bl83["label"].startswith("Batch #"), f"the batch lane does not repeat the group heading: {bl83['label']}")
+check(".lane.sel" in timeline.LAYOUT_CSS and "3px" in timeline.LAYOUT_CSS.split(".lane.sel")[1].split("}")[0], "the selected lane has a 3px edge")
+check("--diff-add-bg" in timeline.LAYOUT_CSS and "--diff-del-bg" in timeline.LAYOUT_CSS, "diff colours are theme tokens")
+check('[aria-pressed="true"]::before' in timeline.LAYOUT_CSS, "a pressed filter shows a mark, not only a colour")
+check("var(--visited)" in timeline.LAYOUT_CSS and "a:hover" in timeline.LAYOUT_CSS, "links have visited and hover states")
 
 if failures:
     for failure in failures:

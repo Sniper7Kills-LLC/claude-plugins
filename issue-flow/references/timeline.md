@@ -266,10 +266,28 @@ Another producer adds a lane type by adding a row and using that prefix.
 Events with no batch go in a final group named "No batch". A batch with no `branch` shows
 only its number. The page ignores event keys it does not know.
 
-**Colors and legend.** `STATE_COLORS` (one row per status) and `MARKER_COLORS` in
-`timeline.py` set every bar and marker color for both themes. The legend reads the same
-tables, so a state cannot draw without a legend entry. A status that is not in the table
-draws grey and gets its own legend entry.
+**Colors and legend.** `STATE_COLORS` (one row per status), `MARKER_COLORS` and `THEME_TOKENS`
+in `timeline.py` set every color of the page for both themes. `TOKEN_CSS` is the only place a
+color value appears; `LAYOUT_CSS` uses `var(--token)` and nothing else. The legend reads the same
+tables, so a state cannot draw without a legend entry. It has three labelled rows: States, Events
+and Problems (`MARKER_GROUPS`). A status that is not in the table draws grey and gets its own
+legend entry. A bar state draws as a solid segment. The state `batched` draws as a dashed outline.
+
+**Theme.** The header button cycles three modes: auto (the browser's `prefers-color-scheme`),
+light and dark. Dark tokens sit under `:root[data-theme="dark"]` and, for auto, in a media block
+that an explicit light mode overrides. Each theme sets `color-scheme`. The choice is stored in
+`localStorage` under `tl-theme`, inside `try`, so the page works when storage is blocked. A small
+script in `<head>` applies the stored theme before first paint, so the page does not flash.
+
+**Contrast and marker colors.** The test `scripts/test-timeline.py` computes the WCAG contrast of
+every text pair in `THEME_TOKENS` and requires 4.5:1 or more in both themes. A marker is a glyph
+inside a 2px ring. Each ring color is at least 20 CIE76 units from every state color in both
+themes, so a ring is never read as a bar state, and the test enforces that distance.
+
+**Keyboard.** Every lane has one "Details" button, and a marker is a button with an `aria-label`
+that holds the tooltip text. The tooltip shows on hover and on focus, and it moves clear of the
+open panel. Opening the panel moves focus to its title. `Escape` or **Close** returns focus to the
+lane's button. Markers that sit closer together than their own width move apart vertically.
 
 **Page behavior.** The page embeds the document and draws it in the browser. It makes no
 network request: the tracker links on issue lanes are the only URLs. The timeframe filter
@@ -316,4 +334,4 @@ legend reads the same table.
 
 A commit, comment, review or CI run that matches no row draws no marker and appears only in the log.
 
-**Time axis.** The axis draws as many labels as fit in its width: five at most, fewer until no two overlap. It thins again when the window resizes or the panel opens or closes.
+**Time axis.** The axis draws as many labels as fit in its width: seven at most, fewer until no two overlap. The first label shows the date and the time. The later labels show `HH:MM`, and a label shows the date again where the day changes. The axis is measured again after the layout settles, when the window resizes or the panel opens or closes.

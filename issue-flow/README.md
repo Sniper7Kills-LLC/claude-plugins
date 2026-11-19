@@ -234,6 +234,9 @@ comments, reviews, CI runs and agent events that you can filter by kind. Each fi
 expands into its diff. On a batch lane the panel also lists the cross-check findings and plan
 amendments.
 
+The **Theme** button in the page header cycles auto (the browser setting), light and dark. The page
+remembers the choice in the browser. Every lane and marker works from the keyboard.
+
 The skill is read-only and needs only the tracker, so it works outside a run. It writes
 to `<git common dir>/issue-flow/timeline.html` (no commit carries it, and every worktree
 shares it) or to the `--out` path you give. It publishes nothing. The script is

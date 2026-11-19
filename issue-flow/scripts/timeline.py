@@ -1021,7 +1021,8 @@ def build_model(doc):
         batch = None if event.get("batch") is None else str(event["batch"])
         if kind == "batch":
             batch = batch or issue
-            lane_id, label, url, title = f"batch:{batch}", f"Batch #{batch}", None, None
+            # The group heading already names the batch, so the lane names what it holds.
+            lane_id, label, url, title = f"batch:{batch}", "Batch activity", None, None
         elif kind == "issue" and issue is not None:
             batch = batch or member_of.get(issue)
             info = issues.get(issue) or {}
@@ -1054,15 +1055,19 @@ def _json_for_script(value):
     return text.replace("<", "\\u003c").replace(">", "\\u003e").replace("&", "\\u0026")
 
 
+def _plural(count, word):
+    return f"{count} {word}" if count == 1 else f"{count} {word}s"
+
+
 def _convergence_strip(rows):
     if not rows:
         return ""
     cells = []
     for row in rows:
-        filed = "–" if row.get("filed") is None else row["filed"]
-        closed = "–" if row.get("closed") is None else row["closed"]
-        cells.append(f'<li><b>Gate {html.escape(str(row.get("gate")))}</b> {html.escape(str(filed))} filed, '
-                     f'{html.escape(str(closed))} closed</li>')
+        filed, closed = row.get("filed"), row.get("closed")
+        filed_text = "filed count not recorded" if filed is None else _plural(filed, "issue") + " filed"
+        closed_text = "closed count not recorded" if closed is None else "none closed yet" if closed == 0 else f"{closed} closed"
+        cells.append(f'<li>Gate {html.escape(str(row.get("gate")))}: {html.escape(filed_text)}, {html.escape(closed_text)}</li>')
     return '<section class="convergence" aria-label="Convergence"><h2>Convergence</h2><ul>' + "".join(cells) + "</ul></section>"
 
 
@@ -1075,98 +1080,132 @@ STATE_COLORS = {
     "awaiting-review": ("#bf3989", "#db61a2"),
     "needs-feedback": ("#bf8700", "#d29922"),
     "blocked": ("#cf222e", "#f85149"),
-    "batched": ("#b6bec8", "#4a525c"),
+    "batched": ("#8c959f", "#6e7681"),
     "deploying": ("#1b7c83", "#39c5cf"),
     "deploy-failed": ("#8a1c2b", "#ff9492"),
     "merged": ("#1a7f37", "#3fb950"),
     "closed": ("#24292f", "#c9d1d9"),
 }
+# A marker is a glyph inside a 2px ring of this color. No ring color equals or sits near a state
+# color (CIE76 distance of at least 20, a test enforces it), so a ring is never read as a bar state.
 MARKER_COLORS = {
-    "pr": ("#8250df", "#a371f7"),
-    "merge": ("#1a7f37", "#3fb950"),
-    "batch": ("#0550ae", "#79c0ff"),
-    "cp": ("#bf8700", "#d29922"),
-    "park": ("#cf222e", "#f85149"),
-    "rework": ("#e16f24", "#f0883e"),
-    "fix": ("#0e8a7d", "#2dd4bf"),
-    "ci": ("#a40e26", "#ff7b72"),
-    "review": ("#bf3989", "#db61a2"),
-    "note": ("#0969da", "#58a6ff"),
-    "msg": ("#1b7c83", "#39c5cf"),
-    "dot": ("#656d76", "#6e7681"),
+    "pr": ("#4e94da", "#1588c1"),
+    "merge": ("#12a112", "#88f2bd"),
+    "batch": ("#2d4a86", "#bd9cde"),
+    "cp": ("#c9825e", "#f2bd88"),
+    "park": ("#e65e19", "#c1154f"),
+    "rework": ("#e17083", "#e619e5"),
+    "fix": ("#1919e6", "#c3e619"),
+    "ci": ("#e619e5", "#77862d"),
+    "review": ("#a112a1", "#19e619"),
+    "note": ("#80931f", "#d9e892"),
+    "msg": ("#b77dd4", "#1f936d"),
+    "dot": ("#592d86", "#86592d"),
 }
 MARKER_LABELS = {"pr": "PR opened", "merge": "PR merged", "batch": "Batch merged", "cp": "Checkpoint",
                  "park": "Parked (needs feedback or blocked)", "rework": "Rework requested", "fix": "Fix commit",
                  "ci": "CI run failed", "review": "Changes requested in review", "note": "Cross-check or plan amendment",
                  "msg": "Agent messaged", "dot": "Other event"}
+# The legend rows for markers. A marker in neither row would draw without a legend entry.
+MARKER_GROUPS = {"events": ("pr", "merge", "batch", "cp", "msg", "note", "dot"),
+                 "problems": ("park", "rework", "fix", "ci", "review")}
+# Every text and surface color of the page, per theme. A test computes the WCAG contrast of each
+# text pair from this table, so a color change that breaks 4.5:1 fails before it ships.
+THEME_TOKENS = {
+    "light": {"bg": "#ffffff", "fg": "#1f2328", "muted": "#59636e", "line": "#d0d7de", "panel": "#f6f8fa",
+              "accent": "#0969da", "visited": "#6639ba", "add": "#1a7f37", "del": "#cf222e",
+              "add-bg": "#dafbe1", "del-bg": "#ffebe9", "shadow": "rgba(31, 35, 40, .25)"},
+    "dark": {"bg": "#0d1117", "fg": "#e6edf3", "muted": "#9198a1", "line": "#30363d", "panel": "#161b22",
+             "accent": "#58a6ff", "visited": "#bc8cff", "add": "#3fb950", "del": "#ff7b72",
+             "add-bg": "#12261e", "del-bg": "#3c1618", "shadow": "rgba(1, 4, 9, .6)"},
+}
+DIFF_TOKENS = ("add", "del", "add-bg", "del-bg")
 
 
 def _theme_vars(theme):
-    pairs = [f"--st-{k}:{v[theme]};" for k, v in STATE_COLORS.items()]
-    pairs += [f"--mk-{k}:{v[theme]};" for k, v in MARKER_COLORS.items()]
+    """Return the custom properties of one theme: surface tokens, bar colors and marker colors."""
+    index = 0 if theme == "light" else 1
+    pairs = [f"--{'diff-' if k in DIFF_TOKENS else ''}{k}:{v};" for k, v in THEME_TOKENS[theme].items()]
+    pairs.append("--st-none:var(--line);")
+    pairs += [f"--st-{k}:{v[index]};" for k, v in STATE_COLORS.items()]
+    pairs += [f"--mk-{k}:{v[index]};" for k, v in MARKER_COLORS.items()]
     return " ".join(pairs)
 
 
-PAGE_CSS = """
-:root { --bg:#fff; --fg:#1f2328; --muted:#656d76; --line:#d0d7de; --panel:#f6f8fa; --accent:#0969da;
-  --st-none:#d0d7de; """ + _theme_vars(0) + """ }
-@media (prefers-color-scheme: dark) {
-  :root { --bg:#0d1117; --fg:#e6edf3; --muted:#8b949e; --line:#30363d; --panel:#161b22; --accent:#58a6ff;
-    --st-none:#30363d; """ + _theme_vars(1) + """ } }
+# The only place a color value may appear. LAYOUT_CSS uses var(--token) and nothing else.
+TOKEN_CSS = (":root { color-scheme:light; " + _theme_vars("light") + " }\n"
+             "@media (prefers-color-scheme: dark) {\n"
+             '  :root:not([data-theme="light"]) { color-scheme:dark; ' + _theme_vars("dark") + " } }\n"
+             ':root[data-theme="light"] { color-scheme:light; }\n'
+             ':root[data-theme="dark"] { color-scheme:dark; ' + _theme_vars("dark") + " }\n")
+
+LAYOUT_CSS = r"""
 * { box-sizing:border-box; }
 body { margin:0; padding:1rem; background:var(--bg); color:var(--fg); font:14px/1.45 system-ui,sans-serif; }
+a { color:var(--accent); } a:visited { color:var(--visited); } a:hover { text-decoration-thickness:2px; }
+a:focus-visible, button:focus-visible, input:focus-visible, summary:focus-visible, #ptitle:focus-visible
+  { outline:2px solid var(--accent); outline-offset:2px; }
+#theme { white-space:nowrap; flex:none; }
+.top { display:flex; justify-content:space-between; align-items:flex-start; gap:.75rem; }
 h1 { font-size:1.25rem; margin:0 0 .25rem; } h2 { font-size:.95rem; margin:0 0 .25rem; }
 .sub { color:var(--muted); margin:0 0 .75rem; }
+button { font:inherit; color:var(--fg); background:var(--panel); border:1px solid var(--line); border-radius:6px;
+  padding:.25rem .6rem; cursor:pointer; }
+button[aria-pressed="true"] { border-color:var(--accent); color:var(--accent); font-weight:600; }
+.controls button[aria-pressed="true"]::before, .filters button[aria-pressed="true"]::before { content:"\2713\00a0"; }
 .controls { display:flex; flex-wrap:wrap; gap:.5rem; align-items:center; margin-bottom:.75rem; }
-.controls button, .controls input { font:inherit; color:var(--fg); background:var(--panel); border:1px solid var(--line);
-  border-radius:6px; padding:.25rem .6rem; }
-.controls button[aria-pressed="true"] { border-color:var(--accent); color:var(--accent); }
+.controls input { font:inherit; color:var(--fg); background:var(--panel); border:1px solid var(--line); border-radius:6px; padding:.25rem .6rem; }
 .convergence { background:var(--panel); border:1px solid var(--line); border-radius:6px; padding:.5rem .75rem; margin-bottom:.75rem; }
 .convergence ul { list-style:none; margin:0; padding:0; display:flex; flex-wrap:wrap; gap:.25rem 1.25rem; }
-.legend { display:flex; flex-wrap:wrap; gap:.25rem 1rem; color:var(--muted); font-size:.85rem; margin-bottom:.75rem; }
+.legend { display:grid; gap:.3rem; color:var(--muted); font-size:.85rem; margin-bottom:.75rem; }
+.legend-row { display:flex; flex-wrap:wrap; gap:.25rem 1rem; align-items:center; }
+.legend-title { color:var(--fg); font-weight:600; min-width:4.5rem; }
 .legend i { display:inline-block; width:.8rem; height:.6rem; border-radius:2px; margin-right:.3rem; vertical-align:baseline; }
-#chart { overflow-x:auto; }
-.board { min-width:640px; }
-.axis, .lane { display:grid; grid-template-columns:12rem 1fr; align-items:center; }
+#chart { overflow-x:auto; scrollbar-gutter:stable; padding-bottom:.75rem; }
+.board { min-width:640px; padding-right:.75rem; }
+.axis, .lane { display:grid; grid-template-columns:16rem 1fr; align-items:center; }
 .axis .ticks { position:relative; height:1.2rem; color:var(--muted); font-size:.75rem; }
 .axis .ticks span { position:absolute; transform:translateX(-50%); white-space:nowrap; }
 .axis .ticks span:first-child { transform:none; } .axis .ticks span:last-child { transform:translateX(-100%); }
 .group { margin-top:.75rem; font-weight:600; border-bottom:1px solid var(--line); padding-bottom:.15rem; }
-.lane { border-bottom:1px solid var(--line); min-height:1.9rem; }
-.lane .name { padding-right:.5rem; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
-.lane .name a { color:var(--accent); text-decoration:none; }
-.lane .name small { color:var(--muted); }
-.track { position:relative; height:1.5rem; }
-.seg { position:absolute; top:.45rem; height:.6rem; border-radius:3px; background:var(--st-none); opacity:.9; }
-.mk { position:absolute; top:.2rem; width:.7rem; height:.7rem; transform:translateX(-50%) rotate(45deg); background:var(--fg);
-  border:2px solid var(--bg); cursor:default; }
-.mk-pr { background:var(--mk-pr); } .mk-merge { background:var(--mk-merge); }
-.mk-batch { background:var(--mk-batch); width:.9rem; height:.9rem; top:.1rem; }
-.mk-cp { background:var(--mk-cp); border-radius:50%; } .mk-park { background:var(--mk-park); border-radius:50%; }
-.mk-dot { background:var(--mk-dot); border-radius:50%; }
-.mk-rework { background:var(--mk-rework); border:0; transform:translateX(-50%); clip-path:polygon(50% 0,100% 100%,0 100%); }
-.mk-fix { background:var(--mk-fix); transform:translateX(-50%); border-radius:2px; }
-.mk-ci { background:var(--mk-ci); border:0; transform:translateX(-50%); clip-path:polygon(0 0,100% 0,50% 100%); }
-.mk-review { background:var(--mk-review); border:0; transform:translateX(-50%); clip-path:polygon(50% 0,100% 38%,82% 100%,18% 100%,0 38%); }
-.mk-note { background:var(--mk-note); transform:translateX(-50%); width:.6rem; height:.6rem; border-radius:1px; }
-.mk-msg { background:var(--mk-msg); transform:translateX(-50%); width:.5rem; height:.5rem; border-radius:50%; }
-.legend .mk { position:static; display:inline-block; vertical-align:middle; margin:0 .35rem 0 0; transform:rotate(45deg) scale(.8); }
-.legend .mk-rework, .legend .mk-fix, .legend .mk-ci, .legend .mk-review, .legend .mk-note, .legend .mk-msg { transform:scale(.8); }
-.legend .mk-batch { width:.8rem; height:.8rem; }
-.lane { cursor:pointer; }
-.lane:hover, .lane.sel { background:var(--panel); }
-.lane:focus-visible { outline:2px solid var(--accent); outline-offset:-2px; }
+.lane { border-bottom:1px solid var(--line); min-height:1.9rem; cursor:pointer; }
+.lane .name { display:flex; gap:.4rem; align-items:center; min-width:0; padding:.15rem .5rem .15rem .6rem; }
+.lane .name small { color:var(--muted); min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.lane .name a { text-decoration:none; font-weight:600; white-space:nowrap; } .lane .name a:hover { text-decoration:underline; }
+.lane-open { padding:0 .45rem; font-size:.75rem; }
+.track { position:relative; min-height:1.5rem; }
+.seg { position:absolute; top:.55rem; height:.5rem; border-radius:3px; background:var(--st-none); opacity:.9; }
+.seg-batched { background:transparent; border:2px dashed var(--st-batched); opacity:1; }
+.mk { position:absolute; top:.3rem; width:.95rem; height:.95rem; transform:translateX(-50%); border-radius:50%;
+  border:2px solid var(--mk-dot); background:var(--bg); color:var(--fg); padding:0; display:inline-flex; align-items:center;
+  justify-content:center; font:700 .55rem/1 system-ui,sans-serif; cursor:pointer; }
+.mk::before { content:""; }
+.mk-pr { border-color:var(--mk-pr); } .mk-pr::before { content:"+"; }
+.mk-merge { border-color:var(--mk-merge); } .mk-merge::before { content:"\2713"; }
+.mk-batch { border-color:var(--mk-batch); border-radius:3px; } .mk-batch::before { content:"\25C6"; }
+.mk-cp { border-color:var(--mk-cp); border-radius:3px; } .mk-cp::before { content:"\25A0"; }
+.mk-park { border-color:var(--mk-park); } .mk-park::before { content:"!"; }
+.mk-rework { border-color:var(--mk-rework); } .mk-rework::before { content:"\25B2"; }
+.mk-fix { border-color:var(--mk-fix); border-radius:3px; } .mk-fix::before { content:"\25CF"; }
+.mk-ci { border-color:var(--mk-ci); } .mk-ci::before { content:"\00D7"; font-size:.8rem; }
+.mk-review { border-color:var(--mk-review); } .mk-review::before { content:"\25BC"; }
+.mk-note { border-color:var(--mk-note); border-radius:3px; } .mk-note::before { content:"i"; }
+.mk-msg { border-color:var(--mk-msg); } .mk-msg::before { content:"\203A"; font-size:.8rem; }
+.mk-dot { border-color:var(--mk-dot); width:.7rem; height:.7rem; }
+.legend .mk { position:static; transform:none; margin:0 .35rem 0 0; cursor:default; vertical-align:middle; }
+.lane:hover { background:var(--panel); }
+.lane.sel { background:var(--panel); box-shadow:inset 3px 0 0 var(--accent); }
 body.has-panel #layout { display:grid; grid-template-columns:minmax(0,1fr) minmax(22rem,34rem); gap:1rem; align-items:start; }
 #panel { background:var(--bg); border:1px solid var(--line); border-radius:6px; padding:.75rem; position:sticky; top:.5rem;
   max-height:calc(100vh - 1rem); overflow:auto; min-width:0; }
 #panel h3 { font-size:.85rem; margin:.75rem 0 .25rem; text-transform:uppercase; letter-spacing:.03em; color:var(--muted); }
 .phead { display:flex; justify-content:space-between; gap:.5rem; align-items:start; }
-.phead button, .filters button { font:inherit; color:var(--fg); background:var(--panel); border:1px solid var(--line); border-radius:6px; padding:.1rem .5rem; cursor:pointer; }
+.phead button, .filters button { padding:.1rem .5rem; }
 .filters { display:flex; flex-wrap:wrap; gap:.25rem; margin:.5rem 0; }
-.filters button[aria-pressed="true"] { border-color:var(--accent); color:var(--accent); }
 #psummary { display:grid; grid-template-columns:repeat(auto-fill,minmax(7rem,1fr)); gap:.35rem; margin:.5rem 0 0; }
 #psummary div { background:var(--panel); border:1px solid var(--line); border-radius:6px; padding:.25rem .5rem; }
 #psummary dt { color:var(--muted); font-size:.75rem; } #psummary dd { margin:0; font-weight:600; }
+#psummary .alert { border-color:var(--diff-del); border-left-width:3px; } #psummary .alert dd { color:var(--diff-del); }
 #problems, #notes, #log { list-style:none; margin:0; padding:0; }
 #problems > li, #notes > li, #log > li { border-left:3px solid var(--line); padding:.25rem .5rem; margin:.35rem 0; overflow-wrap:anywhere; }
 #problems > li { border-left-color:var(--mk-rework); }
@@ -1174,22 +1213,29 @@ body.has-panel #layout { display:grid; grid-template-columns:minmax(0,1fr) minma
 #log > li.k-reviews { border-left-color:var(--mk-review); } #log > li.k-agents { border-left-color:var(--mk-msg); }
 .when { color:var(--muted); font-size:.75rem; }
 .badge { display:inline-block; font-size:.7rem; line-height:1.3; padding:0 .4rem; border:1px solid var(--line); border-radius:999px; margin-right:.25rem; background:var(--panel); }
-.b-fix, .b-gate-rework, .b-changes-requested, .b-failure, .b-timed-out, .b-truncated { border-color:var(--mk-rework); color:var(--mk-rework); }
-.b-approved, .b-success, .b-gate-pass, .b-resolved { border-color:var(--mk-merge); color:var(--mk-merge); }
+.b-fix, .b-gate-rework, .b-changes-requested, .b-failure, .b-timed-out, .b-truncated { border-color:var(--diff-del); color:var(--diff-del); }
+.b-approved, .b-success, .b-gate-pass, .b-resolved { border-color:var(--diff-add); color:var(--diff-add); }
 .pre { white-space:pre-wrap; }
 .why { color:var(--muted); font-style:italic; }
 details.file { margin:.25rem 0; } details.file > summary { cursor:pointer; font-family:ui-monospace,monospace; font-size:.8rem; }
-.add { color:var(--mk-merge); } .del { color:var(--mk-park); }
+.add { color:var(--diff-add); } .del { color:var(--diff-del); }
 .diff { font:12px/1.4 ui-monospace,monospace; margin:.25rem 0 0; overflow-x:auto; border:1px solid var(--line); border-radius:6px; }
 .dl { display:block; white-space:pre; padding:0 .5rem; }
-.dl-add { background:rgba(46,160,67,.22); } .dl-del { background:rgba(248,81,73,.22); }
+.dl-add { background:var(--diff-add-bg); } .dl-del { background:var(--diff-del-bg); }
 .dl-hunk { background:var(--panel); color:var(--muted); } .dl-note { color:var(--muted); font-style:italic; }
 @media (max-width:900px) { body.has-panel #layout { display:block; } #panel { position:static; max-height:none; margin-top:.75rem; } }
-#tip { position:fixed; z-index:10; max-width:24rem; background:var(--panel); border:1px solid var(--line); border-radius:6px;
-  padding:.4rem .6rem; white-space:pre-line; pointer-events:none; box-shadow:0 2px 8px rgba(0,0,0,.25); }
+#tip { position:fixed; z-index:10; max-width:24rem; background:var(--panel); color:var(--fg); border:1px solid var(--line); border-radius:6px;
+  padding:.4rem .6rem; white-space:pre-line; pointer-events:none; box-shadow:0 2px 8px var(--shadow); }
 #empty { color:var(--muted); padding:1rem; border:1px dashed var(--line); border-radius:6px; text-align:center; }
-@media (max-width:640px) { .axis, .lane { grid-template-columns:7rem 1fr; } .board { min-width:520px; } }
+@media (max-width:640px) { .axis, .lane { grid-template-columns:8rem 1fr; } .board { min-width:520px; } .lane .name small { display:none; } }
 """
+PAGE_CSS = TOKEN_CSS + LAYOUT_CSS
+
+THEME_KEY = "tl-theme"
+# The head script applies a stored theme before first paint, so the page never flashes the wrong one.
+# A missing or blocked store leaves the page on the browser's own preference ("auto").
+THEME_HEAD_JS = ('(function(){try{var t=localStorage.getItem("' + THEME_KEY + '");'
+                 'if(t==="light"||t==="dark"){document.documentElement.setAttribute("data-theme",t);}}catch(e){}})();')
 
 PAGE_JS = r"""
 (function () {
@@ -1202,6 +1248,23 @@ PAGE_JS = r"""
   var win = {lo: null, hi: null};
   var $ = function (id) { return document.getElementById(id); };
 
+  // ---- theme: auto follows the browser, light and dark are explicit. The page works without storage.
+  var MODES = ["auto", "light", "dark"];
+  var mode = "auto";
+  try { var saved = localStorage.getItem("tl-theme"); if (MODES.indexOf(saved) > 0) { mode = saved; } } catch (e) { mode = "auto"; }
+  function applyMode() {
+    var root = document.documentElement, next = MODES[(MODES.indexOf(mode) + 1) % MODES.length], button = $("theme");
+    if (mode === "auto") { root.removeAttribute("data-theme"); } else { root.setAttribute("data-theme", mode); }
+    button.textContent = "Theme: " + mode;
+    button.setAttribute("aria-label", "Theme: " + mode + ". Switch to " + next + ".");
+  }
+  $("theme").addEventListener("click", function () {
+    mode = MODES[(MODES.indexOf(mode) + 1) % MODES.length];
+    try { localStorage.setItem("tl-theme", mode); } catch (e) { /* storage is blocked: the choice lasts for this page only */ }
+    applyMode();
+  });
+  applyMode();
+
   function cls(text) { return String(text).toLowerCase().replace(/[^a-z0-9]+/g, "-"); }
   function el(tag, className, text) {
     var node = document.createElement(tag);
@@ -1210,6 +1273,11 @@ PAGE_JS = r"""
     return node;
   }
   function stamp(ms) { return new Date(ms).toISOString().slice(0, 16).replace("T", " "); }
+  // Log excerpts hold GitHub markdown. Show the words, not the markup.
+  function plain(text) {
+    return String(text).replace(/<[!]--[\s\S]*?-->/g, "").replace(/^\s{0,3}#{1,6}\s+/gm, "").replace(/\*\*|__/g, "").replace(/`+/g, "")
+      .replace(/\[([^\]]+)\]\([^)]*\)/g, "$1");
+  }
   function stateAfter(e) {
     if (e.kind === "status") { return e.to || null; }
     if (e.kind === "pr.merged") { return "merged"; }
@@ -1236,18 +1304,37 @@ PAGE_JS = r"""
     if (hi <= lo) { hi = lo + 3600000; }
     return {lo: lo, hi: hi};
   }
-  // Draw as many time labels as fit in the axis. Start with five and drop one until no two overlap.
+  // The date shows once, at the first tick and again where the day changes. Every other tick shows HH:MM.
+  function tickLabel(ms, prevMs) {
+    var full = stamp(ms);
+    return prevMs === null || stamp(prevMs).slice(0, 10) !== full.slice(0, 10) ? full : full.slice(11);
+  }
+  // Draw as many time labels as fit in the axis. Start with seven and drop one until no two overlap.
   function axisTicks(ticks, b) {
-    for (var steps = 4; steps >= 1; steps--) {
+    for (var steps = 6; steps >= 1; steps--) {
       ticks.textContent = "";
+      var prev = null;
       for (var k = 0; k <= steps; k++) {
-        var tick = el("span", null, stamp(b.lo + (b.hi - b.lo) * k / steps));
+        var ms = b.lo + (b.hi - b.lo) * k / steps;
+        var tick = el("span", null, tickLabel(ms, prev));
+        prev = ms;
         tick.style.left = (100 * k / steps) + "%"; ticks.appendChild(tick);
       }
       var boxes = Array.prototype.map.call(ticks.children, function (n) { return n.getBoundingClientRect(); }), clash = false;
       for (var j = 1; j < boxes.length; j++) { if (boxes[j].left < boxes[j - 1].right + 8) { clash = true; } }
       if (!clash) { return; }
     }
+  }
+  // The axis is measured after the layout settles: the panel opening or closing changes the chart width.
+  var drawn = {ticks: null, bounds: null, width: 0};
+  function fitTicks() {
+    var chart = $("chart");
+    if (!drawn.ticks || !drawn.bounds || !drawn.ticks.isConnected) { return; }
+    drawn.width = chart.clientWidth;
+    axisTicks(drawn.ticks, drawn.bounds);
+  }
+  if (window.ResizeObserver) {
+    new ResizeObserver(function () { if ($("chart").clientWidth !== drawn.width) { fitTicks(); } }).observe($("chart"));
   }
   var pending = false;
   window.addEventListener("resize", function () {
@@ -1257,22 +1344,42 @@ PAGE_JS = r"""
   });
   function pos(ms, b) { return (100 * (ms - b.lo) / (b.hi - b.lo)).toFixed(3) + "%"; }
 
+  // Markers closer than the gap move to the next row down, so none hides another.
+  var MARK = {gap: 16, base: 5, step: 9, rows: 4, track: 24};
+  function spread(board) {
+    Array.prototype.forEach.call(board.querySelectorAll(".track"), function (track) {
+      var marks = Array.prototype.map.call(track.querySelectorAll(".mk"), function (n) { return {n: n, x: n.offsetLeft}; });
+      marks.sort(function (a, b) { return a.x - b.x; });
+      var last = [], deepest = 0;
+      marks.forEach(function (m) {
+        var r = 0;
+        while (r < MARK.rows - 1 && last[r] !== undefined && m.x - last[r] < MARK.gap) { r++; }
+        last[r] = m.x; deepest = Math.max(deepest, r);
+        m.n.style.top = (MARK.base + r * MARK.step) + "px";
+      });
+      track.style.minHeight = (MARK.track + deepest * MARK.step) + "px";
+    });
+  }
+
   function laneNode(lane, b, visible) {
     var kind = D.kinds[lane.kind];
     var row = el("div", "lane lane-" + cls(lane.kind) + (sel && sel.id === lane.id ? " sel" : ""));
-    row.tabIndex = 0; row.setAttribute("role", "button");
-    row.setAttribute("aria-label", "Open details for " + lane.label);
+    var full = lane.label + (lane.title ? " " + lane.title : "");
     row.addEventListener("click", function (ev) { if (!(ev.target.closest && ev.target.closest("a"))) { openLane(lane); } });
-    row.addEventListener("keydown", function (ev) {
-      if ((ev.key === "Enter" || ev.key === " ") && ev.target === row) { ev.preventDefault(); openLane(lane); }
-    });
     var name = el("div", "name");
+    name.setAttribute("data-tip", full);
+    var open = el("button", "lane-open", "Details");
+    open.type = "button";
+    open.setAttribute("data-lane", lane.id);
+    open.setAttribute("aria-label", "Details for " + full);
+    open.setAttribute("aria-expanded", String(!!(sel && sel.id === lane.id)));
+    name.appendChild(open);
     if (lane.url && /^https?:\/\//.test(lane.url)) {
       var link = el("a", null, lane.label);
-      link.href = lane.url; link.rel = "noopener"; link.title = lane.title || "";
+      link.href = lane.url; link.rel = "noopener";
       name.appendChild(link);
-    } else { name.appendChild(document.createTextNode(lane.label)); }
-    if (lane.title) { name.appendChild(el("small", null, " " + lane.title)); }
+    } else { name.appendChild(el("span", null, lane.label)); }
+    if (lane.title) { name.appendChild(el("small", null, lane.title)); }
     row.appendChild(name);
     var track = el("div", "track");
     var evs = lane.events.map(function (i) { return {e: D.events[i], t: times[i], i: i}; });
@@ -1286,9 +1393,9 @@ PAGE_JS = r"""
       points.forEach(function (p, i) {
         if (!p.s) { return; }
         var end = i + 1 < points.length ? points[i + 1].t : b.hi;
-        var seg = el("div", "seg");
+        var seg = el("div", "seg seg-" + cls(p.s));
         seg.style.left = pos(p.t, b); seg.style.width = (100 * (end - p.t) / (b.hi - b.lo)).toFixed(3) + "%";
-        seg.style.background = "var(--st-" + cls(p.s) + ", var(--st-none))";
+        if (p.s !== "batched") { seg.style.background = "var(--st-" + cls(p.s) + ", var(--st-none))"; }
         seg.setAttribute("data-tip", p.s + "\nfrom " + stamp(p.t) + " to " + stamp(end) + (lane.title ? "\n" + lane.title : ""));
         track.appendChild(seg);
       });
@@ -1296,19 +1403,23 @@ PAGE_JS = r"""
     visible.forEach(function (x) {
       var mark = D.marks[x.i];
       if (!mark || (kind.style === "bar" && mark === "dot")) { return; }
-      var node = el("div", "mk mk-" + mark);
+      var text = describe(x.e, lane);
+      var node = el("button", "mk mk-" + mark);
+      node.type = "button";
       node.style.left = pos(x.t, b);
-      node.setAttribute("data-tip", describe(x.e, lane));
+      node.setAttribute("data-tip", text);
+      node.setAttribute("aria-label", text.replace(/\n+/g, "; "));
       track.appendChild(node);
     });
     row.appendChild(track);
-    return row;
+    return track.children.length ? row : null;
   }
 
   function draw() {
     var chart = $("chart"), b = bounds();
     chart.textContent = "";
     var shown = 0;
+    drawn.ticks = null; drawn.bounds = null;
     if (b) {
       var axis = el("div", "axis"), ticks = el("div", "ticks");
       axis.appendChild(el("div"));
@@ -1319,7 +1430,10 @@ PAGE_JS = r"""
         group.lanes.forEach(function (lane) {
           var visible = lane.events.map(function (i) { return {e: D.events[i], t: times[i], i: i}; })
             .filter(function (x) { return x.t >= b.lo && x.t <= b.hi; });
-          if (visible.length) { shown += visible.length; rows.push(laneNode(lane, b, visible)); }
+          if (!visible.length) { return; }
+          shown += visible.length;
+          var row = laneNode(lane, b, visible);
+          if (row) { rows.push(row); }
         });
         if (rows.length) {
           board.appendChild(el("div", "group", group.label));
@@ -1327,7 +1441,10 @@ PAGE_JS = r"""
         }
       });
       chart.appendChild(board);
-      axisTicks(ticks, b);
+      drawn.ticks = ticks; drawn.bounds = b;
+      fitTicks();
+      spread(board);
+      window.requestAnimationFrame(fitTicks);
     }
     var empty = $("empty");
     empty.hidden = shown > 0;
@@ -1356,21 +1473,42 @@ PAGE_JS = r"""
   $("from").addEventListener("change", fromInputs);
   $("to").addEventListener("change", fromInputs);
 
+  // ---- the tooltip shows on hover and on keyboard focus, and never covers the open panel.
   var tip = $("tip");
-  document.addEventListener("mousemove", function (ev) {
-    var target = ev.target.closest ? ev.target.closest("[data-tip]") : null;
-    if (!target) { tip.hidden = true; return; }
+  function intersects(a, b) { return a.left < b.right && a.right > b.left && a.top < b.bottom && a.bottom > b.top; }
+  function showTip(target, x, y, above) {
     tip.textContent = target.getAttribute("data-tip");
     tip.hidden = false;
-    tip.style.left = Math.min(ev.clientX + 12, window.innerWidth - tip.offsetWidth - 8) + "px";
-    tip.style.top = (ev.clientY + 14) + "px";
+    var panel = $("panel"), pr = panel.hidden ? null : panel.getBoundingClientRect();
+    var w = tip.offsetWidth, h = tip.offsetHeight, limit = window.innerWidth - 8;
+    var tries = [[x, y], [x, above - h - 6]];
+    if (pr) { tries.splice(1, 0, [pr.left - w - 8, y], [pr.left - w - 8, above - h - 6]); }
+    for (var i = 0; i < tries.length; i++) {
+      var left = Math.max(8, Math.min(tries[i][0], limit - w)), top = Math.max(8, Math.min(tries[i][1], window.innerHeight - h - 8));
+      tip.style.left = left + "px"; tip.style.top = top + "px";
+      if (!pr || !intersects(tip.getBoundingClientRect(), pr)) { return; }
+    }
+  }
+  function hideTip() { tip.hidden = true; }
+  document.addEventListener("mousemove", function (ev) {
+    var target = ev.target.closest ? ev.target.closest("[data-tip]") : null;
+    if (!target) { hideTip(); return; }
+    showTip(target, ev.clientX + 12, ev.clientY + 14, ev.clientY - 6);
   });
+  document.addEventListener("focusin", function (ev) {
+    var target = ev.target.closest ? ev.target.closest("[data-tip]") : null;
+    if (!target) { hideTip(); return; }
+    var box = target.getBoundingClientRect();
+    showTip(target, box.left, box.bottom + 6, box.top);
+  });
+  document.addEventListener("focusout", hideTip);
 
   // ---- the drill-down panel. Every string from the data goes in as text, never as markup.
   var COMMITS = {};
   D.events.forEach(function (e) { if (e.kind === "commit" && e.sha) { COMMITS[e.sha] = e; } });
   var LABELS = [["commits", "Commits"], ["files", "Files"], ["additions", "Lines added"], ["deletions", "Lines removed"],
     ["rework_rounds", "Rework rounds"], ["review_rounds", "Review rounds"], ["ci_failures", "CI failures"]];
+  var ALERT = {rework_rounds: true, review_rounds: true, ci_failures: true};
   function safeUrl(url) { return typeof url === "string" && /^https?:\/\//.test(url); }
   function link(url, text) {
     if (!safeUrl(url)) { return el("span", null, text); }
@@ -1384,15 +1522,22 @@ PAGE_JS = r"""
     }
     return parent;
   }
+  // Focus moves into the panel when it opens and back to the lane's button when it closes.
   function openLane(lane) {
     sel = lane;
     document.body.classList.add("has-panel");
     draw();
+    $("ptitle").focus();
   }
   function closePanel() {
+    var lane = sel;
     sel = null;
     document.body.classList.remove("has-panel");
     draw();
+    hideTip();
+    Array.prototype.forEach.call(document.querySelectorAll(".lane-open"), function (button) {
+      if (lane && button.getAttribute("data-lane") === lane.id) { button.focus(); }
+    });
   }
   function fillDiff(box, file) {
     box.textContent = "";
@@ -1434,10 +1579,10 @@ PAGE_JS = r"""
       if (e.why) { li.appendChild(el("div", "why", "Why: " + e.why)); }
       (e.files || []).forEach(function (f) { li.appendChild(fileNode(f)); });
     } else if (e.kind === "comment" || e.kind === "review") {
-      add(li, el("div", "pre", e.excerpt || e.detail || ""), safeUrl(e.url) ? link(e.url, "open") : null);
+      add(li, el("div", "pre", plain(e.excerpt || e.detail || "")), safeUrl(e.url) ? link(e.url, "open") : null);
     } else if (e.kind === "review.comment") {
       add(li, el("div", null, (e.path || "") + (e.line ? ":" + e.line : "") + (e.resolved === true ? " (resolved)" : "")),
-        el("div", "pre", e.excerpt || ""), safeUrl(e.url) ? link(e.url, "open") : null);
+        el("div", "pre", plain(e.excerpt || "")), safeUrl(e.url) ? link(e.url, "open") : null);
     } else if (e.kind === "ci.run") {
       var text = (e.workflow || "run") + (e.duration !== null && e.duration !== undefined ? ", " + e.duration + " s" : "") +
         (e.failed_job ? " — failed in " + e.failed_job + (e.failed_step ? " at " + e.failed_step : "") : "");
@@ -1455,7 +1600,7 @@ PAGE_JS = r"""
     if (p.state || p.role) { top.appendChild(badge(p.state || p.role)); }
     top.appendChild(p.resolved ? badge("resolved") : badge("open"));
     li.appendChild(top);
-    add(li, el("div", "pre", p.text || ""), safeUrl(p.url) ? link(p.url, "open the " + (p.source === "ci.run" ? "run" : p.source)) : null);
+    add(li, el("div", "pre", plain(p.text || "")), safeUrl(p.url) ? link(p.url, "open the " + (p.source === "ci.run" ? "run" : p.source)) : null);
     var fix = el("div", "why");
     if (p.resolved && p.resolved_by && p.resolved_by.length) {
       fix.appendChild(document.createTextNode("Fixed by "));
@@ -1477,7 +1622,8 @@ PAGE_JS = r"""
     var sum = D.summaries[sel.id] || {}, dl = $("psummary");
     dl.textContent = "";
     LABELS.forEach(function (pair) {
-      var cell = el("div"); cell.appendChild(el("dt", null, pair[1])); cell.appendChild(el("dd", null, String(sum[pair[0]] || 0)));
+      var cell = el("div", ALERT[pair[0]] && sum[pair[0]] ? "alert" : null);
+      cell.appendChild(el("dt", null, pair[1])); cell.appendChild(el("dd", null, String(sum[pair[0]] || 0)));
       dl.appendChild(cell);
     });
     var isIssue = sel.kind === "issue", problems = isIssue ? ((D.issues[sel.id.split(":")[1]] || {}).problems || []) : [];
@@ -1508,16 +1654,32 @@ PAGE_JS = r"""
     });
   });
   $("pclose").addEventListener("click", closePanel);
-  document.addEventListener("keydown", function (ev) { if (ev.key === "Escape" && sel) { closePanel(); } });
-
-  var legend = $("legend");
-  D.states.forEach(function (s) {
-    var item = el("span", null, s.label), swatch = el("i"); swatch.style.background = "var(--st-" + cls(s.key) + ", var(--st-none))";
-    item.insertBefore(swatch, item.firstChild); legend.appendChild(item);
+  document.addEventListener("keydown", function (ev) {
+    if (ev.key !== "Escape") { return; }
+    hideTip();
+    if (sel) { closePanel(); }
   });
+
+  // ---- the legend: States, Events and Problems, each its own labelled row.
+  var legend = $("legend");
+  function legendRow(title) {
+    var row = el("div", "legend-row");
+    row.setAttribute("role", "group"); row.setAttribute("aria-label", title);
+    row.appendChild(el("span", "legend-title", title));
+    legend.appendChild(row);
+    return row;
+  }
+  var stateRow = legendRow("States");
+  D.states.forEach(function (s) {
+    var item = el("span", null, s.label), swatch = el("i", "seg-" + cls(s.key));
+    if (s.key !== "batched") { swatch.style.background = "var(--st-" + cls(s.key) + ", var(--st-none))"; }
+    item.insertBefore(swatch, item.firstChild); stateRow.appendChild(item);
+  });
+  var rows = {events: legendRow("Events"), problems: legendRow("Problems")};
   D.markers.forEach(function (m) {
     var item = el("span", null, m.label), swatch = el("span", "mk mk-" + m.key);
-    item.insertBefore(swatch, item.firstChild); legend.appendChild(item);
+    swatch.setAttribute("aria-hidden", "true");
+    item.insertBefore(swatch, item.firstChild); (rows[m.group] || rows.events).appendChild(item);
   });
   draw();
 })();
@@ -1544,7 +1706,8 @@ def render_html(doc, refresh=None, now=None):
             if value and value not in seen:
                 seen.append(value)
     states = [{"key": k, "label": k} for k in seen]
-    markers = [{"key": k, "label": MARKER_LABELS[k]} for k in MARKER_COLORS]
+    group_of = {k: name for name, keys in MARKER_GROUPS.items() for k in keys}
+    markers = [{"key": k, "label": MARKER_LABELS[k], "group": group_of[k]} for k in MARKER_COLORS]
     summaries = {lane["id"]: lane_summary([events[i] for i in lane["events"]]) for group in groups for lane in group["lanes"]}
     notes = {}  # batch key -> indexes of its cross-check and plan-amendment comments, whichever issue holds them
     for index, event in enumerate(events):
@@ -1565,10 +1728,16 @@ def render_html(doc, refresh=None, now=None):
 <meta name="viewport" content="width=device-width, initial-scale=1">
 {meta}<title>Workflow timeline — {html.escape(where)}</title>
 <style>{PAGE_CSS}</style>
+<script>{THEME_HEAD_JS}</script>
 </head>
 <body>
+<header class="top">
+<div>
 <h1>Workflow timeline — {html.escape(where)}</h1>
 <p class="sub">Data range: {html.escape(span)} · generated {html.escape(stamped)} · times are UTC</p>
+</div>
+<button type="button" id="theme">Theme: auto</button>
+</header>
 <div class="controls">
 <button type="button" data-preset="24h" aria-pressed="false">24h</button>
 <button type="button" data-preset="7d" aria-pressed="false">7d</button>
@@ -1578,19 +1747,19 @@ def render_html(doc, refresh=None, now=None):
 <label>To <input type="date" id="to"></label>
 </div>
 {_convergence_strip(doc.get("convergence"))}
-<div class="legend" id="legend" aria-label="Status colors"></div>
+<div class="legend" id="legend" role="group" aria-label="Legend"></div>
 <div id="layout">
 <main>
 <div id="chart"></div>
 {empty}
 </main>
 <aside id="panel" aria-label="Lane detail" hidden>
-<div class="phead"><h2 id="ptitle"></h2><button type="button" id="pclose">Close</button></div>
+<div class="phead"><h2 id="ptitle" tabindex="-1"></h2><button type="button" id="pclose">Close</button></div>
 <dl id="psummary"></dl>
 <section id="pfix"><h3>What needed fixing</h3><ul id="problems"></ul><p id="pnone" class="sub">Nothing needed fixing.</p></section>
 <section id="pnotes" hidden><h3>Cross-checks and amendments</h3><ul id="notes"></ul><p id="pnonotes" class="sub">None recorded.</p></section>
 <h3>Log</h3>
-<div class="filters" id="logfilter">{filters}</div>
+<div class="filters" id="logfilter" role="group" aria-label="Filter log by kind">{filters}</div>
 <ol id="log"></ol><p id="lognone" class="sub" hidden>No log entries in this range.</p>
 </aside>
 </div>
