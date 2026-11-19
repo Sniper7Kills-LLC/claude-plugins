@@ -111,6 +111,24 @@ does not error — it silently creates a second label with that name, exit 0. Ch
 | `forge.issue.comment` | `gh issue comment <n> --body-file <path>` | `tea api -X POST /repos/{owner}/{repo}/issues/<n>/comments --data @<json>` (`{"body": …}`) | `issue_write(method: "add_comment")` |
 | `forge.issue.edit.body` | `gh issue edit <n> --body "<b>"` | `tea issues edit <n> --description "<b>"` | `issue_write(method: "update", body)` |
 | `forge.issue.close` | `gh issue close <n>` | `tea issues close <n>` | `issue_write(method: "update", state: "closed")` |
+| `forge.issue.timeline` | `gh api repos/<owner>/<repo>/issues/<n>/timeline?per_page=100&page=<p>` | `tea api "/repos/<owner>/<repo>/issues/<n>/timeline?limit=50&page=<p>"` | `issue_read` |
+| `forge.issue.list.all` | `gh api "repos/<owner>/<repo>/issues?state=all&since=<ts>&per_page=100&page=<p>"` | `tea api "/repos/<owner>/<repo>/issues?state=all&type=issues&since=<ts>&limit=50&page=<p>"` | `list_issues(state: "all", since: "<ts>")` |
+| `forge.pr.list.all` | `gh api "repos/<owner>/<repo>/pulls?state=all&per_page=100&page=<p>"` | `tea api "/repos/<owner>/<repo>/pulls?state=all&limit=50&page=<p>"` | `list_pull_requests(state: "all")` |
+
+**The timeline reads (`forge.issue.timeline`, `forge.issue.list.all`, `forge.pr.list.all`)
+feed `scripts/timeline.py`.** They are read-only. Page until an empty page on both forges
+(`per_page` caps at 100 on GitHub, `limit` at 50 on Gitea by default). The two timelines
+differ in shape, and `timeline.py` maps both to one schema
+([timeline.md](timeline.md)): GitHub returns `event: labeled | unlabeled | closed |
+reopened | commented | ready_for_review` with `created_at` and `actor`. Gitea returns
+`type: label | close | reopen | comment | change_title` with `created_at` and `user`. A
+Gitea `label` entry is an add when `body` is `"1"` and a removal when `body` is empty. Gitea
+has no ready event: a draft PR is a `WIP:` title, so `ready` is a `change_title` entry whose
+`old_title` starts with `WIP:` and whose `new_title` does not. Verified against
+<https://docs.github.com/en/rest/issues/timeline> and Gitea's `TimelineComment` struct
+(`modules/structs/issue_comment.go`) and `CommentType` names (`models/issues/comment.go`),
+retrieved 2026-11-19. The `tea api` error-body rule above applies: a `{"message": …}` body
+is an error, not an empty timeline.
 
 **Every status change uses `forge.issue.status.set`, never a bare `forge.issue.label.add`.**
 An issue carries at most one `status:` label ([labels.md](../skills/issue-flow/references/labels.md)),

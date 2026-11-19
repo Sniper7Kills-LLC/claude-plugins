@@ -57,5 +57,8 @@ jobs:
       - name: Test the mirror filter
         run: python3 scripts/test-mirror-filter.py
 
+      - name: Test the timeline collector
+        run: python3 scripts/test-timeline.py
+
       - name: Validate manifests, frontmatter and links
         run: python3 scripts/validate-manifests.py
