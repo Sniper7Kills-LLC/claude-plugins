@@ -79,6 +79,25 @@ and `outcome`. They use the kinds `agent.*` and `worktree.*`.
 | `pr.closed` | The PR was closed without a merge. | `base`; `head`. |
 | `batch.merged` | The batch or epic PR (head `batch/<n>-…` or `epic/<n>-…`) was merged into its base. It comes with a `pr.merged` event at the same `ts`. | `base`; `head`. |
 
+## Kinds from the local-event hook
+
+`hooks/record-event.py` writes these to `<git common dir>/issue-flow/events.jsonl`.
+`collect` merges them with `--local-events [PATH|off]`. A live `collect` reads the default log
+when it exists. A `--fixture` run reads it only when the flag is given. A missing log gives
+the tracker-only document. Each event has the nine standard keys plus `session`, `agent`,
+`worktree`, `branch` and `outcome`. `actor`, `from`, `to` and `detail` are `null`.
+
+| Kind | When | Fields |
+|---|---|---|
+| `agent.spawned` | A worker was spawned for an issue. | `issue`, `agent`, `session`. |
+| `agent.stopped` | A worker ended. | `agent`, `session`; `issue`, `outcome`, `branch` and `worktree` from its verdict. |
+| `worktree.added` | `git worktree add` ran. | `worktree` = the path; `branch` when `-b` or `-B` names one. |
+| `worktree.removed` | `git worktree remove` ran. | `worktree` = the path. |
+
+`collect` fills `issue` for a worktree event from a branch named `issue/<n>-…`, and for a
+later event on the same path. It fills `batch` from the issue. The range and issue filters
+apply to local events too.
+
 **How the forges differ, and how `collect` hides it.** A draft on GitHub is a flag, so
 `draft` also reads true when a `ready_for_review` event exists. A draft on Gitea is a
 `WIP:` title prefix, so `pr.ready` comes from a title change that removes it. A Gitea label

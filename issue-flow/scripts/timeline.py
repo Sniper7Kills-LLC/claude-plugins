@@ -22,6 +22,10 @@ documented in references/timeline.md.
 an empty page) and prints one JSON document, or writes it to --out. The schema is in
 references/timeline.md; this script is its only producer.
 
+`collect` also merges the local events that hooks/record-event.py writes (worker spawns,
+verdicts, worktree changes): --local-events [PATH|off]. A live collect reads the default log
+when it exists; a missing log gives the tracker-only document.
+
 Flags: --since/--until take an ISO date, an ISO timestamp, or a relative age (`7d`,
 `24h`, `2w`). --issue and --batch keep one issue or one batch (a tracking-issue number).
 --pr-repo reads pull requests from another repository on the same forge.
@@ -423,6 +427,76 @@ class Parser(argparse.ArgumentParser):
         sys.exit(5)
 
 
+LOCAL_PREFIXES = ("agent.", "worktree.")
+LOCAL_KEYS = ("session", "agent", "worktree", "branch", "outcome")
+
+
+def read_local_events(path):
+    """Return the rows of a local-event log. A missing file or an unreadable line gives nothing."""
+    rows = []
+    try:
+        with open(path, encoding="utf-8") as handle:
+            lines = handle.readlines()
+    except OSError:
+        return rows
+    for line in lines:
+        try:
+            row = json.loads(line)
+            if not isinstance(row, dict) or not str(row.get("kind", "")).startswith(LOCAL_PREFIXES):
+                continue
+            row["ts"] = to_utc(row.get("ts"))
+        except (ValueError, AttributeError, TypeError):
+            continue
+        if row["ts"]:
+            rows.append(row)
+    return rows
+
+
+def merge_local(doc, rows, since=None, until=None, only_issue=None, only_batch=None):
+    """Add the local-event rows to `doc["events"]`, with the same filters `normalize` applied."""
+    batches = doc.get("batches") or {}
+    member_of = {m: int(key) for key, info in batches.items() for m in (info.get("members") or [])}
+    member_of.update({int(key): int(key) for key in batches})
+    # A worktree event has no issue of its own. The branch `issue/<n>-…` names it, and a later
+    # event for the same worktree path (a remove has no branch) inherits it.
+    issue_of = {}
+    for row in sorted(rows, key=lambda r: r["ts"]):
+        branch = ISSUE_BRANCH.match(row.get("branch") or "")
+        if isinstance(row.get("issue"), int):
+            row_issue = row["issue"]
+        else:
+            row_issue = int(branch.group(1)) if branch else issue_of.get(row.get("worktree"))
+        row["issue"] = row_issue
+        if row_issue is not None and row.get("worktree"):
+            issue_of[row["worktree"]] = row_issue
+    for row in rows:
+        if (since and row["ts"] < since) or (until and row["ts"] > until):
+            continue
+        issue = row["issue"]
+        batch = row.get("batch") if isinstance(row.get("batch"), int) else member_of.get(issue)
+        if (only_issue is not None and issue != only_issue) or (only_batch is not None and batch != only_batch):
+            continue
+        event = _event(row["ts"], row["kind"], issue=issue, batch=batch)
+        event.update({key: row.get(key) for key in LOCAL_KEYS})
+        doc["events"].append(event)
+    doc["events"].sort(key=lambda e: (e["ts"], e["kind"], e["issue"] or 0, e["pr"] or 0))
+    return doc
+
+
+def local_events_path(args):
+    """The log to merge, or None. --local-events off disables it; no flag reads the default log
+    for a live collect only, so a --fixture run stays reproducible."""
+    choice = args.local_events
+    if choice == "off" or (choice is None and args.fixture):
+        return None
+    if choice not in (None, ""):
+        return choice
+    try:
+        return common_dir_path("events.jsonl", args.repo_path)
+    except (RuntimeError, OSError):
+        return None
+
+
 def cmd_collect(args):
     try:
         since = parse_when(args.since) if args.since else None
@@ -443,6 +517,9 @@ def cmd_collect(args):
         else:
             bundle = fetch_bundle(args.forge, args.repo, args.pr_repo, args.repo_path, since, args.issue)
         doc = normalize(bundle, since, until, args.issue, args.batch)
+        log = local_events_path(args)
+        if log:
+            merge_local(doc, read_local_events(log), since, until, args.issue, args.batch)
     except (FetchError, OSError, ValueError, KeyError) as exc:
         print(json.dumps({"error": f"collect failed: {exc}"}), file=sys.stderr)
         return 2
@@ -962,6 +1039,9 @@ def main(argv=None):
     collect.add_argument("--until")
     collect.add_argument("--issue", type=int)
     collect.add_argument("--batch", type=int, help="tracking-issue number of one batch or epic")
+    collect.add_argument("--local-events", nargs="?", const="", metavar="PATH|off",
+                         help="merge the hook's local events (default: <git common dir>/issue-flow/events.jsonl "
+                              "for a live collect; `off` skips it; with --fixture, give the flag to read it)")
     collect.add_argument("--out", help="write the document here instead of stdout")
     collect.set_defaults(func=cmd_collect)
     render = sub.add_parser("render", help="turn a timeline document into one self-contained HTML page")

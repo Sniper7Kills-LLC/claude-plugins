@@ -1,0 +1,167 @@
+#!/usr/bin/env python3
+"""Tests for issue-flow/hooks/record-event.py.
+
+    python3 scripts/test-record-event.py
+
+Runs the hook as Claude Code runs it: a subprocess fed a hook payload on stdin. The
+payload fields follow https://code.claude.com/docs/en/hooks (PostToolUse, SubagentStop).
+Two properties matter as much as the log line: the hook never prints anything and never
+exits non-zero, because it must not block or change a tool call.
+"""
+
+import json
+import os
+import subprocess
+import sys
+import tempfile
+
+ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+HOOK = os.path.join(ROOT, "issue-flow", "hooks", "record-event.py")
+
+failures = []
+
+
+def check(cond, message):
+    if not cond:
+        failures.append(message)
+
+
+def git(cwd, *args):
+    subprocess.run(["git", "-c", "user.name=t", "-c", "user.email=t@t", *args], cwd=cwd,
+                   check=True, capture_output=True, text=True)
+
+
+def run(payload, env=None):
+    """Run the hook and require exit 0 with no stdout."""
+    environment = dict(os.environ)
+    environment.pop("ISSUE_FLOW_EVENTS", None)
+    environment.update(env or {})
+    result = subprocess.run([sys.executable, HOOK],
+                            input=payload if isinstance(payload, str) else json.dumps(payload),
+                            capture_output=True, text=True, env=environment)
+    check(result.returncode == 0, f"hook exited {result.returncode}: {result.stderr.strip()}")
+    check(result.stdout == "", f"hook printed to stdout: {result.stdout[:120]!r}")
+    return result
+
+
+def events(repo):
+    path = os.path.join(repo, ".git", "issue-flow", "events.jsonl")
+    if not os.path.exists(path):
+        return []
+    with open(path) as handle:
+        return [json.loads(line) for line in handle if line.strip()]
+
+
+BRIEF = "issue:        #77 — record events\nbranch: issue/77-x\nSECRET-PROMPT-TEXT do the work"
+
+
+def spawn_payload(cwd, brief=BRIEF):
+    return {"session_id": "sess-1", "cwd": cwd, "hook_event_name": "PostToolUse",
+            "tool_name": "Agent",
+            "tool_input": {"subagent_type": "issue-flow:issue-worker", "isolation": "worktree",
+                           "prompt": brief},
+            "tool_response": {"status": "async_launched", "agentId": "a123",
+                              "prompt": brief, "outputFile": "/x"}}
+
+
+def stop_payload(cwd, message, agent_type="issue-flow:issue-worker"):
+    return {"session_id": "sess-1", "cwd": cwd, "hook_event_name": "SubagentStop",
+            "agent_id": "a123", "agent_type": agent_type, "last_assistant_message": message}
+
+
+def bash_payload(cwd, command):
+    return {"session_id": "sess-1", "cwd": cwd, "hook_event_name": "PostToolUse",
+            "tool_name": "Bash", "tool_input": {"command": command},
+            "tool_response": {"stdout": "SECRET-OUTPUT", "stderr": "", "interrupted": False}}
+
+
+with tempfile.TemporaryDirectory() as tmp:
+    repo = os.path.join(tmp, "repo")
+    os.makedirs(repo)
+    git(repo, "init", "-q")
+    git(repo, "commit", "-q", "--allow-empty", "-m", "init")
+
+    # 1. A worker spawn writes one agent.spawned line.
+    run(spawn_payload(repo))
+    got = events(repo)
+    check(len(got) == 1, f"spawn writes one line, got {len(got)}")
+    if got:
+        e = got[0]
+        check(e["kind"] == "agent.spawned", f"spawn kind: {e}")
+        check(e["issue"] == 77 and e["agent"] == "a123" and e["session"] == "sess-1", f"spawn fields: {e}")
+        check(e["ts"].endswith("Z") and "T" in e["ts"], f"ts is ISO UTC: {e['ts']}")
+        for key in ("worktree", "branch", "outcome"):
+            check(key in e, f"spawn has key {key}")
+
+    # 2. A spawn whose brief names no issue is not a worker spawn: nothing written.
+    run(spawn_payload(repo, brief="research the codebase"))
+    check(len(events(repo)) == 1, "a spawn without an issue line writes nothing")
+
+    # 3. A stop with a verdict records outcome, branch and worktree.
+    verdict = {"issue": 77, "branch": "issue/77-x", "worktree": "/w/agent-1", "outcome": "ready-to-merge"}
+    run(stop_payload(repo, "all done\n```json\n" + json.dumps(verdict) + "\n```"))
+    got = events(repo)
+    check(len(got) == 2 and got[1]["kind"] == "agent.stopped", f"stop kind: {got}")
+    if len(got) == 2:
+        e = got[1]
+        check(e["outcome"] == "ready-to-merge" and e["issue"] == 77, f"stop outcome/issue: {e}")
+        check(e["branch"] == "issue/77-x" and e["worktree"] == "/w/agent-1", f"stop branch/worktree: {e}")
+        check(e["agent"] == "a123", f"stop agent: {e}")
+
+    # 4. A stop from an agent that is not a worker and has no verdict writes nothing.
+    run(stop_payload(repo, "just a summary", agent_type="Explore"))
+    check(len(events(repo)) == 2, "a non-worker stop writes nothing")
+
+    # 5. Worktree add and remove from Bash.
+    run(bash_payload(repo, "git worktree add -b issue/77-x /w/wt-77 origin/dev"))
+    run(bash_payload(repo, "git worktree remove --force /w/wt-77"))
+    run(bash_payload(repo, "git status"))
+    got = events(repo)
+    check([e["kind"] for e in got[2:]] == ["worktree.added", "worktree.removed"], f"worktree kinds: {got[2:]}")
+    if len(got) == 4:
+        check(got[2]["worktree"] == "/w/wt-77" and got[2]["branch"] == "issue/77-x", f"add fields: {got[2]}")
+        check(got[3]["worktree"] == "/w/wt-77", f"remove fields: {got[3]}")
+
+    # 6. No prompt text, brief body or tool output reaches the log.
+    with open(os.path.join(repo, ".git", "issue-flow", "events.jsonl")) as handle:
+        text = handle.read()
+    check("SECRET-PROMPT-TEXT" not in text and "SECRET-OUTPUT" not in text and "do the work" not in text,
+          "the log holds no prompt text or tool output")
+
+    # 7. The kill switch writes nothing.
+    before = len(events(repo))
+    run(spawn_payload(repo), env={"ISSUE_FLOW_EVENTS": "off"})
+    check(len(events(repo)) == before, "ISSUE_FLOW_EVENTS=off writes nothing")
+
+    # 8. A hook run from a linked worktree writes to the common dir.
+    linked = os.path.join(tmp, "linked")
+    git(repo, "worktree", "add", "-q", "-b", "side", linked)
+    before = len(events(repo))
+    run(spawn_payload(linked))
+    check(len(events(repo)) == before + 1, "a linked worktree writes to the shared common dir")
+    check(not os.path.exists(os.path.join(linked, ".git", "issue-flow")), "no per-worktree log")
+
+    # 9. Fail open: garbage, wrong shapes, no git dir, an unwritable path.
+    run("not json at all")
+    run("[1, 2]")
+    run("")
+    run({"tool_name": "Agent", "tool_input": "nope", "cwd": repo})
+    run({"hook_event_name": "SubagentStop", "last_assistant_message": 5, "cwd": repo})
+    nogit = os.path.join(tmp, "nogit")
+    os.makedirs(nogit)
+    run(spawn_payload(nogit))
+    run(spawn_payload(os.path.join(tmp, "does-not-exist")))
+
+    blocked = os.path.join(tmp, "blocked")
+    os.makedirs(blocked)
+    git(blocked, "init", "-q")
+    with open(os.path.join(blocked, ".git", "issue-flow"), "w") as handle:
+        handle.write("a file where the directory belongs")
+    run(spawn_payload(blocked))
+
+if failures:
+    for failure in failures:
+        print(f"FAIL {failure}")
+    print(f"\n{len(failures)} failure(s)")
+    sys.exit(1)
+print("record-event: all cases pass")

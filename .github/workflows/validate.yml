@@ -60,5 +60,8 @@ jobs:
       - name: Test the timeline collector
         run: python3 scripts/test-timeline.py
 
+      - name: Test the local-event hook
+        run: python3 scripts/test-record-event.py
+
       - name: Validate manifests, frontmatter and links
         run: python3 scripts/validate-manifests.py

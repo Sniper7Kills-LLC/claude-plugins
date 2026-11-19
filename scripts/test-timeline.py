@@ -409,6 +409,22 @@ with tempfile.TemporaryDirectory() as tmp:
     check(run(["render", "--in", os.path.join(tmp, "missing.json")]).returncode == 2, "a missing --in file exits 2")
     check(run(["render", "--in", src, "--refresh", "0"]).returncode == 5, "--refresh 0 exits 5")
 
+# ---------------------------------------------------------------- local events (record-event hook)
+# `collect --local-events <file>` merges the hook's JSON lines into the document.
+LOCAL = [
+    {"ts": "2026-05-01T10:30:00Z", "kind": "agent.spawned", "session": "s1", "agent": "a1", "issue": 51,
+     "worktree": None, "branch": None, "outcome": None},
+    {"ts": "2026-05-01T11:45:00Z", "kind": "agent.stopped", "session": "s1", "agent": "a1", "issue": 51,
+     "worktree": "/w/51", "branch": "issue/51-collector", "outcome": "ready-to-merge"},
+    {"ts": "2026-05-01T10:31:00Z", "kind": "worktree.added", "session": "s1", "agent": None, "issue": None,
+     "worktree": "/w/51", "branch": "issue/51-collector", "outcome": None},
+    {"ts": "2026-05-02T10:31:00Z", "kind": "worktree.removed", "session": "s1", "agent": None, "issue": None,
+     "worktree": "/w/51", "branch": None, "outcome": None},
+]
+JUNK = ["not json", "[1]", json.dumps({"ts": "bad", "kind": "agent.spawned"}),
+        json.dumps({"ts": "2026-05-01T10:00:00Z", "kind": "issue.closed", "issue": 51})]
+IS_LOCAL = ("agent.", "worktree.")
+
 # ---------------------------------------------------------------- watch and path (the /timeline skill)
 # A test-only override (IFW_WATCH_FAST=1) lets watch use an interval below its 60-second floor.
 FAST = {"IFW_WATCH_FAST": "1"}
@@ -416,6 +432,61 @@ with tempfile.TemporaryDirectory() as tmp:
     fx = os.path.join(tmp, "gh.json")
     with open(fx, "w") as handle:
         json.dump(build("github"), handle)
+    log = os.path.join(tmp, "events.jsonl")
+    with open(log, "w") as handle:
+        handle.write("\n".join([json.dumps(e) for e in LOCAL] + JUNK) + "\n")
+    base_events = json.loads(run(["collect", "--fixture", fx]).stdout)["events"]
+    proc = run(["collect", "--fixture", fx, "--local-events", log])
+    check(proc.returncode == 0, f"--local-events exits 0: {proc.stderr}")
+    merged = json.loads(proc.stdout)["events"] if proc.returncode == 0 else []
+    local = [e for e in merged if e["kind"].startswith(IS_LOCAL)]
+    check(len(local) == 4, f"four local events merged, junk lines skipped, got {len(local)}")
+    check(len(merged) == len(base_events) + 4, "tracker events are unchanged")
+    check([e["ts"] for e in merged] == sorted(e["ts"] for e in merged), "merged events stay sorted by ts")
+    check(all(set(e) >= {"ts", "kind", "issue", "pr", "batch", "actor", "from", "to", "detail"} for e in local),
+          "local events carry the nine schema keys")
+    stopped = [e for e in local if e["kind"] == "agent.stopped"]
+    check(stopped and stopped[0]["outcome"] == "ready-to-merge" and stopped[0]["batch"] == 50,
+          f"a local event gets its batch from the issue: {stopped}")
+    # Range and issue filters apply to local events too.
+    ranged = json.loads(run(["collect", "--fixture", fx, "--local-events", log, "--since", "2026-05-02T00:00:00Z"]).stdout)
+    check([e["kind"] for e in ranged["events"] if e["kind"].startswith("worktree.")] == ["worktree.removed"],
+          "--since filters local events")
+    only = json.loads(run(["collect", "--fixture", fx, "--local-events", log, "--issue", "51"]).stdout)
+    check([e["kind"] for e in only["events"] if e["kind"].startswith("worktree.")] == ["worktree.added", "worktree.removed"],
+          "a worktree event joins its issue by branch, and its remove by path")
+    other = json.loads(run(["collect", "--fixture", fx, "--local-events", log, "--issue", "52"]).stdout)
+    check(not [e for e in other["events"] if e["kind"].startswith(IS_LOCAL)], "--issue drops local events of other issues")
+    # No log, or a missing explicit file, falls back to the tracker alone.
+    none = run(["collect", "--fixture", fx, "--local-events", os.path.join(tmp, "none.jsonl")])
+    check(none.returncode == 0 and json.loads(none.stdout)["events"] == base_events,
+          "a missing log file gives the tracker-only document")
+    off = json.loads(run(["collect", "--fixture", fx, "--local-events", "off"]).stdout)
+    check(off["events"] == base_events, "--local-events off skips the log")
+    check(json.loads(run(["collect", "--fixture", fx]).stdout)["events"] == base_events,
+          "--fixture without --local-events reads no log")
+
+    # With no path, the log comes from the repository's common dir.
+    repo = os.path.join(tmp, "repo")
+    os.makedirs(repo)
+    subprocess.run(["git", "init", "-q"], cwd=repo, check=True)
+    os.makedirs(os.path.join(repo, ".git", "issue-flow"))
+    with open(os.path.join(repo, ".git", "issue-flow", "events.jsonl"), "w") as handle:
+        handle.write(json.dumps(LOCAL[0]) + "\n")
+    cwd_run = subprocess.run([sys.executable, SCRIPT, "collect", "--fixture", fx, "--local-events"],
+                             capture_output=True, text=True, cwd=repo)
+    check(cwd_run.returncode == 0 and any(e["kind"] == "agent.spawned" for e in json.loads(cwd_run.stdout)["events"]),
+          f"--local-events with no path reads the repository's log: {cwd_run.stderr}")
+
+    # `watch` forwards --local-events (a path, or `off`) to collect.
+    for flag, expect_local in ((log, True), ("off", False)):
+        page = os.path.join(tmp, f"local-{expect_local}.html")
+        proc = run(["watch", "--fixture", fx, "--local-events", flag, "--interval", "0.3",
+                    "--max-minutes", "0.02", "--out", page], env=FAST)
+        kinds = {e["kind"] for e in (payload(open(page).read())["events"] if os.path.exists(page) else [])}
+        check(proc.returncode == 0 and (("agent.spawned" in kinds) == expect_local),
+              f"watch --local-events {flag if flag == 'off' else '<path>'} passes through: {proc.stderr}")
+
     out = os.path.join(tmp, "live.html")
     proc = run(["watch", "--fixture", fx, "--interval", "0.3", "--max-minutes", "0.02", "--out", out], env=FAST)
     check(proc.returncode == 0, f"watch exits 0 at the maximum: {proc.stderr}")
@@ -483,6 +554,18 @@ try:
     check(proc.returncode == 0, f"validate-manifests passes with the skill: {proc.stdout}{proc.stderr}")
 except ImportError:
     pass
+
+# The renderer draws local events as worktree and agent lanes under their batch.
+lane_doc = copy.deepcopy(gh_doc)
+lane_doc["events"] = sorted(lane_doc["events"] + [
+    dict(timeline._event(e["ts"], e["kind"], e["issue"], batch=50 if e["issue"] else None),
+         **{k: e[k] for k in ("session", "agent", "worktree", "branch", "outcome")}) for e in LOCAL],
+    key=lambda e: e["ts"])
+lane_model, _ = timeline.build_model(lane_doc)
+lane_ids = {lane["id"]: lane["kind"] for group in lane_model for lane in group["lanes"]}
+check(lane_ids.get("agent:a1") == "agent", f"agent lane exists: {lane_ids}")
+check(lane_ids.get("worktree:/w/51") == "worktree", f"worktree lane exists: {lane_ids}")
+check(payload(timeline.render_html(lane_doc))["events"] == lane_doc["events"], "page embeds local events")
 
 if failures:
     for failure in failures:

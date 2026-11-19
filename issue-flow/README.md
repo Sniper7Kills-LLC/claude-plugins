@@ -402,6 +402,38 @@ promotion from `dev` to the live branch.
 summary: PM and issue-worker run on **Opus**; a worker's children, the deploy-verifier,
 the ux-explorer, the code-auditor and the review-scribe run on **Sonnet**.
 
+## Hooks
+
+The plugin ships three hooks in `hooks/hooks.json`. Claude Code loads them with the plugin.
+
+| Hook | Event | What it does |
+|---|---|---|
+| `preflight.py` | `SessionStart` | Fetches the remote and reports drift to the PM. |
+| `guard-spawn.py` | `PreToolUse` on `Agent` | Refuses two spawn shapes that strand a result. |
+| `record-event.py` | `PostToolUse` on `Agent` and `Bash`; `SubagentStop` | Logs local orchestration events for the timeline. |
+
+### Local event log
+
+The tracker does not show worker spawns, worker verdicts or worktree changes. `record-event.py`
+appends them, one JSON line each, to `<git common dir>/issue-flow/events.jsonl`. All linked
+worktrees of one repository share that file, and git never tracks it. The log stays on your
+machine: nothing publishes it.
+
+| Kind | Logged when |
+|---|---|
+| `agent.spawned` | An `Agent` call whose brief has an `issue: #<n>` line. |
+| `agent.stopped` | A subagent ends with a verdict JSON, or an issue-worker ends. The line carries `outcome`, `branch` and `worktree` from the verdict. |
+| `worktree.added`, `worktree.removed` | A Bash command runs `git worktree add` or `git worktree remove`. |
+
+Each line holds only `ts`, `kind`, `session`, `agent`, `issue`, `worktree`, `branch` and
+`outcome`. It never holds a prompt, a brief body or tool output. The hook never blocks or
+changes a tool call: it always exits 0 and prints nothing, and it swallows every error.
+`timeline.py collect` merges the log into the timeline (see
+[`references/timeline.md`](references/timeline.md)).
+
+To turn the log off, set `ISSUE_FLOW_EVENTS=off` in the project's `.claude/settings.json`
+`env` block, then start a new session. Hooks read the environment at session start.
+
 ## Install
 
 ```bash
