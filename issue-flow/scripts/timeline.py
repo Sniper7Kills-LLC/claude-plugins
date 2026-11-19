@@ -31,6 +31,19 @@ payloads and returns the document. A --fixture file is such a bundle:
 {"forge": {"type", "host", "owner", "repo"}, "issues": [{"issue", "timeline"}],
 "pulls": [{"pr", "timeline"}]}, with the payloads exactly as the forge returned them.
 
+Keep a page current while a run is going (the /timeline skill starts this in the background):
+
+    python3 "${CLAUDE_PLUGIN_ROOT}/scripts/timeline.py" watch --forge github --repo owner/name --interval 300 --max-minutes 240
+
+`watch` runs `collect`, then `render --refresh <interval>`, then sleeps, until --max-minutes
+passes or it gets SIGINT or SIGTERM (both exit 0). It takes every `collect` flag, and it
+owns --out: the default is <git common dir>/issue-flow/timeline.html, which no commit
+carries and every worktree shares. It replaces the page in one step, so a browser never
+reads half a page. --interval is 60 seconds or more (default 300). --max-minutes defaults
+to 240. A failed fetch keeps the last good page; three failed fetches in a row exit 2.
+IFW_WATCH_FAST=1 lifts the 60-second floor, for tests only. `path` prints the default page
+path (exit 2 outside a git repository).
+
 Environment: IFW_GH and IFW_TEA replace the `gh` and `tea` commands (for tests).
 `tea api` exits 0 on an API error and prints an error object, so every body is checked.
 
@@ -43,8 +56,11 @@ import html
 import json
 import os
 import re
+import signal
 import subprocess
 import sys
+import tempfile
+import time
 from datetime import datetime, timedelta, timezone
 from urllib.parse import quote
 
@@ -853,6 +869,86 @@ def cmd_render(args):
     return 0
 
 
+# ------------------------------------------------------------------ watch and path
+
+WATCH_FAILURE_LIMIT = 3
+
+
+def cmd_path(args):
+    try:
+        print(common_dir_path("timeline.html"))
+    except RuntimeError as exc:
+        print(json.dumps({"error": str(exc)}), file=sys.stderr)
+        return 2
+    return 0
+
+
+def _watch_once(collect_args, out_path, interval, scratch):
+    """Collect and render one page. Return 0, or the exit code of the failed step."""
+    doc_path = os.path.join(scratch, "timeline.json")
+    try:
+        code = main(["collect", *collect_args, "--out", doc_path])
+    except SystemExit as exc:
+        code = exc.code if isinstance(exc.code, int) else 5
+    if code != 0:
+        return code
+    try:
+        with open(doc_path) as handle:
+            page = render_html(json.load(handle), refresh=max(1, int(-(-interval // 1))))
+        tmp_path = os.path.join(os.path.dirname(out_path), f".{os.path.basename(out_path)}.tmp")
+        with open(tmp_path, "w") as handle:
+            handle.write(page)
+        os.replace(tmp_path, out_path)
+    except (OSError, ValueError) as exc:
+        print(json.dumps({"error": f"watch render failed: {exc}"}), file=sys.stderr)
+        return 2
+    return 0
+
+
+def cmd_watch(args):
+    fast = os.environ.get("IFW_WATCH_FAST") == "1"
+    if args.interval < (0 if fast else 60) or args.interval <= 0:
+        print("error: --interval takes 60 seconds or more", file=sys.stderr)
+        return 5
+    if args.max_minutes <= 0:
+        print("error: --max-minutes must be more than 0", file=sys.stderr)
+        return 5
+    try:
+        out_path = os.path.abspath(args.out) if args.out else common_dir_path("timeline.html")
+        os.makedirs(os.path.dirname(out_path), exist_ok=True)
+    except (RuntimeError, OSError) as exc:
+        print(json.dumps({"error": f"watch failed: {exc}"}), file=sys.stderr)
+        return 2
+
+    def stop(signum, frame):
+        raise KeyboardInterrupt
+
+    signal.signal(signal.SIGTERM, stop)
+    deadline = time.monotonic() + args.max_minutes * 60
+    failures_in_a_row = 0
+    try:
+        with tempfile.TemporaryDirectory() as scratch:
+            while True:
+                code = _watch_once(args.collect_args, out_path, args.interval, scratch)
+                if code == 5:
+                    return 5
+                failures_in_a_row = failures_in_a_row + 1 if code else 0
+                if code:
+                    print(f"watch: refresh failed (exit {code}); the last page stays", file=sys.stderr, flush=True)
+                    if failures_in_a_row >= WATCH_FAILURE_LIMIT:
+                        return 2
+                else:
+                    print(f"wrote {out_path} at {datetime.now(timezone.utc).isoformat(timespec='seconds')}",
+                          file=sys.stderr, flush=True)
+                remaining = deadline - time.monotonic()
+                if remaining <= 0:
+                    return 0
+                time.sleep(min(args.interval, remaining))
+    except KeyboardInterrupt:
+        print("watch: stopped", file=sys.stderr, flush=True)
+        return 0
+
+
 def main(argv=None):
     parser = Parser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     sub = parser.add_subparsers(dest="command", required=True, parser_class=Parser)
@@ -873,7 +969,19 @@ def main(argv=None):
     render.add_argument("--out", help="write the page here instead of stdout")
     render.add_argument("--refresh", type=int, help="seconds between automatic page reloads (default: off)")
     render.set_defaults(func=cmd_render)
-    args = parser.parse_args(argv)
+    watch = sub.add_parser("watch", help="rewrite the HTML page on a timer while a run is going",
+                           description="Every other flag goes to `collect`.")
+    watch.add_argument("--interval", type=float, default=300, help="seconds between refreshes (60 or more; default 300)")
+    watch.add_argument("--max-minutes", type=float, default=240, help="stop after this long (default 240)")
+    watch.add_argument("--out", help="page path (default: <git common dir>/issue-flow/timeline.html)")
+    watch.set_defaults(func=cmd_watch)
+    path = sub.add_parser("path", help="print the default page path")
+    path.set_defaults(func=cmd_path)
+    args, extra = parser.parse_known_args(argv)
+    if args.command == "watch":
+        args.collect_args = extra
+    elif extra:
+        parser.error(f"unrecognized arguments: {' '.join(extra)}")
     return args.func(args)
 
 

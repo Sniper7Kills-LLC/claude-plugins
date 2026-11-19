@@ -70,7 +70,7 @@ self-hosted Gitea with its own runner has no such ceiling.
 
 The full operation mapping is in [references/forge.md](references/forge.md).
 
-## The seven skills
+## The eight skills
 
 ### `/project-planner`
 
@@ -206,6 +206,23 @@ the job never force-pushes.
 
 GitHub only, and the account must be able to run Actions on private repos (GitHub bills
 those minutes). A rewrite cannot recall what forks and clones already hold.
+
+### `/timeline`
+
+Draws what a run did as one local HTML page. The page has a lane per issue and per
+batch, with markers for status changes, pull requests, checkpoints and batch merges.
+It filters by timeframe in the browser (24 hours, 7 days, 30 days, all, or a date range).
+
+- **Snapshot** — writes the page once.
+- **Live** — `scripts/timeline.py watch` rewrites the page every 5 minutes (60 seconds or
+  more) for up to 4 hours, and the open page reloads itself. Stop it with `SIGTERM`; the
+  last page stays.
+
+The skill is read-only and needs only the tracker, so it works outside a run. It writes
+to `<git common dir>/issue-flow/timeline.html` (no commit carries it, and every worktree
+shares it) or to the `--out` path you give. It publishes nothing. The script is
+`scripts/timeline.py` (`collect`, `render`, `watch`, `path`); the schema is in
+[references/timeline.md](references/timeline.md).
 
 ## What earns an issue
 
@@ -424,6 +441,9 @@ the spec" after a plugin upgrade).
 
 On any existing tracker, start the loop with `/issue-flow`, "work the issues", or "pick up
 the next issue".
+
+To see what a run did, use `/timeline` ("show the issue-flow timeline"), live or as a
+snapshot.
 
 After a build wave, start the review with `/project-review`, "review the project",
 "user-test the app", or "build the user manual". The review ends by offering to launch

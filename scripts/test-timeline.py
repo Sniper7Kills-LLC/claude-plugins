@@ -409,6 +409,81 @@ with tempfile.TemporaryDirectory() as tmp:
     check(run(["render", "--in", os.path.join(tmp, "missing.json")]).returncode == 2, "a missing --in file exits 2")
     check(run(["render", "--in", src, "--refresh", "0"]).returncode == 5, "--refresh 0 exits 5")
 
+# ---------------------------------------------------------------- watch and path (the /timeline skill)
+# A test-only override (IFW_WATCH_FAST=1) lets watch use an interval below its 60-second floor.
+FAST = {"IFW_WATCH_FAST": "1"}
+with tempfile.TemporaryDirectory() as tmp:
+    fx = os.path.join(tmp, "gh.json")
+    with open(fx, "w") as handle:
+        json.dump(build("github"), handle)
+    out = os.path.join(tmp, "live.html")
+    proc = run(["watch", "--fixture", fx, "--interval", "0.3", "--max-minutes", "0.02", "--out", out], env=FAST)
+    check(proc.returncode == 0, f"watch exits 0 at the maximum: {proc.stderr}")
+    check(proc.stderr.count("wrote ") >= 2, f"watch writes the page more than once: {proc.stderr!r}")
+    if os.path.exists(out):
+        with open(out) as handle:
+            page = handle.read()
+        check('http-equiv="refresh"' in page, "watch renders a page that reloads itself")
+        check(payload(page)["events"] == timeline.normalize(build("github"))["events"], "watch page carries the events")
+    else:
+        failures.append("watch wrote no page")
+    check(not [n for n in os.listdir(tmp) if n.startswith(".") or n.endswith(".tmp")], "watch leaves no temp file")
+    # Floor and bad input.
+    check(run(["watch", "--fixture", fx, "--interval", "30", "--out", out]).returncode == 5,
+          "watch refuses an interval below 60 seconds")
+    check(run(["watch", "--fixture", fx, "--max-minutes", "0", "--out", out], env=FAST).returncode == 5,
+          "watch refuses a maximum of zero")
+    check(run(["watch", "--interval", "60"]).returncode == 5, "watch without --forge or --fixture exits 5")
+    check(run(["collect", "--fixture", fx, "--bogus"]).returncode == 5, "collect still rejects an unknown flag")
+    # SIGTERM stops the loop cleanly.
+    import signal
+    import time
+    child = subprocess.Popen([sys.executable, SCRIPT, "watch", "--fixture", fx, "--interval", "0.3",
+                              "--out", out], env={**os.environ, **FAST}, stderr=subprocess.PIPE, text=True)
+    time.sleep(1.0)
+    child.send_signal(signal.SIGTERM)
+    try:
+        code = child.wait(timeout=10)
+    except subprocess.TimeoutExpired:
+        child.kill()
+        code = None
+    check(code == 0, f"SIGTERM stops watch with exit 0 (got {code})")
+
+# The default page path is the common dir of the repository, seen from a linked worktree.
+with tempfile.TemporaryDirectory() as tmp:
+    git = lambda *a, cwd=tmp: subprocess.run(["git", *a], cwd=cwd, capture_output=True, text=True)  # noqa: E731
+    git("init", "-q", "-b", "main")
+    git("-c", "user.name=t", "-c", "user.email=t@t", "commit", "-q", "--allow-empty", "-m", "x")
+    linked = os.path.join(tmp, "wt")
+    git("worktree", "add", "-q", linked)
+    expect = os.path.realpath(os.path.join(tmp, ".git", "issue-flow", "timeline.html"))
+    proc = subprocess.run([sys.executable, SCRIPT, "path"], cwd=linked, capture_output=True, text=True)
+    check(proc.returncode == 0 and os.path.realpath(proc.stdout.strip()) == expect, f"path from a linked worktree: {proc.stdout!r}")
+    fx = os.path.join(tmp, "fx.json")
+    with open(fx, "w") as handle:
+        json.dump(build("github"), handle)
+    proc = subprocess.run([sys.executable, SCRIPT, "watch", "--fixture", fx, "--interval", "0.2", "--max-minutes", "0.01"],
+                          cwd=linked, capture_output=True, text=True, env={**os.environ, **FAST})
+    check(proc.returncode == 0 and os.path.exists(expect), f"watch defaults --out to the common dir: {proc.stderr}")
+    outside = tempfile.mkdtemp()
+    proc = subprocess.run([sys.executable, SCRIPT, "path"], cwd=outside, capture_output=True, text=True)
+    check(proc.returncode == 2, f"path outside a git repository exits 2 (got {proc.returncode})")
+
+# The skill exists with the frontmatter the manifest validator needs.
+SKILL = os.path.join(ROOT, "issue-flow", "skills", "timeline", "SKILL.md")
+check(os.path.exists(SKILL), "skills/timeline/SKILL.md exists")
+if os.path.exists(SKILL):
+    with open(SKILL) as handle:
+        head = handle.read().split("---")[1]
+    check("name: timeline" in head and "description:" in head, "the timeline skill has name and description")
+try:
+    import yaml  # noqa: F401
+    proc = subprocess.run([sys.executable, os.path.join(ROOT, "scripts", "validate-manifests.py")],
+                          capture_output=True, text=True)
+    check(proc.returncode == 0, f"validate-manifests passes with the skill: {proc.stdout}{proc.stderr}")
+except ImportError:
+    pass
+
 if failures:
     for failure in failures:
         print(f"FAIL {failure}")
