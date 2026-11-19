@@ -171,6 +171,16 @@ sequenceDiagram
     PM->>F: status batched + tick the tracking checklist
 ```
 
+**Machine-readable markers.** Every PM comment that records a plan, a cross-check, a gate
+result, a sub-merge, a checkpoint, a worker launch or a status repair starts with a hidden
+marker such as `<!-- issue-flow:event role=gate.rework issue=75 pr=9 problem=r1 -->`. Every
+worker commit carries the trailers `Change:` and `Why:`, and `Fixes:` when it answers a
+rework comment, a review comment or a CI run. `/timeline` reads them to show why each change
+happened. The visible text does not change. A run made before this change has no markers or
+trailers, and it still classifies through the prose fallback: the comment prefixes
+(`## Plan (PM)`, `PM gate: rework requested`, and so on) and the commit's files. The grammar
+is in [`references/timeline.md`](references/timeline.md).
+
 ### `/project-review`
 
 The QA and documentation pass that follows a build wave. The PM starts a sandbox, runs

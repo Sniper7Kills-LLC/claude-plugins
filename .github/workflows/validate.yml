@@ -63,5 +63,8 @@ jobs:
       - name: Test the local-event hook
         run: python3 scripts/test-record-event.py
 
+      - name: Test the event marker and trailer examples
+        run: python3 scripts/test-event-markers.py
+
       - name: Validate manifests, frontmatter and links
         run: python3 scripts/validate-manifests.py
