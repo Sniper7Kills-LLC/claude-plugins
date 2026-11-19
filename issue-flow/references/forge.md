@@ -114,6 +114,25 @@ does not error — it silently creates a second label with that name, exit 0. Ch
 | `forge.issue.timeline` | `gh api repos/<owner>/<repo>/issues/<n>/timeline?per_page=100&page=<p>` | `tea api "/repos/<owner>/<repo>/issues/<n>/timeline?limit=50&page=<p>"` | `issue_read` |
 | `forge.issue.list.all` | `gh api "repos/<owner>/<repo>/issues?state=all&since=<ts>&per_page=100&page=<p>"` | `tea api "/repos/<owner>/<repo>/issues?state=all&type=issues&since=<ts>&limit=50&page=<p>"` | `list_issues(state: "all", since: "<ts>")` |
 | `forge.pr.list.all` | `gh api "repos/<owner>/<repo>/pulls?state=all&per_page=100&page=<p>"` | `tea api "/repos/<owner>/<repo>/pulls?state=all&limit=50&page=<p>"` | `list_pull_requests(state: "all")` |
+| `forge.pr.commits` | `gh api "repos/<owner>/<repo>/pulls/<n>/commits?per_page=100&page=<p>"` | `tea api "/repos/<owner>/<repo>/pulls/<n>/commits?verification=false&limit=50&page=<p>"` | `pull_request_read` |
+| `forge.commit.files` | `gh api repos/<owner>/<repo>/commits/<sha>` (`files[]` with `patch`) | `tea api /repos/<owner>/<repo>/git/commits/<sha>.diff` (plain text; the commit file list has no counts or patch) | `get_commit` |
+| `forge.pr.reviews` | `gh api "repos/<owner>/<repo>/pulls/<n>/reviews?per_page=100&page=<p>"` | `tea api "/repos/<owner>/<repo>/pulls/<n>/reviews?limit=50&page=<p>"` | `pull_request_read` |
+| `forge.pr.review.comments` | `gh api "repos/<owner>/<repo>/pulls/<n>/comments?per_page=100&page=<p>"` | `tea api "/repos/<owner>/<repo>/pulls/<n>/reviews/<id>/comments?limit=50&page=<p>"` (one call per review) | `pull_request_read` |
+| `forge.ci.runs.sha` | `gh api "repos/<owner>/<repo>/actions/runs?head_sha=<sha>&per_page=100&page=<p>"` (`workflow_runs[]`) | `tea api "/repos/<owner>/<repo>/actions/runs?head_sha=<sha>&limit=50&page=<p>"` (`workflow_runs[]`) | `actions_run_read(method: "list_runs")` |
+| `forge.ci.run.jobs` | `gh api repos/<owner>/<repo>/actions/runs/<id>/jobs?per_page=100` | `tea api "/repos/<owner>/<repo>/actions/runs/<id>/jobs?limit=50"` | `actions_run_read(method: "list_jobs")` |
+
+**The granular reads (`forge.pr.commits` to `forge.ci.run.jobs`) also feed `scripts/timeline.py`.**
+They are read-only. A GitHub PR commit has no `files`, so `commits/<sha>` supplies them, with a
+`patch` per file when the diff is small enough. The Gitea commit list has `files` with only
+`filename` and `status`, so the `.diff` route supplies the counts and the patches. GitHub
+reports no resolved flag for a review thread in REST, so `review.comment.resolved` is `null`
+there. Gitea review comments carry `resolver`. A repository with Actions off answers the runs
+call with `404`, and the collector reads that as no runs. Verified against
+<https://docs.github.com/en/rest/pulls/pulls>, <https://docs.github.com/en/rest/pulls/reviews>,
+<https://docs.github.com/en/rest/pulls/comments>, <https://docs.github.com/en/rest/commits/commits>,
+<https://docs.github.com/en/rest/actions/workflow-runs>,
+<https://docs.github.com/en/rest/actions/workflow-jobs> and the Gitea swagger file
+<https://gitea.com/swagger.v1.json>, retrieved 2026-11-19.
 
 **The timeline reads (`forge.issue.timeline`, `forge.issue.list.all`, `forge.pr.list.all`)
 feed `scripts/timeline.py`.** They are read-only. Page until an empty page on both forges

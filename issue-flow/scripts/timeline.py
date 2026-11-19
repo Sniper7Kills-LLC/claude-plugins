@@ -26,6 +26,12 @@ references/timeline.md; this script is its only producer.
 verdicts, worktree changes): --local-events [PATH|off]. A live collect reads the default log
 when it exists; a missing log gives the tracker-only document.
 
+Commits, comment roles, reviews, CI runs and the links from a problem to its fix are in the
+document too (references/timeline.md). A patch is cut at 400 lines or 32 KB per file, and the
+patches of one document share --max-diff-bytes (default 4194304). A cut patch has `truncated`
+set. --no-diffs leaves every patch out and keeps the per-file stats. A GitHub commit lists its
+first 300 files. A Gitea commit takes its stats and patches from the `.diff` route.
+
 Flags: --since/--until take an ISO date, an ISO timestamp, or a relative age (`7d`,
 `24h`, `2w`). --issue and --batch keep one issue or one batch (a tracking-issue number).
 --pr-repo reads pull requests from another repository on the same forge.
@@ -33,7 +39,17 @@ Flags: --since/--until take an ISO date, an ISO timestamp, or a relative age (`7
 The fetch is kept apart from `normalize`, which is pure: it takes a bundle of raw
 payloads and returns the document. A --fixture file is such a bundle:
 {"forge": {"type", "host", "owner", "repo"}, "issues": [{"issue", "timeline"}],
-"pulls": [{"pr", "timeline"}]}, with the payloads exactly as the forge returned them.
+"pulls": [{"pr", "timeline", "commits", "reviews", "review_comments", "runs"}]}, with the
+payloads exactly as the forge returned them. A GitHub commit is the `commits/{sha}` payload
+(it carries `files`). A Gitea commit is the `pulls/{n}/commits` item plus a `diff` key that holds
+the `.diff` text. `runs` is a list of {"run", "jobs"}; `jobs` is filled for failed runs only.
+`commits`, `reviews`, `review_comments` and `runs` may be absent.
+
+Endpoints were checked against https://docs.github.com/en/rest/pulls/pulls,
+https://docs.github.com/en/rest/pulls/reviews, https://docs.github.com/en/rest/pulls/comments,
+https://docs.github.com/en/rest/commits/commits, https://docs.github.com/en/rest/actions/workflow-runs,
+https://docs.github.com/en/rest/actions/workflow-jobs and the Gitea swagger file at
+https://gitea.com/swagger.v1.json (retrieved 2026-11-19).
 
 Keep a page current while a run is going (the /timeline skill starts this in the background):
 
@@ -77,6 +93,34 @@ GATE = re.compile(r"(\d+)\s*(?:→|->)\s*(?:(\d+)f|[–—-])\s*/\s*(?:(\d+)c|[�
 CHECKLIST_REF = re.compile(r"^\s*[-*]\s*\[.\].*?#(\d+)", re.M)
 WIP = re.compile(r"^\s*(?:WIP:|\[WIP\])", re.I)
 GROUP_SECONDS = 2
+ROLES = ("plan", "cross-check", "plan-amendment", "gate.pass", "gate.rework", "sub-merge", "checkpoint",
+         "worker.launched", "status.repair", "question", "other")
+# The prose runs wrote before the event marker existed. Each row is matched at the start of the comment.
+PROSE_ROLES = (
+    (re.compile(r"##\s*Plan\s*\(PM\)", re.I), "plan"),
+    (re.compile(r"\*\*Amendment\s*\(batch cross-check", re.I), "plan-amendment"),
+    (re.compile(r"finding:\s*batch cross-check", re.I), "cross-check"),
+    (re.compile(r"PM gate:\s*rework requested", re.I), "gate.rework"),
+    (re.compile(r"PM gate:\s*pass", re.I), "gate.pass"),
+    (re.compile(r"Sub-merged into", re.I), "sub-merge"),
+    (re.compile(r"checkpoint\s+\d+\s*:", re.I), "checkpoint"),
+    (re.compile(r"worker launched:", re.I), "worker.launched"),
+    (re.compile(r"status repair:", re.I), "status.repair"),
+)
+MARKER = re.compile(r"<!--\s*issue-flow:event\s+([^>]*?)\s*-->")
+MARKER_ATTR = re.compile(r"(\w+)=(\S+)")
+TRAILER = re.compile(r"^(Change|Why|Fixes):[ \t]*(.*\S)[ \t]*$", re.I | re.M)
+CHANGES = ("feature", "fix", "test", "docs", "refactor", "merge")
+TEST_PATH = re.compile(r"(^|/)(tests?|__tests__|specs?|e2e)/|(^|/)test[-_][^/]*$|[-_.]tests?\.[^/]*$|\.spec\.[^/]*$", re.I)
+DOCS_PATH = re.compile(r"(^|/)docs?/|\.(md|mdx|rst|txt)$", re.I)
+EXCERPT_CHARS = 300
+MAX_PATCH_LINES = 400
+MAX_PATCH_BYTES = 32 * 1024
+DEFAULT_MAX_DIFF_BYTES = 4 * 1024 * 1024
+RUN_FAILED = ("failure", "timed_out", "startup_failure")
+REVIEW_STATES = {"APPROVED": "approved", "CHANGES_REQUESTED": "changes_requested", "REQUEST_CHANGES": "changes_requested",
+                 "COMMENT": "commented", "COMMENTED": "commented", "DISMISSED": "dismissed"}
+FILE_STATUS = {"deleted": "removed"}
 
 
 class FetchError(Exception):
@@ -161,7 +205,8 @@ def _timeline_item(forge_type, raw):
     if not op or not ts:
         return None
     return {"ts": ts, "op": op, "actor": _login(raw, "actor", "user"),
-            "name": (raw.get("label") or {}).get("name"), "body": raw.get("body") or ""}
+            "name": (raw.get("label") or {}).get("name"), "body": raw.get("body") or "",
+            "url": raw.get("html_url"), "id": raw.get("id")}
 
 
 def _status_events(items):
@@ -214,12 +259,257 @@ def parse_convergence(text):
             for m in GATE.finditer(found[-1])]
 
 
-def normalize(bundle, since=None, until=None, only_issue=None, only_batch=None):
+def parse_marker(body):
+    """Return {role, issue, pr, problem} from the first event marker in `body`, or None.
+
+    The grammar is in references/timeline.md. A marker with no `role` is not a marker.
+    """
+    found = MARKER.search(body or "")
+    if not found:
+        return None
+    attrs = dict(MARKER_ATTR.findall(found.group(1)))
+    if not attrs.get("role"):
+        return None
+    number = lambda key: int(attrs[key]) if attrs.get(key, "").isdigit() else None  # noqa: E731
+    return {"role": attrs["role"], "issue": number("issue"), "pr": number("pr"), "problem": attrs.get("problem")}
+
+
+def classify_comment(body):
+    """Return the role of a comment: a valid marker role first, then a prose prefix, else `other`."""
+    marker = parse_marker(body)
+    if marker and marker["role"] in ROLES:
+        return marker["role"]
+    text = MARKER.sub("", body or "", count=1).lstrip()
+    for pattern, role in PROSE_ROLES:
+        if pattern.match(text):
+            return role
+    return "other"
+
+
+def parse_trailers(message):
+    """Return {change, why, fixes} from the trailer block (the last paragraph) of a commit message.
+
+    `change` is None unless it names one of CHANGES. `fixes` keeps every `Fixes:` value in order.
+    """
+    paragraphs = (message or "").strip().split("\n\n")
+    block = paragraphs[-1] if len(paragraphs) > 1 else ""
+    out = {"change": None, "why": None, "fixes": []}
+    for key, value in TRAILER.findall(block):
+        key = key.lower()
+        if key == "fixes":
+            out["fixes"].append(value)
+        elif key == "change" and value.lower() in CHANGES and out["change"] is None:
+            out["change"] = value.lower()
+        elif key == "why" and out["why"] is None:
+            out["why"] = value
+    return out
+
+
+def _excerpt(text):
+    return (text or "")[:EXCERPT_CHARS]
+
+
+def _comment_event(item, issue, pr, batch):
+    """One `comment` event for a timeline comment, with its role, excerpt, url and marker problem key."""
+    marker = parse_marker(item["body"])
+    return _event(item["ts"], "comment", issue, pr, batch, item["actor"], role=classify_comment(item["body"]),
+                  excerpt=_excerpt(item["body"]), url=item["url"],
+                  problem=marker["problem"] if marker else None)
+
+
+def _parse_diff(text):
+    """Split `git diff` text into {path: (patch, additions, deletions)}. The patch starts at the first hunk."""
+    out = {}
+    for chunk in re.split(r"^diff --git ", text or "", flags=re.M)[1:]:
+        head, _, rest = chunk.partition("\n")
+        names = re.match(r"a/(.+?) b/(.+)$", head)
+        if not names:
+            continue
+        start = re.search(r"^@@", rest, re.M)
+        patch = rest[start.start():].rstrip("\n") if start else ""
+        lines = patch.split("\n") if patch else []
+        out[names.group(2)] = (patch or None,
+                               sum(1 for l in lines if l.startswith("+")), sum(1 for l in lines if l.startswith("-")))
+    return out
+
+
+def _cap_patch(patch, budget, diffs):
+    """Return (patch, truncated). `budget` is a one-item list holding the bytes left for the document."""
+    if not diffs or patch is None:
+        return None, False
+    truncated = False
+    lines = patch.split("\n")
+    if len(lines) > MAX_PATCH_LINES:
+        patch, truncated = "\n".join(lines[:MAX_PATCH_LINES]), True
+    data = patch.encode("utf-8")
+    if len(data) > MAX_PATCH_BYTES:
+        data, truncated = data[:MAX_PATCH_BYTES], True
+    if len(data) > budget[0]:
+        data, truncated = data[:max(budget[0], 0)], True
+    budget[0] -= len(data)
+    return data.decode("utf-8", "ignore"), truncated
+
+
+def _change_from_files(paths):
+    if paths and all(TEST_PATH.search(p) for p in paths):
+        return "test"
+    if paths and all(DOCS_PATH.search(p) for p in paths):
+        return "docs"
+    return "feature"
+
+
+def _commit_event(raw, issue, pr, batch, diffs, budget):
+    commit = raw.get("commit") or {}
+    message = commit.get("message") or ""
+    subject, _, rest = message.partition("\n")
+    body = rest.strip()
+    when = (commit.get("committer") or {}).get("date") or (commit.get("author") or {}).get("date")
+    author = (raw.get("author") or {}).get("login") or (commit.get("author") or {}).get("name")
+    trailers = parse_trailers(message)
+    from_diff = _parse_diff(raw.get("diff")) if raw.get("diff") is not None else {}
+    files = []
+    for f in raw.get("files") or []:
+        path = f.get("filename")
+        patch, adds, dels = f.get("patch"), f.get("additions"), f.get("deletions")
+        if path in from_diff:
+            patch, adds, dels = from_diff[path]
+        patch, truncated = _cap_patch(patch, budget, diffs)
+        files.append({"path": path, "status": FILE_STATUS.get(f.get("status"), f.get("status")),
+                      "additions": adds, "deletions": dels, "patch": patch, "truncated": truncated})
+    merge = len(raw.get("parents") or []) > 1
+    change = trailers["change"] or ("merge" if merge else _change_from_files([f["path"] for f in files]))
+    why_body = "\n".join(l for l in body.split("\n") if not TRAILER.match(l)).strip()
+    event = _event(to_utc(when), "commit", issue, pr, batch, author, detail=subject, sha=raw.get("sha"),
+                   subject=subject, body=body, author=author, url=raw.get("html_url"), change=change,
+                   why=trailers["why"] or why_body or None, addresses=[], files=files)
+    event["_fixes"], event["_inferred"] = trailers["fixes"], trailers["change"] is None
+    return event
+
+
+def _review_events(raw_reviews, raw_comments, issue, pr, batch):
+    out = []
+    for raw in raw_reviews:
+        state = REVIEW_STATES.get((raw.get("state") or "").upper())
+        ts = to_utc(raw.get("submitted_at"))
+        if state and ts:
+            out.append(_event(ts, "review", issue, pr, batch, _login(raw, "user"), state=state,
+                              excerpt=_excerpt(raw.get("body")), url=raw.get("html_url"), review_id=raw.get("id")))
+    for raw in raw_comments:
+        ts = to_utc(raw.get("created_at"))
+        if not ts:
+            continue
+        resolved = bool(raw.get("resolver")) if "resolver" in raw else None
+        out.append(_event(ts, "review.comment", issue, pr, batch, _login(raw, "user"), path=raw.get("path"),
+                          line=raw.get("line") or raw.get("original_line") or raw.get("position"),
+                          excerpt=_excerpt(raw.get("body")), url=raw.get("html_url"), resolved=resolved,
+                          review_id=raw.get("pull_request_review_id")))
+    return out
+
+
+def _workflow_name(raw):
+    if raw.get("name"):
+        return raw["name"]
+    base = os.path.basename((raw.get("path") or "").split("@")[0])
+    return os.path.splitext(base)[0] or raw.get("display_title")
+
+
+def _run_event(entry, issue, pr, batch):
+    raw = entry["run"]
+    started = to_utc(raw.get("run_started_at") or raw.get("started_at") or raw.get("created_at"))
+    completed = to_utc(raw.get("completed_at") or (raw.get("updated_at") if raw.get("conclusion") else None))
+    duration = int((_parse_dt(completed) - _parse_dt(started)).total_seconds()) if started and completed else None
+    failed_job = failed_step = None
+    if raw.get("conclusion") in RUN_FAILED:
+        job = next((j for j in entry.get("jobs") or [] if j.get("conclusion") in RUN_FAILED), None)
+        if job:
+            failed_job = job.get("name")
+            step = next((st for st in job.get("steps") or [] if st.get("conclusion") in RUN_FAILED), None)
+            failed_step = step.get("name") if step else None
+    ts = completed or started
+    if not ts:
+        return None
+    return _event(ts, "ci.run", issue, pr, batch, None, workflow=_workflow_name(raw), conclusion=raw.get("conclusion"),
+                  started=started, completed=completed, duration=duration, url=raw.get("html_url"),
+                  sha=raw.get("head_sha"), failed_job=failed_job, failed_step=failed_step)
+
+
+def _problem_source(event):
+    """Return (source, role, state, text) when `event` opens a problem, else None."""
+    kind = event["kind"]
+    if kind == "comment" and event.get("role") == "gate.rework":
+        return kind, "gate.rework", None, event.get("excerpt") or "Rework requested"
+    if kind == "review" and event.get("state") == "changes_requested":
+        return kind, None, "changes_requested", event.get("excerpt") or "Changes requested"
+    if kind == "ci.run" and event.get("conclusion") in RUN_FAILED:
+        where = "".join([f" in {event['failed_job']}" if event.get("failed_job") else "",
+                         f" at {event['failed_step']}" if event.get("failed_step") else ""])
+        return kind, None, event["conclusion"], f"{event.get('workflow') or 'CI'} {event['conclusion']}{where}"
+    return None
+
+
+def _same_url(a, b):
+    return bool(a) and bool(b) and a.rstrip("/") == b.rstrip("/")
+
+
+def link_problems(events):
+    """Fill `change` and `addresses` on commit events and return {issue: [problem]}.
+
+    A problem is a `gate.rework` comment, a changes-requested review or a failed CI run. A commit
+    that carries `Fixes:` URLs addresses the problems at those URLs. Any other non-merge commit
+    addresses the problems on its issue that opened before it and that no earlier commit resolved.
+    A commit with no `Change:` trailer that addresses a problem is a `fix`.
+    """
+    problems, by_url, review_of, counters = {}, [], {}, {}
+    for event in sorted(events, key=lambda e: e["ts"]):
+        source = _problem_source(event)
+        n = event["issue"]
+        if not source or n is None:
+            continue
+        key = event.get("problem") if source[0] == "comment" else None
+        pid = f"{n}:{key}" if key else None
+        if not pid:
+            counters[n] = counters.get(n, 0) + 1
+            pid = f"{n}:auto-{counters[n]}"
+        if any(p["id"] == pid for p in problems.get(n, [])):
+            continue
+        entry = {"id": pid, "source": source[0], "role": source[1], "state": source[2], "text": source[3],
+                 "url": event.get("url"), "ts": event["ts"], "resolved_by": [], "resolved": False}
+        problems.setdefault(n, []).append(entry)
+        by_url.append((entry["url"], entry))
+        if source[0] == "review":
+            review_of[(event["pr"], event.get("review_id"))] = entry
+    for event in events:
+        target = review_of.get((event["pr"], event.get("review_id"))) if event["kind"] == "review.comment" else None
+        if target:
+            by_url.append((event.get("url"), target))
+    for event in sorted((e for e in events if e["kind"] == "commit"), key=lambda e: e["ts"]):
+        fixes, inferred = event.pop("_fixes"), event.pop("_inferred")
+        found = []
+        if fixes:
+            for url in fixes:
+                for known, entry in by_url:
+                    if _same_url(known, url) and entry not in found:
+                        found.append(entry)
+        elif event["change"] != "merge":
+            found = [p for p in problems.get(event["issue"], []) if not p["resolved_by"] and p["ts"] <= event["ts"]]
+        for entry in found:
+            entry["resolved_by"].append(event["sha"])
+            entry["resolved"] = True
+        event["addresses"] = [p["id"] for p in found]
+        if found and inferred and event["change"] != "merge":
+            event["change"] = "fix"
+    return problems
+
+
+def normalize(bundle, since=None, until=None, only_issue=None, only_batch=None, diffs=True,
+              max_diff_bytes=DEFAULT_MAX_DIFF_BYTES):
     """Turn a bundle of raw forge payloads into the timeline document (references/timeline.md).
 
     `since` and `until` are UTC timestamps that bound the events. They do not bound
     the replay: statuses are replayed from the start so `status_at_start` is right.
+    `diffs=False` drops every patch. `max_diff_bytes` caps the patch text in the whole document.
     """
+    budget = [max_diff_bytes]
     forge = bundle["forge"]
     ftype = forge["type"]
     issues = {}
@@ -275,6 +565,7 @@ def normalize(bundle, since=None, until=None, only_issue=None, only_batch=None):
         for s in statuses:
             events.append(_event(s["ts"], "status", n, None, batch, s["actor"], s["from"], s["to"]))
         for item in (i for i in items if i["op"] == "comment"):
+            events.append(_comment_event(item, n, None, batch))
             m = CHECKPOINT.match(item["body"])
             if m:
                 events.append(_event(item["ts"], "checkpoint", n, None, batch, item["actor"],
@@ -307,8 +598,18 @@ def normalize(bundle, since=None, until=None, only_issue=None, only_batch=None):
                                      detail=pr.get("title"), base=base, head=head))
         elif pr.get("state") == "closed" and pr.get("closed_at"):
             events.append(_event(to_utc(pr["closed_at"]), "pr.closed", issue, num, batch, None, base=base, head=head))
+        for item in (i for i in items if i["op"] == "comment"):
+            events.append(_comment_event(item, issue, num, batch))
+        for raw in e.get("commits") or []:
+            events.append(_commit_event(raw, issue, num, batch, diffs, budget))
+        events.extend(_review_events(e.get("reviews") or [], e.get("review_comments") or [], issue, num, batch))
+        for entry in e.get("runs") or []:
+            run_event = _run_event(entry, issue, num, batch)
+            if run_event:
+                events.append(run_event)
 
     events.sort(key=lambda e: (e["ts"], e["kind"], e["issue"] or 0, e["pr"] or 0))
+    problems = link_problems(events)
     kept = [e for e in events
             if (not since or e["ts"] >= since) and (not until or e["ts"] <= until)
             and (only_issue is None or e["issue"] == only_issue)
@@ -323,7 +624,8 @@ def normalize(bundle, since=None, until=None, only_issue=None, only_batch=None):
         before = [s for s in status_start_source[n] if since and s["ts"] < since]
         issue_map[str(n)] = {"title": raw.get("title"), "url": raw.get("html_url"), "state": raw.get("state"),
                              "labels": _label_names(raw),
-                             "status_at_start": before[-1]["to"] if before else None}
+                             "status_at_start": before[-1]["to"] if before else None,
+                             "problems": problems.get(n, [])}
     shown_batches = {str(e["batch"]) for e in kept if e["batch"] is not None}
     return {"version": VERSION,
             "forge": {k: forge.get(k) for k in ("type", "host", "owner", "repo", "pr_repo") if forge.get(k)},
@@ -363,12 +665,29 @@ class Api:
             raise FetchError(f"{self.cmd} api {path} returned an error: {body['message']}")
         return body
 
-    def paged(self, path, keep_going=None):
-        """Read every page. An empty page ends the walk; a short page does not (server caps vary)."""
+    def text(self, path):
+        """Read a plain-text body (a `.diff` route). An error object is JSON, so it is still caught."""
+        try:
+            result = subprocess.run([self.cmd, "api", path], cwd=self.repo_path, capture_output=True, text=True)
+        except OSError as exc:
+            raise FetchError(f"cannot run {self.cmd}: {exc}")
+        if result.returncode != 0:
+            raise FetchError(f"{self.cmd} api {path} failed: {(result.stderr or result.stdout).strip()}")
+        if result.stdout.lstrip().startswith("{") and '"message"' in result.stdout[:200]:
+            raise FetchError(f"{self.cmd} api {path} returned an error: {result.stdout[:200]!r}")
+        return result.stdout
+
+    def paged(self, path, keep_going=None, key=None):
+        """Read every page. An empty page ends the walk; a short page does not (server caps vary).
+
+        `key` names the list inside an object body (`workflow_runs`).
+        """
         rows = []
         sep = "&" if "?" in path else "?"
         for page in range(1, 1000):
             body = self.get(f"{path}{sep}{self.limit}&page={page}")
+            if key and isinstance(body, dict):
+                body = body.get(key) or []
             if not isinstance(body, list):
                 raise FetchError(f"{self.cmd} api {path} page {page} is not a list: {str(body)[:200]}")
             if not body:
@@ -377,6 +696,40 @@ class Api:
             if keep_going and not keep_going(body):
                 break
         return rows
+
+
+def _fetch_pull_detail(api, forge_type, repo, pr):
+    """Return the commit, review, review-comment and CI-run payloads of one PR, as the forge sent them."""
+    n = pr["number"]
+    if forge_type == "github":
+        commits = [dict(c, files=api.get(api.path(repo, f"/commits/{c['sha']}")).get("files") or [])
+                   for c in api.paged(api.path(repo, f"/pulls/{n}/commits"))]
+        reviews = api.paged(api.path(repo, f"/pulls/{n}/reviews"))
+        review_comments = api.paged(api.path(repo, f"/pulls/{n}/comments"))
+    else:
+        commits = [dict(c, diff=api.text(api.path(repo, f"/git/commits/{c['sha']}.diff")))
+                   for c in api.paged(api.path(repo, f"/pulls/{n}/commits?verification=false"))]
+        reviews = api.paged(api.path(repo, f"/pulls/{n}/reviews"))
+        review_comments = []
+        for review in reviews:
+            if review.get("comments_count"):
+                review_comments.extend(api.paged(api.path(repo, f"/pulls/{n}/reviews/{review['id']}/comments")))
+    runs = []
+    sha = (pr.get("head") or {}).get("sha")
+    if sha:
+        try:
+            raw_runs = api.paged(api.path(repo, f"/actions/runs?head_sha={sha}"), key="workflow_runs")
+            for run in raw_runs:
+                jobs = []
+                if run.get("conclusion") in RUN_FAILED:
+                    jobs = api.get(api.path(repo, f"/actions/runs/{run['id']}/jobs") +
+                                   ("?per_page=100" if forge_type == "github" else "?limit=50")).get("jobs") or []
+                runs.append({"run": run, "jobs": jobs})
+        except FetchError as exc:
+            # A repository with Actions off answers 404. Any other failure is a real one.
+            if "Not Found" not in str(exc) and "404" not in str(exc):
+                raise
+    return {"commits": commits, "reviews": reviews, "review_comments": review_comments, "runs": runs}
 
 
 def fetch_bundle(forge_type, repo, pr_repo=None, repo_path=".", since=None, only_issue=None):
@@ -414,7 +767,9 @@ def fetch_bundle(forge_type, repo, pr_repo=None, repo_path=".", since=None, only
     for pr in prs:
         if since and to_utc(pr.get("updated_at")) and to_utc(pr["updated_at"]) < since:
             continue
-        pulls.append({"pr": pr, "timeline": api.paged(api.path(pr_repo or repo, f"/issues/{pr['number']}/timeline"))})
+        entry = {"pr": pr, "timeline": api.paged(api.path(pr_repo or repo, f"/issues/{pr['number']}/timeline"))}
+        entry.update(_fetch_pull_detail(api, forge_type, pr_repo or repo, pr))
+        pulls.append(entry)
     return {"forge": forge, "issues": issues, "pulls": pulls}
 
 
@@ -504,6 +859,9 @@ def cmd_collect(args):
     except ValueError as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 5
+    if args.max_diff_bytes < 0:
+        print("error: --max-diff-bytes must be 0 or more", file=sys.stderr)
+        return 5
     if not args.fixture and not args.forge:
         print("error: specify --forge (with --repo) or --fixture", file=sys.stderr)
         return 5
@@ -516,7 +874,7 @@ def cmd_collect(args):
                 bundle = json.load(handle)
         else:
             bundle = fetch_bundle(args.forge, args.repo, args.pr_repo, args.repo_path, since, args.issue)
-        doc = normalize(bundle, since, until, args.issue, args.batch)
+        doc = normalize(bundle, since, until, args.issue, args.batch, not args.no_diffs, args.max_diff_bytes)
         log = local_events_path(args)
         if log:
             merge_local(doc, read_local_events(log), since, until, args.issue, args.batch)
@@ -1042,6 +1400,9 @@ def main(argv=None):
     collect.add_argument("--local-events", nargs="?", const="", metavar="PATH|off",
                          help="merge the hook's local events (default: <git common dir>/issue-flow/events.jsonl "
                               "for a live collect; `off` skips it; with --fixture, give the flag to read it)")
+    collect.add_argument("--no-diffs", action="store_true", help="leave every patch out of the commit events")
+    collect.add_argument("--max-diff-bytes", type=int, default=DEFAULT_MAX_DIFF_BYTES,
+                         help="cap on the patch text in the whole document (default 4194304)")
     collect.add_argument("--out", help="write the document here instead of stdout")
     collect.set_defaults(func=cmd_collect)
     render = sub.add_parser("render", help="turn a timeline document into one self-contained HTML page")

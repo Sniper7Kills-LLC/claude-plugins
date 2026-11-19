@@ -16,7 +16,7 @@ label, a comment, a PR state.
   "forge":   {"type": "github", "host": null, "owner": "o", "repo": "r", "pr_repo": "o/other"},
   "range":   {"since": "2026-05-01T00:00:00Z", "until": null},
   "issues":  {"51": {"title": "…", "url": "…", "state": "open", "labels": ["status:in-review"],
-                      "status_at_start": "in-progress"}},
+                      "status_at_start": "in-progress", "problems": []}},
   "batches": {"50": {"tracking": 50, "branch": "batch/50-bar", "members": [51, 52], "pr": 61, "prs": [60]}},
   "convergence": [{"gate": 12, "filed": 3, "closed": 5}, {"gate": 13, "filed": 2, "closed": null}],
   "events":  [{"ts": "2026-05-01T11:00:00Z", "kind": "status", "issue": 51, "pr": null, "batch": 50,
@@ -34,6 +34,8 @@ label, a comment, a PR state.
   the result, or every fetched issue when no filter applies. `status_at_start` is the
   `status:*` value (without the prefix) the issue had at `range.since`, replayed from its full
   history. It is `null` when there is no `--since`, or when the issue had no status then.
+  `problems` lists what needed fixing on the issue (see **Problems**). It is built from every
+  event, so a filter does not shorten it.
 - **`batches`** is keyed by the tracking-issue number. `tracking` is that number.
   `members` are the issue numbers in its checklist. `branch` is the integration branch,
   found from a PR whose head is `batch/<n>-…` or `epic/<n>-…`. `pr` is that PR (the batch PR).
@@ -78,6 +80,135 @@ and `outcome`. They use the kinds `agent.*` and `worktree.*`.
 | `pr.merged` | The PR was merged. | `base`; `head`; `actor` = the merger when the forge reports it. |
 | `pr.closed` | The PR was closed without a merge. | `base`; `head`. |
 | `batch.merged` | The batch or epic PR (head `batch/<n>-…` or `epic/<n>-…`) was merged into its base. It comes with a `pr.merged` event at the same `ts`. | `base`; `head`. |
+| `comment` | An issue comment or a PR conversation comment. A `checkpoint` comment gives this event and a `checkpoint` event. | `role`, `excerpt`, `url`, `problem` (see **Comment roles**). |
+| `commit` | A commit on a PR, read from the PR commits endpoint. A squash-merged PR still lists its original commits. | See **Commit fields**. |
+| `review` | A PR review was submitted. A pending review is not an event. | `state`, `excerpt`, `url`, `review_id`. |
+| `review.comment` | An inline comment on a PR diff. | `path`, `line`, `excerpt`, `url`, `resolved`, `review_id`. |
+| `ci.run` | A CI run on a PR head commit finished (or started, when it has not finished). | `workflow`, `conclusion`, `started`, `completed`, `duration`, `url`, `sha`, `failed_job`, `failed_step`. |
+
+`actor` of a `comment`, `review` and `review.comment` is the author. `actor` of a `commit` is its
+author login, or the git author name when the commit has no linked account. `actor` of a
+`ci.run` is `null`. `issue` and `batch` come from the PR, as for `pr.opened`.
+
+**`review` fields.** `state` is `approved`, `changes_requested`, `commented` or `dismissed`.
+GitHub `CHANGES_REQUESTED` and Gitea `REQUEST_CHANGES` both give `changes_requested`. `excerpt`
+is the first 300 characters of the body. `review_id` is the forge id of the review.
+
+**`review.comment` fields.** `line` is the line the comment sits on (the Gitea `position` when
+the forge gives no line). `resolved` is `true` or `false` on Gitea. GitHub does not report it
+in the REST API, so it is `null` there. `review_id` is the review the comment belongs to.
+
+**`ci.run` fields.** `workflow` is the workflow name (on Gitea, the workflow file name without
+its extension). `conclusion` is the forge value (`success`, `failure`, `cancelled`, …) or `null`
+while the run is in progress. `started` and `completed` are UTC timestamps. `duration` is whole
+seconds, or `null`. `ts` is `completed`, or `started` for a run in progress. `failed_job` and
+`failed_step` are the names of the first failed job and its first failed step. They are `null`
+unless `conclusion` is `failure`, `timed_out` or `startup_failure`.
+
+## Comment roles
+
+Every issue comment and PR comment gives a `comment` event with a `role`. The role comes from
+the **marker** when the comment has a valid one. Otherwise it comes from a **prose prefix**.
+A comment that matches neither has the role `other`.
+
+Roles: `plan`, `cross-check`, `plan-amendment`, `gate.pass`, `gate.rework`, `sub-merge`,
+`checkpoint`, `worker.launched`, `status.repair`, `question`, `other`.
+
+**Marker grammar.** One HTML comment, anywhere in the body (the writer puts it on the first line):
+
+```
+<!-- issue-flow:event role=<role> issue=<n> [pr=<n>] [problem=<k>] -->
+```
+
+- `role` is one of the roles above. A marker with an unknown role is ignored, and the prose
+  prefix applies. A marker with no `role` is not a marker.
+- `issue` is the issue the comment is about. `pr` is the PR, when there is one.
+- `problem` is a key the writer chooses (letters, digits, `-`, `_`). It names the problem a
+  `gate.rework` comment raises, so a commit can point at it. The problem id is `<issue>:<k>`.
+- Attributes are `name=value` pairs with no spaces in the value. The order is free.
+
+**Prose fallback.** A run made before the marker existed still classifies. The comment body
+starts with the prefix, after any marker and leading whitespace. Matching ignores case.
+
+| Prefix | Role |
+|---|---|
+| `## Plan (PM)` | `plan` |
+| `**Amendment (batch cross-check` | `plan-amendment` |
+| `finding: batch cross-check` | `cross-check` |
+| `PM gate: rework requested` | `gate.rework` |
+| `PM gate: pass` | `gate.pass` |
+| `Sub-merged into` | `sub-merge` |
+| `checkpoint <k>:` | `checkpoint` |
+| `worker launched:` | `worker.launched` |
+| `status repair:` | `status.repair` |
+
+`question` has no prose prefix. Only the marker gives it. The `comment` event keeps
+`excerpt` (the first 300 characters of the body), `url` and `problem` (the marker's key, or
+`null`).
+
+## Commit fields
+
+A `commit` event has the nine standard keys and these keys. `ts` is the commit date.
+
+| Key | Meaning |
+|---|---|
+| `sha`, `url` | The commit id and its page. |
+| `subject`, `body` | The first line of the message, and the rest without surrounding blank lines. |
+| `author` | The author login, or the git author name. |
+| `change` | `feature`, `fix`, `test`, `docs`, `refactor` or `merge`. |
+| `why` | The `Why:` trailer, else the body without its trailer lines, else `null`. |
+| `addresses` | The ids of the problems the commit addresses. `[]` when none. |
+| `files` | `[{path, status, additions, deletions, patch, truncated}]`. |
+
+**Files.** `status` is `added`, `modified`, `removed`, `renamed`, `copied` or `changed`.
+`patch` is the unified diff from the first hunk, `null` for a binary file, a file the forge gave
+no patch for, or a run with `--no-diffs`. A patch is cut at 400 lines or 32 KB per file, and the
+patches of one document share `--max-diff-bytes` (default 4194304; a file after the budget is
+used up gets a cut or empty patch). A cut patch has `truncated: true`. `additions` and
+`deletions` come from the forge, not from the cut patch. On Gitea they come from the commit
+`.diff` text, because the commit file list has no counts. A GitHub commit lists its first 300 files.
+
+**Trailer grammar.** A trailer is a line `Key: value` in the last paragraph of the commit
+message. Keys are case-insensitive. The message needs a subject and at least one more
+paragraph for a trailer block to exist.
+
+| Trailer | Value | Rule |
+|---|---|---|
+| `Change:` | `feature`, `fix`, `test`, `docs`, `refactor` or `merge`. | Sets `change`. An unknown value is ignored. |
+| `Why:` | One sentence. | Sets `why`. |
+| `Fixes:` | One URL: an issue or PR comment, a review, a review comment or a CI run. | Sets `addresses`. Repeat the line for several URLs. |
+
+**How `change` is set.** In this order: the `Change:` trailer. `merge` when the commit has two
+or more parents. `fix` when the commit addresses a problem. `test` when every path is a test
+path (a `test/`, `tests/`, `__tests__/`, `spec/` or `e2e/` directory, or a name that starts
+`test-` or `test_`, or ends `.test.<ext>`, `_test.<ext>` or `.spec.<ext>`). `docs` when every
+path is under `docs/` or ends `.md`, `.mdx`, `.rst` or `.txt`. Otherwise `feature`.
+
+**How `addresses` is set.** A commit with `Fixes:` URLs addresses the problems whose URL
+matches (a review comment URL matches its review's problem). A commit with none addresses
+every problem on its issue that opened at or before the commit and that no earlier commit
+resolved. A merge commit addresses nothing without a `Fixes:` trailer.
+
+## Problems
+
+`issues.<n>.problems` lists what needed fixing on issue `n`. A problem opens at:
+
+- a `comment` event with the role `gate.rework`;
+- a `review` event with the state `changes_requested`;
+- a `ci.run` event whose conclusion is `failure`, `timed_out` or `startup_failure`.
+
+| Field | Meaning |
+|---|---|
+| `id` | `<issue>:<k>` when the comment's marker has `problem=<k>`. Otherwise `<issue>:auto-<i>`, where `i` counts the unkeyed problems of the issue in time order from 1. |
+| `source` | The event kind: `comment`, `review` or `ci.run`. |
+| `role`, `state` | `role` is `gate.rework` for a comment, else `null`. `state` is the review state or the CI conclusion, else `null`. |
+| `text` | The comment or review excerpt, or `<workflow> <conclusion> in <job> at <step>`. |
+| `url` | The page of the source event. A `Fixes:` trailer cites this URL. |
+| `ts` | When the problem opened. |
+| `resolved_by` | The `sha` of every commit that addresses it. |
+| `resolved` | `true` when `resolved_by` is not empty. |
+
+A problem with a repeated id is listed once.
 
 ## Kinds from the local-event hook
 
@@ -93,6 +224,7 @@ the tracker-only document. Each event has the nine standard keys plus `session`,
 | `agent.stopped` | A worker ended. | `agent`, `session`; `issue`, `outcome`, `branch` and `worktree` from its verdict. |
 | `worktree.added` | `git worktree add` ran. | `worktree` = the path; `branch` when `-b` or `-B` names one. |
 | `worktree.removed` | `git worktree remove` ran. | `worktree` = the path. |
+| `agent.messaged` | The PM sent a message to an agent (`SendMessage`), for example a worker sent back for rework. | `agent` = the recipient exactly as the call named it, `session`. The line never holds the message text, the summary or the reply. |
 
 `collect` fills `issue` for a worktree event from a branch named `issue/<n>-…`, and for a
 later event on the same path. It fills `batch` from the issue. The range and issue filters

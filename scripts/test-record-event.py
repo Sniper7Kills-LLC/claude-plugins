@@ -159,6 +159,32 @@ with tempfile.TemporaryDirectory() as tmp:
         handle.write("a file where the directory belongs")
     run(spawn_payload(blocked))
 
+    # 10. SendMessage to an agent records the agent id and the time, never the message text.
+    def send_payload(cwd, **tool_input):
+        return {"session_id": "sess-1", "cwd": cwd, "hook_event_name": "PostToolUse", "tool_name": "SendMessage",
+                "tool_input": tool_input, "tool_response": {"success": True, "SECRET-REPLY": "x"}}
+
+    before = len(events(repo))
+    run(send_payload(repo, to="a123", message="SECRET-MESSAGE-TEXT fix the legend", summary="SECRET-SUMMARY"))
+    got = events(repo)
+    check(len(got) == before + 1 and got[-1]["kind"] == "agent.messaged", f"SendMessage writes agent.messaged: {got[-1:]}")
+    if len(got) == before + 1:
+        e = got[-1]
+        check(e["agent"] == "a123" and e["session"] == "sess-1" and e["ts"].endswith("Z"), f"messaged fields: {e}")
+        for key in ("issue", "worktree", "branch", "outcome"):
+            check(key in e and e[key] is None, f"messaged has null {key}")
+    with open(os.path.join(repo, ".git", "issue-flow", "events.jsonl")) as handle:
+        text = handle.read()
+    check("SECRET-MESSAGE-TEXT" not in text and "SECRET-SUMMARY" not in text and "SECRET-REPLY" not in text and "fix the legend" not in text,
+          "the log holds no message text, summary or reply")
+    before = len(events(repo))
+    run(send_payload(repo, message="no recipient"))
+    run(send_payload(repo, to=["a", "b"], message="list recipient"))
+    run({"hook_event_name": "PostToolUse", "tool_name": "SendMessage", "tool_input": "nope", "cwd": repo})
+    check(len(events(repo)) == before, "a SendMessage with no single string recipient writes nothing")
+    run(send_payload(repo, to="a123", message="x"), env={"ISSUE_FLOW_EVENTS": "off"})
+    check(len(events(repo)) == before, "the kill switch covers agent.messaged")
+
 if failures:
     for failure in failures:
         print(f"FAIL {failure}")

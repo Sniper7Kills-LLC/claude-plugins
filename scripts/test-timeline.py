@@ -205,7 +205,35 @@ if data.get("error"):
     sys.exit(0)
 page = re.search(r"[?&]page=(\d+)", path)
 if page and int(page.group(1)) > 1:
-    print("[]"); sys.exit(0)
+    print('{"workflow_runs": []}' if "/actions/runs?" in path else "[]"); sys.exit(0)
+pulls = {e["pr"]["number"]: e for e in data["pulls"]}
+m = re.search(r"/pulls/(\d+)/(commits|reviews)(?:/(\d+)/comments)?\?", path)
+if m:
+    entry = pulls[int(m.group(1))]
+    if m.group(3):
+        print(json.dumps([c for c in entry.get("review_comments", []) if c["pull_request_review_id"] == int(m.group(3))]))
+    elif m.group(2) == "commits":
+        print(json.dumps([{k: v for k, v in c.items() if k not in ("diff",)} for c in entry.get("commits", [])]))
+    else:
+        print(json.dumps(entry.get("reviews", [])))
+    sys.exit(0)
+m = re.search(r"/pulls/(\d+)/comments\?", path)
+if m:
+    print(json.dumps(pulls[int(m.group(1))].get("review_comments", []))); sys.exit(0)
+m = re.search(r"/(?:git/)?commits/([0-9a-f]+)(\.diff)?$", path)
+if m:
+    for entry in pulls.values():
+        for c in entry.get("commits", []):
+            if c["sha"] == m.group(1):
+                print(c.get("diff", "") if m.group(2) else json.dumps(c)); sys.exit(0)
+m = re.search(r"/actions/runs\?.*head_sha=(\w+)", path)
+if m:
+    rows = [r["run"] for e in pulls.values() for r in e.get("runs", []) if r["run"]["head_sha"] == m.group(1)]
+    print(json.dumps({"workflow_runs": rows})); sys.exit(0)
+m = re.search(r"/actions/runs/(\d+)/jobs", path)
+if m:
+    rows = [j for e in pulls.values() for r in e.get("runs", []) if r["run"]["id"] == int(m.group(1)) for j in r["jobs"]]
+    print(json.dumps({"jobs": rows})); sys.exit(0)
 m = re.search(r"/issues/(\d+)/timeline", path)
 if m:
     n = int(m.group(1))
@@ -225,6 +253,7 @@ if "/issues" in path:
     print(json.dumps(rows)); sys.exit(0)
 print(json.dumps({"message": "Not Found"}))
 ''')
+    FAKE_SRC = open(fake).read()
     for forge_type, env_name in (("github", "IFW_GH"), ("gitea", "IFW_TEA")):
         wrapper = os.path.join(tmp, f"fake-{forge_type}")
         with open(wrapper, "w") as handle:
@@ -566,6 +595,246 @@ lane_ids = {lane["id"]: lane["kind"] for group in lane_model for lane in group["
 check(lane_ids.get("agent:a1") == "agent", f"agent lane exists: {lane_ids}")
 check(lane_ids.get("worktree:/w/51") == "worktree", f"worktree lane exists: {lane_ids}")
 check(payload(timeline.render_html(lane_doc))["events"] == lane_doc["events"], "page embeds local events")
+
+# ---------------------------------------------------------------- granular data (#80)
+# Commits with capped diffs, classified comments, reviews, CI runs and the why-links.
+FIXTURE = os.path.join(ROOT, "scripts", "fixtures", "batch-78.json")
+with open(FIXTURE) as handle:
+    B78 = json.load(handle)
+
+
+def gh_comment(c):
+    return {"event": "commented", "id": c["id"], "html_url": c["html_url"], "created_at": c["created_at"],
+            "actor": c["user"], "body": c["body"]}
+
+
+def batch78_bundle():
+    """The real batch #78 comments plus fork PR #9 (issue #75's renderer), as GitHub payloads."""
+    issues = [{"issue": issue_raw(78, "Workflow timeline", ["type:batch"], "2026-11-19T22:00:00Z",
+                                  "- [ ] #75\n"), "timeline": [gh_comment(c) for c in B78["comments"]["78"]]}]
+    for n in ("74", "75", "76", "77"):
+        issues.append({"issue": issue_raw(int(n), f"member {n}", ["status:merged"], "2026-11-19T22:00:00Z"),
+                       "timeline": [gh_comment(c) for c in B78["comments"][n]]})
+    pr = B78["pr9"]["pr"]
+    pull = {"pr": dict(pr, user={"login": "Crank-Git"}), "timeline": [], "commits": B78["pr9"]["commits"]}
+    return {"forge": {"type": "github", "host": None, "owner": "o", "repo": "r"}, "issues": issues, "pulls": [pull]}
+
+
+def kinds_of(doc, kind):
+    return [e for e in doc["events"] if e["kind"] == kind]
+
+
+# 1. Comments from this repo's own batch #78 classify by the prose fallback.
+doc78 = timeline.normalize(batch78_bundle())
+comments78 = kinds_of(doc78, "comment")
+total78 = sum(len(rows) for key, rows in B78["comments"].items() if key in ("74", "75", "76", "77", "78"))
+check(len(comments78) == total78, f"one comment event per comment: {len(comments78)} vs {total78}")
+EXPECT = {"## Plan (PM)": "plan", "worker launched:": "worker.launched", "Sub-merged into": "sub-merge",
+          "PM gate: rework requested": "gate.rework", "finding: batch cross-check": "cross-check"}
+for key, rows in B78["comments"].items():
+    if key == "80":
+        continue
+    for c in rows:
+        want = next(role for prefix, role in EXPECT.items() if c["body"].startswith(prefix))
+        got = [e for e in comments78 if e["url"] == c["html_url"]]
+        check(len(got) == 1 and got[0]["role"] == want, f"comment {c['id']} should be {want}: {got and got[0]['role']}")
+        if got:
+            check(got[0]["excerpt"] == c["body"][:300] and got[0]["issue"] == int(key), f"excerpt/issue of {c['id']}")
+check(not [e for e in comments78 if e["role"] == "other"], "no real batch comment falls to other")
+
+C = timeline.classify_comment
+check(C("**Amendment (batch cross-check addendum)**\ntext") == "plan-amendment", "amendment prefix")
+check(C("status repair: relabeled #5") == "status.repair", "status repair prefix")
+check(C("checkpoint 2: tests green") == "checkpoint", "checkpoint prefix")
+check(C("PM gate: pass. All criteria met.") == "gate.pass", "gate pass prefix")
+check(C("just chatting") == "other" and C("") == "other" and C(None) == "other", "other")
+check(C("<!-- issue-flow:event role=question issue=5 -->\nWhich db?") == "question", "marker gives a role with no prose prefix")
+check(C("<!-- issue-flow:event role=gate.pass issue=5 pr=7 -->\n## Plan (PM)") == "gate.pass", "marker wins over prose")
+check(C("<!-- issue-flow:event role=bogus issue=5 -->\n## Plan (PM)") == "plan", "an unknown marker role falls back to prose")
+check(timeline.parse_marker("x <!-- issue-flow:event role=gate.rework issue=5 pr=7 problem=legend -->") ==
+      {"role": "gate.rework", "issue": 5, "pr": 7, "problem": "legend"}, "marker fields")
+check(timeline.parse_marker("no marker") is None, "no marker")
+
+# 2. Commits: per-file stats, capped patches, flags.
+c1, c2 = (e for e in kinds_of(doc78, "commit"))
+check(c1["sha"].startswith("14c46f1e") and c1["issue"] == 75 and c1["pr"] == 9 and c1["batch"] == 78, f"commit 1: {c1['sha'], c1['issue'], c1['pr'], c1['batch']}")
+check(c1["subject"].startswith("issue-flow: render the timeline") and c1["author"] and c1["ts"] == "2026-11-19T22:34:54Z",
+      f"commit 1 subject/author/ts: {c1['subject']!r} {c1['author']!r} {c1['ts']}")
+check({f["path"] for f in c1["files"]} >= {"issue-flow/scripts/timeline.py", "scripts/test-timeline.py"}, "commit files carry paths")
+check(all(isinstance(f["additions"], int) and f["status"] == "modified" and f["patch"] for f in c1["files"]), "files carry stats, status, patch")
+
+
+def gh_commit(sha, message, files, parents=1, ts="2026-06-01T09:00:00Z", login="dev"):
+    return {"sha": sha, "html_url": f"https://x/commit/{sha}", "parents": [{"sha": f"p{i}"} for i in range(parents)],
+            "commit": {"message": message, "author": {"name": "Dev", "date": ts}}, "author": {"login": login},
+            "files": [dict({"filename": "src/a.py", "status": "modified", "additions": 1, "deletions": 0, "patch": "@@ -1 +1 @@\n+x"}, **f)
+                      for f in files]}
+
+
+big_lines = "@@ -1,500 +1,500 @@\n" + "\n".join(f"+line {i}" for i in range(500))
+wide = "@@ -1 +1 @@\n+" + "y" * 40000
+capped = timeline.normalize({"forge": {"type": "github", "owner": "o", "repo": "r"}, "issues": [],
+    "pulls": [{"pr": pr_raw(7, "T", "issue/9-x", "dev", "2026-06-01T08:00:00Z"), "timeline": [],
+               "commits": [gh_commit("aa11", "big", [{"filename": "big.py", "patch": big_lines}, {"filename": "wide.py", "patch": wide},
+                                                      {"filename": "small.py"}, {"filename": "bin.png", "patch": None}])]}]})
+files = {f["path"]: f for f in kinds_of(capped, "commit")[0]["files"]}
+check(files["big.py"]["truncated"] and len(files["big.py"]["patch"].split("\n")) == 400, f"400-line cap: {len(files['big.py']['patch'].split(chr(10)))}")
+check(files["wide.py"]["truncated"] and len(files["wide.py"]["patch"].encode()) == 32768, "32 KB cap")
+check(files["small.py"]["truncated"] is False and files["small.py"]["patch"].startswith("@@"), "a small patch is kept whole")
+check(files["bin.png"]["patch"] is None and files["bin.png"]["truncated"] is False, "a file with no patch stays null")
+check(files["big.py"]["additions"] == 1, "stats come from the forge, not from the cut patch")
+small_budget = timeline.normalize(capped_bundle := {"forge": {"type": "github", "owner": "o", "repo": "r"}, "issues": [],
+    "pulls": [{"pr": pr_raw(7, "T", "issue/9-x", "dev", "2026-06-01T08:00:00Z"), "timeline": [],
+               "commits": [gh_commit("aa11", "m", [{"filename": "a.py", "patch": "@@\n+" + "z" * 300}, {"filename": "b.py", "patch": "@@\n+" + "z" * 300}])]}]},
+    max_diff_bytes=400)
+sb = kinds_of(small_budget, "commit")[0]["files"]
+check(len(sb[0]["patch"].encode()) == 304 and not sb[0]["truncated"], f"first file fits the document budget: {len(sb[0]['patch'])}")
+check(len(sb[1]["patch"].encode()) == 96 and sb[1]["truncated"], f"second file is cut to what is left: {len(sb[1]['patch'])}")
+nod = kinds_of(timeline.normalize(capped_bundle, diffs=False), "commit")[0]["files"]
+check(all(f["patch"] is None and f["truncated"] is False for f in nod) and nod[0]["additions"] == 1, "--no-diffs omits patches, keeps stats")
+
+# 3. Reviews, review comments, CI runs: both forges give the same events.
+def story2(forge_type):
+    gh = forge_type == "github"
+    ts = lambda hms: f"2026-06-01T{hms}Z" if gh else f"2026-06-01T{hms}+00:00"  # noqa: E731
+    commit = lambda sha, msg, files, **kw: gh_commit(sha, msg, files, ts=ts(kw.pop("at")), **kw)  # noqa: E731
+    commits = [
+        commit("c100", "feat: add the flag\n\nBody of the first commit.", [{"filename": "src/a.py"}, {"filename": "tests/test_a.py"}], at="09:00:00"),
+        commit("c200", "fix the flag name", [{"filename": "src/a.py"}], at="10:00:00"),
+        commit("c300", "rename\n\nChange: refactor\nWhy: One name for the flag.\nFixes: https://x/issues/51#issuecomment-9", [{"filename": "src/a.py"}], at="10:30:00"),
+        commit("c400", "more tests", [{"filename": "tests/test_b.py"}, {"filename": "scripts/test-c.py"}], at="10:40:00"),
+        commit("c500", "notes", [{"filename": "README.md"}, {"filename": "docs/x.md"}], at="10:45:00"),
+        commit("c600", "Merge branch 'dev'", [{"filename": "src/z.py"}], parents=2, at="10:50:00"),
+    ]
+    if not gh:
+        for c in commits:
+            c["diff"] = "diff --git a/src/a.py b/src/a.py\n--- a/src/a.py\n+++ b/src/a.py\n@@ -1 +1,2 @@\n-old\n+new\n+newer\n"
+            c["files"] = [{"filename": f["filename"], "status": "modified"} for f in c["files"]]
+    review = {"id": 7, "state": "CHANGES_REQUESTED" if gh else "REQUEST_CHANGES", "body": "Rename the flag.",
+              "user": {"login": "rev"}, "submitted_at": ts("09:30:00"), "html_url": "https://x/pull/60#pullrequestreview-7", "comments_count": 1}
+    approve = dict(review, id=8, state="APPROVED", body="", submitted_at=ts("11:00:00"), html_url="https://x/pull/60#pullrequestreview-8")
+    pending = dict(review, id=9, state="PENDING", submitted_at=None)
+    rc = {"id": 70, "pull_request_review_id": 7, "path": "src/a.py", "body": "This name is unclear.", "user": {"login": "rev"},
+          "created_at": ts("09:30:00"), "html_url": "https://x/pull/60#discussion_r70"}
+    rc.update({"line": 12} if gh else {"position": 12, "resolver": {"login": "dev"}})
+    fail_run = {"id": 900, "name": "ci", "conclusion": "failure", "status": "completed", "head_sha": "c100", "html_url": "https://x/runs/900"}
+    ok_run = {"id": 901, "name": "ci", "conclusion": "success", "status": "completed", "head_sha": "c100", "html_url": "https://x/runs/901"}
+    if gh:
+        fail_run.update({"run_started_at": ts("09:40:00"), "updated_at": ts("09:45:30")})
+        ok_run.update({"run_started_at": ts("10:55:00"), "updated_at": ts("10:56:00")})
+    else:
+        fail_run.update({"started_at": ts("09:40:00"), "completed_at": ts("09:45:30"), "path": ".gitea/workflows/ci.yaml"})
+        fail_run.pop("name")
+        ok_run.update({"started_at": ts("10:55:00"), "completed_at": ts("10:56:00"), "path": ".gitea/workflows/ci.yaml"})
+        ok_run.pop("name")
+    jobs = [{"name": "lint", "conclusion": "success", "steps": [{"name": "ruff", "conclusion": "success", "number": 1}]},
+            {"name": "test", "conclusion": "failure", "steps": [{"name": "setup", "conclusion": "success", "number": 1},
+                                                               {"name": "pytest", "conclusion": "failure", "number": 2}]}]
+    marked = ("<!-- issue-flow:event role=gate.rework issue=51 pr=60 problem=legend -->\nPM gate: rework requested." if gh else
+              "<!-- issue-flow:event role=gate.rework issue=51 pr=60 problem=legend -->\nPM gate: rework requested.")
+    tl = [{"event": "commented", "id": 9, "html_url": "https://x/issues/51#issuecomment-9", "created_at": ts("10:20:00"), "actor": {"login": "pm"}, "body": marked}] if gh else \
+         [{"type": "comment", "id": 9, "html_url": "https://x/issues/51#issuecomment-9", "created_at": ts("10:20:00"), "user": {"login": "pm"}, "body": marked}]
+    return {"forge": {"type": forge_type, "host": "h", "owner": "o", "repo": "r"},
+            "issues": [{"issue": issue_raw(50, "Batch", ["type:batch"], ts("08:00:00"), "- [ ] #51\n"), "timeline": []},
+                       {"issue": issue_raw(51, "Flag", ["status:in-review"], ts("08:00:00")), "timeline": []}],
+            "pulls": [{"pr": dict(pr_raw(60, "Add flag", "issue/51-flag", "batch/50-bar", ts("08:30:00")), head={"ref": "issue/51-flag", "sha": "c100"}), "timeline": tl,
+                       "commits": commits, "reviews": [review, approve, pending], "review_comments": [rc],
+                       "runs": [{"run": fail_run, "jobs": jobs}, {"run": ok_run, "jobs": []}]}]}
+
+
+s_gh, s_gt = timeline.normalize(story2("github")), timeline.normalize(story2("gitea"))
+for label, sdoc in (("github", s_gh), ("gitea", s_gt)):
+    revs = kinds_of(sdoc, "review")
+    check([(r["state"], r["actor"], r["excerpt"]) for r in revs] == [("changes_requested", "rev", "Rename the flag."), ("approved", "rev", "")],
+          f"{label} reviews (pending is skipped): {[(r['state'], r['excerpt']) for r in revs]}")
+    check(revs and revs[0]["url"].endswith("pullrequestreview-7") and revs[0]["issue"] == 51 and revs[0]["pr"] == 60, f"{label} review keys")
+    rcs = kinds_of(sdoc, "review.comment")
+    check(len(rcs) == 1 and rcs[0]["path"] == "src/a.py" and rcs[0]["line"] == 12 and rcs[0]["excerpt"] == "This name is unclear."
+          and rcs[0]["url"].endswith("discussion_r70"), f"{label} review comment: {rcs}")
+    check(rcs and rcs[0]["resolved"] is (None if label == "github" else True), f"{label} resolved flag: {rcs and rcs[0]['resolved']}")
+    runs = kinds_of(sdoc, "ci.run")
+    check(len(runs) == 2 and runs[0]["workflow"] == "ci" and runs[0]["conclusion"] == "failure" and runs[0]["duration"] == 330
+          and runs[0]["failed_job"] == "test" and runs[0]["failed_step"] == "pytest" and runs[0]["ts"] == "2026-06-01T09:45:30Z",
+          f"{label} failing run: {runs[:1]}")
+    check(runs[1]["conclusion"] == "success" and runs[1]["failed_job"] is None and runs[1]["failed_step"] is None, f"{label} passing run")
+    check(runs[0]["started"] == "2026-06-01T09:40:00Z" and runs[0]["completed"] == "2026-06-01T09:45:30Z", f"{label} run times")
+
+keyset = lambda d: [(e["ts"], e["kind"], e.get("role"), e.get("state"), e.get("change"), e.get("addresses"), e.get("sha")) for e in d["events"]]  # noqa: E731
+check(keyset(s_gh) == keyset(s_gt), f"both forges give the same granular events:\n{keyset(s_gh)}\n{keyset(s_gt)}")
+gt_files = [f for e in kinds_of(s_gt, "commit") for f in e["files"]][0]
+check(gt_files["additions"] == 2 and gt_files["deletions"] == 1 and gt_files["patch"].startswith("@@ -1 +1,2 @@"),
+      f"gitea stats and patch come from the .diff text: {gt_files}")
+
+# 4. Why links: change, why, addresses, problems.
+for label, sdoc in (("github", s_gh), ("gitea", s_gt)):
+    cm = {e["sha"]: e for e in kinds_of(sdoc, "commit")}
+    check({k: v["change"] for k, v in cm.items()} == {"c100": "feature", "c200": "fix", "c300": "refactor", "c400": "test", "c500": "docs", "c600": "merge"},
+          f"{label} change: {({k: v['change'] for k, v in cm.items()})}")
+    probs = sdoc["issues"]["51"]["problems"]
+    ids = [p["id"] for p in probs]
+    check(ids == ["51:auto-1", "51:auto-2", "51:legend"], f"{label} problem ids and order: {ids}")
+    check(cm["c100"]["addresses"] == [], f"{label} a commit before any problem addresses nothing")
+    check(cm["c200"]["addresses"] == ["51:auto-1", "51:auto-2"], f"{label} inferred addresses: {cm['c200']['addresses']}")
+    check(cm["c300"]["addresses"] == ["51:legend"], f"{label} Fixes trailer wins: {cm['c300']['addresses']}")
+    check(cm["c400"]["addresses"] == [] and cm["c500"]["addresses"] == [], f"{label} no open problem, no addresses")
+    check(cm["c300"]["why"] == "One name for the flag.", f"{label} why from the trailer: {cm['c300']['why']!r}")
+    check(cm["c100"]["why"] == "Body of the first commit." and cm["c100"]["body"] == "Body of the first commit.", f"{label} why falls back to the body")
+    check(cm["c100"]["subject"] == "feat: add the flag", f"{label} subject")
+    by = {p["id"]: p for p in probs}
+    check(by["51:auto-1"]["source"] == "review" and by["51:auto-1"]["state"] == "changes_requested" and by["51:auto-1"]["role"] is None
+          and by["51:auto-1"]["resolved_by"] == ["c200"] and by["51:auto-1"]["resolved"] is True and by["51:auto-1"]["text"] == "Rename the flag.",
+          f"{label} review problem: {by['51:auto-1']}")
+    check(by["51:auto-2"]["source"] == "ci.run" and by["51:auto-2"]["state"] == "failure" and "pytest" in by["51:auto-2"]["text"]
+          and by["51:auto-2"]["url"] == "https://x/runs/900", f"{label} CI problem: {by['51:auto-2']}")
+    check(by["51:legend"]["source"] == "comment" and by["51:legend"]["role"] == "gate.rework" and by["51:legend"]["resolved_by"] == ["c300"]
+          and set(by["51:legend"]) >= {"id", "source", "role", "state", "text", "url", "ts", "resolved_by", "resolved"}, f"{label} comment problem: {by['51:legend']}")
+
+# The real case: #75's legend rework, then the fix commit (fork PR #9).
+rework = next(e for e in comments78 if e["role"] == "gate.rework")
+probs75 = doc78["issues"]["75"]["problems"]
+check(len(probs75) == 1 and probs75[0]["source"] == "comment" and probs75[0]["role"] == "gate.rework"
+      and probs75[0]["url"] == rework["url"] and probs75[0]["text"].startswith("PM gate: rework requested"), f"#75 problem: {probs75}")
+check(probs75 and probs75[0]["resolved_by"] == [c2["sha"]] and probs75[0]["resolved"], f"#75 problem is resolved by the legend fix: {probs75}")
+check(c1["addresses"] == [] and c1["change"] == "feature", f"#75 first commit: {c1['change']} {c1['addresses']}")
+check(c2["addresses"] == [probs75[0]["id"]] and c2["change"] == "fix", f"#75 legend fix commit: {c2['change']} {c2['addresses']}")
+check(timeline.parse_trailers("s\n\nbody\n\nChange: Fix\nFixes: a\nFixes: b\nWhy: because") ==
+      {"change": "fix", "why": "because", "fixes": ["a", "b"]}, "trailer grammar")
+check(timeline.parse_trailers("s\n\nChange: nonsense\nunrelated: x") == {"change": None, "why": None, "fixes": []}, "a bad Change value is ignored")
+
+# Filters keep the problem list whole; --issue keeps only that issue's events.
+only = timeline.normalize(story2("github"), only_issue=51)
+check(all(e["issue"] == 51 for e in only["events"]) and only["issues"]["51"]["problems"], "problems survive --issue")
+check(all(e["kind"] != "commit" for e in timeline.normalize(story2("github"), since="2026-06-02T00:00:00Z")["events"]), "since bounds commits")
+
+# 5. CLI: --no-diffs, --max-diff-bytes, and a live run against a fake gh/tea for both forges.
+with tempfile.TemporaryDirectory() as tmp:
+    for forge_type, env_name in (("github", "IFW_GH"), ("gitea", "IFW_TEA")):
+        bundle_path = os.path.join(tmp, f"story-{forge_type}.json")
+        with open(bundle_path, "w") as handle:
+            json.dump(story2(forge_type), handle)
+        proc = run(["collect", "--fixture", bundle_path, "--no-diffs"])
+        got = json.loads(proc.stdout) if proc.returncode == 0 else {"events": []}
+        check(proc.returncode == 0 and all(f["patch"] is None for e in kinds_of(got, "commit") for f in e["files"]), f"{forge_type} --no-diffs via CLI: {proc.stderr}")
+        proc = run(["collect", "--fixture", bundle_path, "--max-diff-bytes", "5"])
+        got = json.loads(proc.stdout) if proc.returncode == 0 else {"events": []}
+        check(proc.returncode == 0 and any(f["truncated"] for e in kinds_of(got, "commit") for f in e["files"]), f"{forge_type} --max-diff-bytes via CLI")
+        check(run(["collect", "--fixture", bundle_path, "--max-diff-bytes", "-1"]).returncode == 5, "a negative --max-diff-bytes exits 5")
+
+    fake = os.path.join(tmp, "fake-live.py")
+    with open(fake, "w") as handle:
+        handle.write(FAKE_SRC)
+    for forge_type, env_name in (("github", "IFW_GH"), ("gitea", "IFW_TEA")):
+        wrapper = os.path.join(tmp, f"live-{forge_type}")
+        with open(wrapper, "w") as handle:
+            handle.write(f'#!/bin/sh\nexec "{sys.executable}" "{fake}" "$@"\n')
+        os.chmod(wrapper, 0o755)
+        data = os.path.join(tmp, f"story-{forge_type}.json")
+        proc = run(["collect", "--forge", forge_type, "--repo", "o/r"], {env_name: wrapper, "FAKE_DATA": data})
+        check(proc.returncode == 0, f"live {forge_type} granular collect exits 0: {proc.stderr[:300]}")
+        if proc.returncode == 0:
+            live = json.loads(proc.stdout)
+            check(keyset(live) == keyset(timeline.normalize(story2(forge_type))), f"live {forge_type} granular events match the bundle run")
+            check(live["issues"]["51"]["problems"] == timeline.normalize(story2(forge_type))["issues"]["51"]["problems"], f"live {forge_type} problems match")
 
 if failures:
     for failure in failures:

@@ -410,7 +410,7 @@ The plugin ships three hooks in `hooks/hooks.json`. Claude Code loads them with 
 |---|---|---|
 | `preflight.py` | `SessionStart` | Fetches the remote and reports drift to the PM. |
 | `guard-spawn.py` | `PreToolUse` on `Agent` | Refuses two spawn shapes that strand a result. |
-| `record-event.py` | `PostToolUse` on `Agent` and `Bash`; `SubagentStop` | Logs local orchestration events for the timeline. |
+| `record-event.py` | `PostToolUse` on `Agent`, `SendMessage` and `Bash`; `SubagentStop` | Logs local orchestration events for the timeline. |
 
 ### Local event log
 
@@ -423,6 +423,7 @@ machine: nothing publishes it.
 |---|---|
 | `agent.spawned` | An `Agent` call whose brief has an `issue: #<n>` line. |
 | `agent.stopped` | A subagent ends with a verdict JSON, or an issue-worker ends. The line carries `outcome`, `branch` and `worktree` from the verdict. |
+| `agent.messaged` | The PM sends a message to an agent with `SendMessage`, for example to send a worker back for rework. The line holds the recipient and the time. It never holds the message text. |
 | `worktree.added`, `worktree.removed` | A Bash command runs `git worktree add` or `git worktree remove`. |
 
 Each line holds only `ts`, `kind`, `session`, `agent`, `issue`, `worktree`, `branch` and

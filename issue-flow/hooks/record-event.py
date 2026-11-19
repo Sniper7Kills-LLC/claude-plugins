@@ -13,6 +13,9 @@ Events (kinds are documented in references/timeline.md):
   line. Other spawns (research children, reviewers) are not worker events.
 * `SubagentStop` -> `agent.stopped`, when the final message carries the verdict JSON or the
   agent type is an issue-worker. `outcome`, `branch` and `worktree` come from the verdict.
+* `PostToolUse` on `SendMessage` -> `agent.messaged`, when the PM messages an agent (a worker
+  sent back for rework, for example). The line holds the recipient and the time. It never holds
+  the message text, the summary or the reply.
 * `PostToolUse` on `Bash` -> `worktree.added` / `worktree.removed`, for a `git worktree add`
   or `git worktree remove` command.
 
@@ -24,7 +27,11 @@ prints nothing. Any error is swallowed. `ISSUE_FLOW_EVENTS=off` turns it off. Ho
 environment as it was at session start, so set the switch in the project's
 `.claude/settings.json` and start a new session.
 
-Hook events were checked against https://code.claude.com/docs/en/hooks. This hook does not
+Hook events were checked against https://code.claude.com/docs/en/hooks. The `SendMessage` tool
+is described at https://code.claude.com/docs/en/tools-reference and
+https://code.claude.com/docs/en/cross-session-messaging. Those pages do not name the recipient
+parameter, so `messaged` reads `to` first, then the other names a recipient could have. A call with
+no single string recipient writes nothing. This hook does not
 use `WorktreeCreate`: that event replaces the harness's worktree creation.
 """
 
@@ -64,6 +71,19 @@ def spawned(payload):
     response = payload.get("tool_response")
     agent = text(response.get("agentId")) if isinstance(response, dict) else None
     return event("agent.spawned", payload, agent=agent, issue=int(match.group(1)))
+
+
+RECIPIENT_KEYS = ("to", "recipient", "agent_id", "agentId", "target")
+
+
+def messaged(payload):
+    tool_input = payload.get("tool_input")
+    if not isinstance(tool_input, dict):
+        return None
+    for key in RECIPIENT_KEYS:
+        if text(tool_input.get(key)):
+            return event("agent.messaged", payload, agent=tool_input[key])
+    return None
 
 
 def verdict_of(message):
@@ -136,6 +156,8 @@ def build(payload):
         tool = payload.get("tool_name")
         if tool in SPAWN_TOOLS:
             return spawned(payload)
+        if tool == "SendMessage":
+            return messaged(payload)
         if tool == "Bash":
             return worktree_change(payload)
     return None
