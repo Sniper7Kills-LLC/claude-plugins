@@ -50,6 +50,10 @@ Detect the forge as `references/forge.md` `## Detection` describes: a `forge` bl
   3. The user's words, and the `notes` field of `.issue-flow.json`.
   Tell the user which repositories you read.
 
+`collect` reads the tracker on 8 threads by default. `--jobs <n>` (1 to 16) changes that, and
+the document is the same for every value. A tracker rate limit is retried 3 times, then the
+run fails with exit 2. Pass `--jobs 1` only to debug one read at a time.
+
 `collect` does not detect the forge by itself. It stops with exit 5 when `--forge` and
 `--repo` are both missing.
 

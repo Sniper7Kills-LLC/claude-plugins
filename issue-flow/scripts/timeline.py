@@ -7,6 +7,11 @@
         --pr-repo owner/pr-repo --batch 78
     python3 "${CLAUDE_PLUGIN_ROOT}/scripts/timeline.py" collect --fixture bundle.json   # test/dry-run
 
+`collect` reads the tracker on `--jobs` threads (1 to 16, default 8; `snapshot` and `watch` pass it
+on). The document is the same for every value. A rate-limit reply (GitHub secondary rate limit,
+HTTP 429) is retried until 3 attempts have run, after `Retry-After` seconds or 2 s, 4 s. Any other
+failed read fails the whole collect.
+
 Render the document as one HTML page (no server, no external requests):
 
     python3 "${CLAUDE_PLUGIN_ROOT}/scripts/timeline.py" render --in timeline.json --out timeline.html
@@ -91,6 +96,7 @@ import subprocess
 import sys
 import tempfile
 import time
+from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timedelta, timezone
 from urllib.parse import quote
 
@@ -127,6 +133,12 @@ EXCERPT_CHARS = 300
 MAX_PATCH_LINES = 400
 MAX_PATCH_BYTES = 32 * 1024
 DEFAULT_MAX_DIFF_BYTES = 4 * 1024 * 1024
+DEFAULT_JOBS = 8
+MAX_JOBS = 16
+RETRY_ATTEMPTS = 3
+RETRY_AFTER_CAP = 60
+RATE_LIMITED = re.compile(r"secondary rate limit|rate limit exceeded|abuse detection|\b429\b|too many requests", re.I)
+RETRY_AFTER = re.compile(r"retry-after:?\s*(\d+)", re.I)
 RUN_FAILED = ("failure", "timed_out", "startup_failure")
 REVIEW_STATES = {"APPROVED": "approved", "CHANGES_REQUESTED": "changes_requested", "REQUEST_CHANGES": "changes_requested",
                  "COMMENT": "commented", "COMMENTED": "commented", "DISMISSED": "dismissed"}
@@ -678,26 +690,60 @@ def normalize(bundle, since=None, until=None, only_issue=None, only_batch=None, 
 # ------------------------------------------------------------------ fetching
 
 class Api:
-    """Reads one forge through `gh api` or `tea api`; every body is checked for an error object."""
+    """Reads one forge through `gh api` or `tea api`; every body is checked for an error object.
 
-    def __init__(self, forge_type, repo_path="."):
+    Calls are safe to make from many threads: an `Api` holds only its settings. `pmap` runs
+    reads on a bounded pool and returns the results in the order of the inputs.
+    """
+
+    def __init__(self, forge_type, repo_path=".", jobs=DEFAULT_JOBS):
         self.forge_type = forge_type
         self.repo_path = repo_path
+        self.jobs = jobs
         self.cmd = os.environ.get("IFW_GH", "gh") if forge_type == "github" else os.environ.get("IFW_TEA", "tea")
         self.limit = "per_page=100" if forge_type == "github" else "limit=50"
 
     def path(self, repo, suffix):
         return f"{'repos' if self.forge_type == 'github' else '/repos'}/{repo}{suffix}"
 
-    def _run(self, path):
-        """Run one `api` call and return its stdout. A failed call raises FetchError."""
+    def pmap(self, fn, items):
+        """Return [fn(item) for item in items], reading up to `jobs` at once.
+
+        The result order never depends on which read ends first. The first failure, in input
+        order, is raised, and reads that have not started are dropped.
+        """
+        items = list(items)
+        if self.jobs <= 1 or len(items) <= 1:
+            return [fn(item) for item in items]
+        pool = ThreadPoolExecutor(max_workers=self.jobs)
         try:
-            result = subprocess.run([self.cmd, "api", path], cwd=self.repo_path, capture_output=True, text=True)
-        except OSError as exc:
-            raise FetchError(f"cannot run {self.cmd}: {exc}")
-        if result.returncode != 0:
-            raise FetchError(f"{self.cmd} api {path} failed: {(result.stderr or result.stdout).strip()}")
-        return result.stdout
+            futures = [pool.submit(fn, item) for item in items]
+            return [future.result() for future in futures]
+        finally:
+            pool.shutdown(wait=True, cancel_futures=True)
+
+    def _run(self, path):
+        """Run one `api` call and return its stdout. A failed call raises FetchError.
+
+        A rate-limit reply is retried until RETRY_ATTEMPTS attempts have run. The wait is the
+        `Retry-After` value when the reply has one, else 2, 4, then 8 seconds, and never
+        more than RETRY_AFTER_CAP. Any other failure is raised at once.
+        """
+        base = float(os.environ.get("IFW_RETRY_DELAY", "2"))
+        for attempt in range(1, RETRY_ATTEMPTS + 1):
+            try:
+                result = subprocess.run([self.cmd, "api", path], cwd=self.repo_path, capture_output=True, text=True)
+            except OSError as exc:
+                raise FetchError(f"cannot run {self.cmd}: {exc}")
+            if result.returncode == 0:
+                return result.stdout
+            reason = (result.stderr or result.stdout).strip()
+            limited = RATE_LIMITED.search(reason)
+            if not limited or attempt == RETRY_ATTEMPTS:
+                suffix = f" (rate limit; gave up after {attempt} attempts)" if limited else ""
+                raise FetchError(f"{self.cmd} api {path} failed: {reason}{suffix}")
+            wait = RETRY_AFTER.search(reason)
+            time.sleep(min(float(wait.group(1)) if wait else base * 2 ** (attempt - 1), RETRY_AFTER_CAP))
 
     def get(self, path):
         out = self._run(path)
@@ -737,38 +783,72 @@ class Api:
         return rows
 
 
-def _fetch_pull_detail(api, forge_type, repo, pr):
-    """Return the commit, review, review-comment and CI-run payloads of one PR, as the forge sent them."""
+def _not_found(exc):
+    return "Not Found" in str(exc) or "404" in str(exc)
+
+
+def _pull_reads(api, repo, pr):
+    """Return the first-wave reads of one PR, as {name: callable}. None depends on another read."""
     n = pr["number"]
-    if forge_type == "github":
-        commits = [dict(c, files=api.get(api.path(repo, f"/commits/{c['sha']}")).get("files") or [])
-                   for c in api.paged(api.path(repo, f"/pulls/{n}/commits"))]
-        reviews = api.paged(api.path(repo, f"/pulls/{n}/reviews"))
-        review_comments = api.paged(api.path(repo, f"/pulls/{n}/comments"))
+    reads = {
+        "timeline": lambda: api.paged(api.path(repo, f"/issues/{n}/timeline")),
+        "reviews": lambda: api.paged(api.path(repo, f"/pulls/{n}/reviews")),
+    }
+    if api.forge_type == "github":
+        reads["commits"] = lambda: api.paged(api.path(repo, f"/pulls/{n}/commits"))
+        reads["review_comments"] = lambda: api.paged(api.path(repo, f"/pulls/{n}/comments"))
     else:
-        commits = [dict(c, diff=api.text(api.path(repo, f"/git/commits/{c['sha']}.diff")))
-                   for c in api.paged(api.path(repo, f"/pulls/{n}/commits?verification=false"))]
-        reviews = api.paged(api.path(repo, f"/pulls/{n}/reviews"))
-        review_comments = []
-        for review in reviews:
-            if review.get("comments_count"):
-                review_comments.extend(api.paged(api.path(repo, f"/pulls/{n}/reviews/{review['id']}/comments")))
-    runs = []
+        reads["commits"] = lambda: api.paged(api.path(repo, f"/pulls/{n}/commits?verification=false"))
     sha = (pr.get("head") or {}).get("sha")
     if sha:
-        try:
-            raw_runs = api.paged(api.path(repo, f"/actions/runs?head_sha={sha}"), key="workflow_runs")
-            for run in raw_runs:
-                jobs = []
-                if run.get("conclusion") in RUN_FAILED:
-                    jobs = api.get(api.path(repo, f"/actions/runs/{run['id']}/jobs") +
-                                   ("?per_page=100" if forge_type == "github" else "?limit=50")).get("jobs") or []
-                runs.append({"run": run, "jobs": jobs})
-        except FetchError as exc:
-            # A repository with Actions off answers 404. Any other failure is a real one.
-            if "Not Found" not in str(exc) and "404" not in str(exc):
+        def list_runs():
+            try:
+                return api.paged(api.path(repo, f"/actions/runs?head_sha={sha}"), key="workflow_runs")
+            except FetchError as exc:
+                # A repository with Actions off answers 404. Any other failure is a real one.
+                if _not_found(exc):
+                    return []
                 raise
-    return {"commits": commits, "reviews": reviews, "review_comments": review_comments, "runs": runs}
+        reads["runs"] = list_runs
+    return reads
+
+
+def _pull_followups(api, repo, pr, first):
+    """Return the second-wave reads of one PR, as a list of (apply, callable).
+
+    These need the first wave: a commit's files or diff, a review's comments, a failed run's jobs.
+    `apply(value)` stores the result into `first`, so a read's place in the document never
+    depends on when it ends.
+    """
+    n = pr["number"]
+    github = api.forge_type == "github"
+    reads = []
+    for commit in first["commits"]:
+        key = "files" if github else "diff"
+        if github:
+            read = lambda c=commit: api.get(api.path(repo, f"/commits/{c['sha']}")).get("files") or []
+        else:
+            read = lambda c=commit: api.text(api.path(repo, f"/git/commits/{c['sha']}.diff"))
+        reads.append((lambda value, c=commit, k=key: c.__setitem__(k, value), read))
+    if not github:
+        first["review_comments"] = []
+        for review in first["reviews"]:
+            if review.get("comments_count"):
+                reads.append((first["review_comments"].extend,
+                              lambda r=review: api.paged(api.path(repo, f"/pulls/{n}/reviews/{r['id']}/comments"))))
+    limit = "?per_page=100" if github else "?limit=50"
+    first["runs"] = [{"run": run, "jobs": []} for run in first.get("runs") or []]
+    for entry in first["runs"]:
+        if entry["run"].get("conclusion") in RUN_FAILED:
+            def read_jobs(r=entry["run"]):
+                try:
+                    return api.get(api.path(repo, f"/actions/runs/{r['id']}/jobs") + limit).get("jobs") or []
+                except FetchError as exc:
+                    if _not_found(exc):
+                        return []
+                    raise
+            reads.append((lambda value, e=entry: e.__setitem__("jobs", value), read_jobs))
+    return reads
 
 
 def pr_repo_list(repo, values):
@@ -785,9 +865,15 @@ def pr_repo_list(repo, values):
     return repos
 
 
-def fetch_bundle(forge_type, repo, pr_repo=None, repo_path=".", since=None, only_issue=None):
-    """Read the issues of `repo` and the PRs of `repo` plus every `pr_repo` (a string, or a list of strings)."""
-    api = Api(forge_type, repo_path)
+def fetch_bundle(forge_type, repo, pr_repo=None, repo_path=".", since=None, only_issue=None, jobs=DEFAULT_JOBS):
+    """Read the issues of `repo` and the PRs of `repo` plus every `pr_repo` (a string, or a list of strings).
+
+    The reads go in waves: the listings, then each issue's and PR's own reads, then the reads that
+    need those results (a commit's files, a review's comments, a failed run's jobs). A wave runs
+    on up to `jobs` threads. Every result goes where its place in the plan says, so `jobs` never
+    changes the document.
+    """
+    api = Api(forge_type, repo_path, jobs)
     owner, _, name = repo.partition("/")
     forge = {"type": forge_type, "host": None, "owner": owner, "repo": name}
     pr_repos = pr_repo_list(repo, [pr_repo] if isinstance(pr_repo, str) else pr_repo)
@@ -795,38 +881,68 @@ def fetch_bundle(forge_type, repo, pr_repo=None, repo_path=".", since=None, only
         forge["pr_repos"] = pr_repos[1:]
     base_q = "?state=all" + ("" if forge_type == "github" else "&type=issues")
 
-    raws = {}
-    if only_issue is not None:
-        raws[only_issue] = api.get(api.path(repo, f"/issues/{only_issue}"))
-    else:
-        query = base_q + (f"&since={quote(since)}" if since else "")
-        listings = [api.paged(api.path(repo, "/issues" + query))]
-        # Tracking and status issues carry batch membership and convergence data even
-        # when they were not updated in the range.
-        for label in ("type:batch", "type:epic", "flow:status"):
-            listings.append(api.paged(api.path(repo, "/issues" + base_q + f"&labels={quote(label)}")))
-        for rows in listings:
-            for raw in rows:
-                if "pull_request" not in raw:
-                    raws.setdefault(raw["number"], raw)
-    issues = []
-    for n, raw in sorted(raws.items()):
-        issues.append({"issue": raw, "timeline": api.paged(api.path(repo, f"/issues/{n}/timeline"))})
-
     def recent(page):
         return since is None or any((p.get("updated_at") or "") >= since for p in page)
 
     pr_query = "?state=all" + ("&sort=updated&direction=desc" if forge_type == "github" else "")
-    pulls = []
+    keep_going = recent if forge_type == "github" else None
+
+    # Wave 1: every listing.
+    listings = []
+    if only_issue is not None:
+        listings.append(lambda: api.get(api.path(repo, f"/issues/{only_issue}")))
+    else:
+        query = base_q + (f"&since={quote(since)}" if since else "")
+        listings.append(lambda: api.paged(api.path(repo, "/issues" + query)))
+        # Tracking and status issues carry batch membership and convergence data even
+        # when they were not updated in the range.
+        for label in ("type:batch", "type:epic", "flow:status"):
+            listings.append(lambda label=label: api.paged(api.path(repo, "/issues" + base_q + f"&labels={quote(label)}")))
     for pr_repo_name in pr_repos:
-        prs = api.paged(api.path(pr_repo_name, "/pulls" + pr_query), keep_going=recent if forge_type == "github" else None)
-        for pr in prs:
+        listings.append(lambda r=pr_repo_name: api.paged(api.path(r, "/pulls" + pr_query), keep_going=keep_going))
+    results = api.pmap(lambda read: read(), listings)
+    raws = {}
+    if only_issue is not None:
+        raws[only_issue] = results[0]
+        pr_results = results[1:]
+    else:
+        for rows in results[:4]:
+            for raw in rows:
+                if "pull_request" not in raw:
+                    raws.setdefault(raw["number"], raw)
+        pr_results = results[4:]
+    issue_numbers = sorted(raws)
+    prs = []
+    for pr_repo_name, rows in zip(pr_repos, pr_results):
+        for pr in rows:
             if since and to_utc(pr.get("updated_at")) and to_utc(pr["updated_at"]) < since:
                 continue
-            entry = {"repo": pr_repo_name, "pr": pr,
-                     "timeline": api.paged(api.path(pr_repo_name, f"/issues/{pr['number']}/timeline"))}
-            entry.update(_fetch_pull_detail(api, forge_type, pr_repo_name, pr))
-            pulls.append(entry)
+            prs.append((pr_repo_name, pr))
+
+    # Wave 2: each issue's timeline and each PR's own reads.
+    tasks = [lambda n=n: api.paged(api.path(repo, f"/issues/{n}/timeline")) for n in issue_numbers]
+    names = []
+    for pr_repo_name, pr in prs:
+        reads = _pull_reads(api, pr_repo_name, pr)
+        names.append(list(reads))
+        tasks.extend(reads.values())
+    results = iter(api.pmap(lambda read: read(), tasks))
+    timelines = [next(results) for _ in issue_numbers]
+    firsts = [{key: next(results) for key in keys} for keys in names]
+
+    # Wave 3: the reads that need wave 2.
+    followups = []
+    for (pr_repo_name, pr), first in zip(prs, firsts):
+        followups.extend(_pull_followups(api, pr_repo_name, pr, first))
+    for (apply, _), value in zip(followups, api.pmap(lambda item: item[1](), followups)):
+        apply(value)
+
+    issues = [{"issue": raws[n], "timeline": timeline} for n, timeline in zip(issue_numbers, timelines)]
+    pulls = []
+    for (pr_repo_name, pr), first in zip(prs, firsts):
+        pulls.append({"repo": pr_repo_name, "pr": pr, "timeline": first["timeline"], "commits": first["commits"],
+                      "reviews": first["reviews"], "review_comments": first.get("review_comments", []),
+                      "runs": first.get("runs", [])})
     return {"forge": forge, "issues": issues, "pulls": pulls}
 
 
@@ -925,6 +1041,9 @@ def cmd_collect(args):
     if args.max_diff_bytes < 0:
         print("error: --max-diff-bytes must be 0 or more", file=sys.stderr)
         return 5
+    if not 1 <= args.jobs <= MAX_JOBS:
+        print(f"error: --jobs takes a number from 1 to {MAX_JOBS}", file=sys.stderr)
+        return 5
     if not args.fixture and not args.forge:
         print("error: specify --forge (with --repo) or --fixture", file=sys.stderr)
         return 5
@@ -936,7 +1055,7 @@ def cmd_collect(args):
             with open(args.fixture) as handle:
                 bundle = json.load(handle)
         else:
-            bundle = fetch_bundle(args.forge, args.repo, args.pr_repo, args.repo_path, since, args.issue)
+            bundle = fetch_bundle(args.forge, args.repo, args.pr_repo, args.repo_path, since, args.issue, args.jobs)
         doc = normalize(bundle, since, until, args.issue, args.batch, not args.no_diffs, args.max_diff_bytes)
         log = local_events_path(args)
         if log:
@@ -2287,6 +2406,8 @@ def main(argv=None):
     collect.add_argument("--no-diffs", action="store_true", help="leave every patch out of the commit events")
     collect.add_argument("--max-diff-bytes", type=int, default=DEFAULT_MAX_DIFF_BYTES,
                          help="cap on the patch text in the whole document (default 4194304)")
+    collect.add_argument("--jobs", type=int, default=DEFAULT_JOBS,
+                         help=f"reads to run at once, 1 to {MAX_JOBS} (default {DEFAULT_JOBS}; 1 reads one at a time)")
     collect.add_argument("--out", help="write the document here instead of stdout")
     collect.set_defaults(func=cmd_collect)
     render = sub.add_parser("render", help="turn a timeline document into one self-contained HTML page")

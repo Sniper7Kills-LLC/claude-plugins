@@ -13,6 +13,7 @@ import os
 import subprocess
 import sys
 import tempfile
+import time
 from datetime import datetime, timezone
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -1496,6 +1497,83 @@ multi_page = payload(timeline.render_html(timeline.normalize(multi_bundle("githu
 check(multi_page["issueRepo"] == "o/r", f"the page data names the issue repo: {multi_page.get('issueRepo')}")
 check(multi_page["batches"]["50"]["pr_repo"] == "o/r", "the batch entry reaches the page")
 check("issueRepo" in timeline.PAGE_JS and "e.repo" in timeline.PAGE_JS, "the detail text labels a PR from another repo")
+
+
+# ---------------------------------------------------------------- parallel reads (--jobs)
+# A wrapper around the canned fake adds a delay per call, a call log, and rate-limit replies.
+JOBS_WRAPPER = r"""
+import os, subprocess, sys, time
+state = os.environ["FAKE_STATE"]
+with open(os.path.join(state, "calls"), "a") as handle:
+    handle.write("x\n")
+time.sleep(float(os.environ.get("FAKE_DELAY", "0")))
+mode = os.environ.get("FAKE_LIMIT", "")
+if mode == "always":
+    sys.stderr.write("gh: HTTP 403: You have exceeded a secondary rate limit.\nRetry-After: 0\n"); sys.exit(1)
+if mode == "twice":
+    for i in range(2):
+        try:
+            os.close(os.open(os.path.join(state, f"limited{i}"), os.O_CREAT | os.O_EXCL))
+        except FileExistsError:
+            continue
+        sys.stderr.write("gh: HTTP 429: Too Many Requests\n"); sys.exit(1)
+if mode == "broken" and "/commits/" in sys.argv[-1]:
+    sys.stderr.write("gh: HTTP 500: boom\n"); sys.exit(1)
+sys.exit(subprocess.call([sys.executable, os.environ["FAKE_INNER"], *sys.argv[1:]]))
+"""
+with tempfile.TemporaryDirectory() as tmp:
+    inner = os.path.join(tmp, "inner.py")
+    with open(inner, "w") as handle:
+        handle.write(FAKE_SRC)
+    outer = os.path.join(tmp, "outer.py")
+    with open(outer, "w") as handle:
+        handle.write(JOBS_WRAPPER)
+    for forge_type, env_name in (("github", "IFW_GH"), ("gitea", "IFW_TEA")):
+        wrapper = os.path.join(tmp, f"jobs-{forge_type}")
+        with open(wrapper, "w") as handle:
+            handle.write(f'#!/bin/sh\nexec "{sys.executable}" "{outer}" "$@"\n')
+        os.chmod(wrapper, 0o755)
+        data = os.path.join(tmp, f"story-{forge_type}.json")
+        with open(data, "w") as handle:
+            json.dump(story2(forge_type), handle)
+
+        def jobs_run(jobs, extra=None, command="collect", out=None):
+            state = tempfile.mkdtemp(dir=tmp)
+            env = {env_name: wrapper, "FAKE_DATA": data, "FAKE_STATE": state, "FAKE_INNER": inner,
+                   "IFW_RETRY_DELAY": "0.01", **(extra or {})}
+            args = [command, "--forge", forge_type, "--repo", "o/r", "--jobs", str(jobs)]
+            if out:
+                args += ["--out", out]
+            started = time.monotonic()
+            proc = run(args, env)
+            log = os.path.join(state, "calls")
+            calls = len(open(log).read().split()) if os.path.exists(log) else 0
+            return proc, time.monotonic() - started, calls
+
+        one, t_one, calls = jobs_run(1)
+        eight, _, _ = jobs_run(8)
+        check(one.returncode == 0 and eight.returncode == 0, f"{forge_type} --jobs 1 and 8 exit 0: {one.stderr[:200]} {eight.stderr[:200]}")
+        check(one.stdout != "" and one.stdout == eight.stdout, f"{forge_type} --jobs 1 and --jobs 8 give byte-identical documents")
+        check(run(["collect", "--forge", forge_type, "--repo", "o/r", "--jobs", "0"]).returncode == 5, "--jobs 0 exits 5")
+        check(run(["collect", "--forge", forge_type, "--repo", "o/r", "--jobs", "17"]).returncode == 5, "--jobs 17 exits 5")
+
+        slow = {"FAKE_DELAY": "0.15"}
+        _, seq_time, calls = jobs_run(1, slow)
+        _, par_time, _ = jobs_run(8, slow)
+        check(calls >= 10, f"{forge_type} the fixture makes enough reads to time: {calls}")
+        check(par_time < seq_time * 0.7, f"{forge_type} --jobs 8 is faster than --jobs 1: {par_time:.2f}s against {seq_time:.2f}s")
+
+        proc, _, _ = jobs_run(8, {"FAKE_LIMIT": "twice"})
+        check(proc.returncode == 0 and proc.stdout == one.stdout, f"{forge_type} two rate-limit replies are retried: {proc.stderr[:200]}")
+        out = os.path.join(tmp, f"never-{forge_type}.html")
+        proc, _, calls = jobs_run(8, {"FAKE_LIMIT": "always"}, "snapshot", out)
+        check(proc.returncode == 2 and not os.path.exists(out), f"{forge_type} a limit that never lifts exits 2 with no page: {proc.returncode}")
+        check("rate limit" in proc.stderr, f"{forge_type} the give-up names the rate limit: {proc.stderr[:200]}")
+        check(calls <= 8 * 3 + 8, f"{forge_type} the retries stay bounded: {calls} calls")
+
+        out = os.path.join(tmp, f"broken-{forge_type}.json")
+        proc, _, _ = jobs_run(8, {"FAKE_LIMIT": "broken"}, "collect", out)
+        check(proc.returncode == 2 and not os.path.exists(out) and proc.stdout == "", f"{forge_type} a failed read under --jobs 8 exits 2 with no document: {proc.returncode}")
 
 if failures:
     for failure in failures:

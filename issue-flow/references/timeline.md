@@ -270,6 +270,23 @@ and the `prRepos` array of `.issue-flow.json` (see `session-config.md`).
 `status_at_start` always starts at the first event. `--issue <n>` keeps the events with
 that `issue`. `--batch <n>` keeps the events with that `batch`.
 
+## Parallel reads and rate limits
+
+`collect` reads the tracker in three waves: the listings, then each issue's and PR's own reads,
+then the reads that need those (a commit's files or diff, a review's comments, a failed run's
+jobs). A wave runs on a bounded pool of threads. `--jobs <n>` sets the size: 1 to 16, default 8.
+`--jobs 1` reads one at a time. `snapshot` and `watch` pass `--jobs` to `collect`.
+
+- **The document does not depend on `--jobs`.** Each result goes where the plan puts it, never
+  where the read ended. `--jobs 1` and `--jobs 8` give byte-identical documents.
+- **A rate limit is retried, a bounded number of times.** A GitHub secondary rate limit, an HTTP
+  429, or a "too many requests" reply makes the read run again, for 3 attempts in all. The wait
+  is the `Retry-After` value when the reply has one, else 2 s, then 4 s, and never more than
+  60 s. A read that is still limited after the third attempt fails with exit 2.
+- **Every other error fails at once**, as it does with `--jobs 1`. One failed read fails the whole
+  collect, and nothing is written.
+- `IFW_RETRY_DELAY` sets the first wait in seconds, for tests only.
+
 ## Exit codes
 
 `0` document written. `2` a fetch failed, or the forge returned an error body (`tea api`
