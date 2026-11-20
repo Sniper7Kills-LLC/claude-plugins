@@ -49,7 +49,13 @@ def events(repo):
     if not os.path.exists(path):
         return []
     with open(path) as handle:
-        return [json.loads(line) for line in handle if line.strip()]
+        rows = []
+        for line in handle:
+            try:
+                rows.append(json.loads(line))
+            except ValueError:
+                continue  # a junk line is part of one test case
+        return rows
 
 
 BRIEF = "issue:        #77 — record events\nbranch: issue/77-x\nSECRET-PROMPT-TEXT do the work"
@@ -64,9 +70,9 @@ def spawn_payload(cwd, brief=BRIEF):
                               "prompt": brief, "outputFile": "/x"}}
 
 
-def stop_payload(cwd, message, agent_type="issue-flow:issue-worker"):
+def stop_payload(cwd, message, agent_type="issue-flow:issue-worker", agent_id="a123"):
     return {"session_id": "sess-1", "cwd": cwd, "hook_event_name": "SubagentStop",
-            "agent_id": "a123", "agent_type": agent_type, "last_assistant_message": message}
+            "agent_id": agent_id, "agent_type": agent_type, "last_assistant_message": message}
 
 
 def bash_payload(cwd, command):
@@ -109,8 +115,8 @@ with tempfile.TemporaryDirectory() as tmp:
         check(e["agent"] == "a123", f"stop agent: {e}")
 
     # 4. A stop from an agent that is not a worker and has no verdict writes nothing.
-    run(stop_payload(repo, "just a summary", agent_type="Explore"))
-    check(len(events(repo)) == 2, "a non-worker stop writes nothing")
+    run(stop_payload(repo, "just a summary", agent_type="Explore", agent_id="a999"))
+    check(len(events(repo)) == 2, "a non-worker stop of an unspawned agent writes nothing")
 
     # 5. Worktree add and remove from Bash.
     run(bash_payload(repo, "git worktree add -b issue/77-x /w/wt-77 origin/dev"))
@@ -184,6 +190,55 @@ with tempfile.TemporaryDirectory() as tmp:
     check(len(events(repo)) == before, "a SendMessage with no single string recipient writes nothing")
     run(send_payload(repo, to="a123", message="x"), env={"ISSUE_FLOW_EVENTS": "off"})
     check(len(events(repo)) == before, "the kill switch covers agent.messaged")
+
+    # 11. Fields from a real Claude Code 2.1.329 SubagentStop and PostToolUse(Agent) payload.
+    live = os.path.join(tmp, "live")
+    os.makedirs(live)
+    git(live, "init", "-q")
+    git(live, "commit", "-q", "--allow-empty", "-m", "init")
+    agent_wt = os.path.join(tmp, "worktrees", "agent-ae15")
+    git(live, "worktree", "add", "-q", "-b", "agent-branch", agent_wt)
+    live_spawn = {"session_id": "s-live", "transcript_path": "/neutral/t.jsonl", "cwd": live,
+                  "hook_event_name": "PostToolUse", "tool_name": "Agent",
+                  "tool_input": {"description": "probe", "subagent_type": "general-purpose",
+                                 "run_in_background": True, "isolation": "worktree",
+                                 "prompt": "issue: #86 - probe\nDo the work."},
+                  "tool_response": {"isAsync": True, "status": "async_launched", "agentId": "ae15",
+                                    "description": "probe", "outputFile": "/neutral/o"}}
+
+    def live_stop(message, agent_id="ae15", cwd=agent_wt, agent_type="general-purpose"):
+        return {"session_id": "s-live", "transcript_path": "/neutral/t.jsonl", "cwd": cwd,
+                "hook_event_name": "SubagentStop", "stop_hook_active": False, "agent_id": agent_id,
+                "agent_type": agent_type, "agent_transcript_path": "/neutral/a.jsonl",
+                "last_assistant_message": message, "background_tasks": [], "session_crons": []}
+
+    run(live_spawn)
+    # A spawned agent that returns no verdict still gets a stop line, with outcome null and its own worktree.
+    run(live_stop("I could not finish: the build failed."))
+    got = events(live)
+    check([e["kind"] for e in got] == ["agent.spawned", "agent.stopped"], f"spawned agent without verdict stops: {got}")
+    if len(got) == 2:
+        e = got[1]
+        check(e["agent"] == "ae15" and e["outcome"] is None and e["issue"] is None, f"unverdicted stop fields: {e}")
+        check(e["worktree"] == agent_wt, f"stop worktree falls back to the agent's cwd: {e}")
+    # A verdict's own worktree wins over the cwd.
+    run(live_spawn | {"tool_response": {"agentId": "ae16", "status": "async_launched"}})
+    run(live_stop(json.dumps({"issue": 86, "outcome": "blocked", "worktree": "/w/own"}), agent_id="ae16"))
+    check(events(live)[-1]["worktree"] == "/w/own", f"verdict worktree beats cwd: {events(live)[-1:]}")
+    # An agent the log never saw spawn, with no verdict and no worker type, still writes nothing.
+    before = len(events(live))
+    run(live_stop("summary", agent_id="unknown-agent"))
+    check(len(events(live)) == before, "a stop with no spawn line, no verdict and no worker type writes nothing")
+    # A worker stop without a verdict records the cwd as its worktree too.
+    run(live_stop("crashed", agent_id="w9", agent_type="issue-flow:issue-worker"))
+    check(events(live)[-1]["worktree"] == agent_wt, f"worker stop without verdict uses cwd: {events(live)[-1:]}")
+    # An unreadable log line never stops the lookup.
+    with open(os.path.join(live, ".git", "issue-flow", "events.jsonl"), "a") as handle:
+        handle.write("garbage line\n")
+    run(live_spawn | {"tool_response": {"agentId": "ae17", "status": "async_launched"}})
+    run(live_stop("oops", agent_id="ae17"))
+    check(events(live)[-1]["agent"] == "ae17" and events(live)[-1]["kind"] == "agent.stopped",
+          "stop is recorded after a junk log line")
 
 if failures:
     for failure in failures:

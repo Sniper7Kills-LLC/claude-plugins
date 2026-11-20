@@ -11,8 +11,11 @@ Events (kinds are documented in references/timeline.md):
 
 * `PostToolUse` on `Agent|Task` -> `agent.spawned`, when the brief carries an `issue: #<n>`
   line. Other spawns (research children, reviewers) are not worker events.
-* `SubagentStop` -> `agent.stopped`, when the final message carries the verdict JSON or the
-  agent type is an issue-worker. `outcome`, `branch` and `worktree` come from the verdict.
+* `SubagentStop` -> `agent.stopped`, when the final message carries the verdict JSON, the
+  agent type is an issue-worker, or the log already holds an `agent.spawned` line for the
+  agent. The last case gives a crashed or fallback worker a lane end. `outcome`, `branch` and
+  `worktree` come from the verdict. Without a verdict `worktree` is the `cwd` of the stop event,
+  which is the agent's own worktree.
 * `PostToolUse` on `SendMessage` -> `agent.messaged`, when the PM messages an agent (a worker
   sent back for rework, for example). The line holds the recipient and the time. It never holds
   the message text, the summary or the reply.
@@ -100,18 +103,45 @@ def verdict_of(message):
     return found
 
 
-def stopped(payload):
+SPAWN_SCAN_BYTES = 2 * 1024 * 1024
+
+
+def was_spawned(path, agent):
+    """Return True when the log's last 2 MiB hold an `agent.spawned` line for `agent`."""
+    if not path or not agent:
+        return False
+    try:
+        with open(path, "rb") as handle:
+            handle.seek(0, os.SEEK_END)
+            handle.seek(max(0, handle.tell() - SPAWN_SCAN_BYTES))
+            data = handle.read().decode("utf-8", "replace")
+    except OSError:
+        return False
+    for line in data.splitlines():
+        if "agent.spawned" not in line:
+            continue
+        try:
+            row = json.loads(line)
+        except ValueError:
+            continue
+        if isinstance(row, dict) and row.get("kind") == "agent.spawned" and row.get("agent") == agent:
+            return True
+    return False
+
+
+def stopped(payload, path=None):
     message = payload.get("last_assistant_message")
     verdict = verdict_of(message) if isinstance(message, str) else None
     agent_type = payload.get("agent_type")
     is_worker = isinstance(agent_type, str) and agent_type.endswith("issue-worker")
-    if not verdict and not is_worker:
+    agent = text(payload.get("agent_id"))
+    if not verdict and not is_worker and not was_spawned(path, agent):
         return None
     verdict = verdict or {}
     issue = verdict.get("issue")
-    return event("agent.stopped", payload, agent=text(payload.get("agent_id")),
+    return event("agent.stopped", payload, agent=agent,
                  issue=issue if isinstance(issue, int) else None,
-                 worktree=text(verdict.get("worktree")), branch=text(verdict.get("branch")),
+                 worktree=text(verdict.get("worktree")) or text(payload.get("cwd")), branch=text(verdict.get("branch")),
                  outcome=text(verdict.get("outcome")))
 
 
@@ -148,10 +178,10 @@ def worktree_change(payload):
     return None
 
 
-def build(payload):
+def build(payload, path=None):
     name = payload.get("hook_event_name")
     if name == "SubagentStop":
-        return stopped(payload)
+        return stopped(payload, path)
     if name == "PostToolUse":
         tool = payload.get("tool_name")
         if tool in SPAWN_TOOLS:
@@ -179,12 +209,12 @@ def main():
         payload = json.load(sys.stdin)
         if not isinstance(payload, dict):
             return
-        row = build(payload)
-        if not row:
-            return
         cwd = payload.get("cwd") if isinstance(payload.get("cwd"), str) else os.getcwd()
         path = log_path(cwd)
         if not path:
+            return
+        row = build(payload, path)
+        if not row:
             return
         os.makedirs(os.path.dirname(path), exist_ok=True)
         # One write call per line keeps concurrent appends from interleaving.
