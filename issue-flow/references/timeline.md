@@ -223,13 +223,14 @@ the tracker-only document. Each event has the nine standard keys plus `session`,
 | Kind | When | Fields |
 |---|---|---|
 | `agent.spawned` | A worker was spawned for an issue. | `issue`, `agent`, `session`. |
-| `agent.stopped` | A worker ended. | `agent`, `session`; `issue`, `outcome`, `branch` and `worktree` from its verdict. With no verdict, `outcome` and `issue` are null and `worktree` is the agent's own worktree (the `cwd` of the stop event). |
+| `agent.stopped` | A worker ended. | `agent`, `session`; `issue`, `outcome`, `branch` and `worktree` from its verdict. With no verdict, `outcome` and `issue` are null. `worktree` is then the `cwd` of the stop event, but only when its last path component is `agent-<agent_id>`; a resumed agent's stop reports the parent session's directory, and `worktree` stays null. |
 | `worktree.added` | `git worktree add` ran. | `worktree` = the path; `branch` when `-b` or `-B` names one. |
 | `worktree.removed` | `git worktree remove` ran. | `worktree` = the path. |
 | `agent.messaged` | The PM sent a message to an agent (`SendMessage`), for example a worker sent back for rework. | `agent` = the recipient exactly as the call named it, `session`. The line never holds the message text, the summary or the reply. |
 
 `collect` fills `issue` for a worktree event from a branch named `issue/<n>-…`, and for a
-later event on the same path. It fills `batch` from the issue. The range and issue filters
+later event on the same path. It gives every later event of an agent the `issue` of that
+agent's `agent.spawned`, so one agent stays on one lane in one batch. It fills `batch` from the issue. The range and issue filters
 apply to local events too.
 
 **How the forges differ, and how `collect` hides it.** A draft on GitHub is a flag, so
@@ -287,7 +288,7 @@ Another producer adds a lane type by adding a row and using that prefix.
 | `issue` | `status`, `issue.*`, `pr.*`, `checkpoint`, and the `comment`, `commit`, `review` and `ci` events of the issue or its PR | `bar`: a bar coloured by status. Markers show PR open, PR merge, checkpoint and park (a `status` event whose `to` is `needs-feedback` or `blocked`). The bar at the left edge starts with the status the issue had at the range start (`status_at_start`, or the last earlier event). |
 | `batch` | `batch.*` | `marks`: one marker per event. The lane leads its group and shows the batch merge. The tracking issue's own events sit in the same group. The detail events of a tracking issue (`comment`, `commit`, `review`, `ci`) go to its batch lane, not to an issue lane. |
 | `worktree` | `worktree.*` | `marks`: one lane per `worktree` key, one marker per event. |
-| `agent` | `agent.*` | `marks`: one lane per `agent` key, or per `session` key when there is no `agent`. `agent.stopped` carries a `worktree` too, but the lane key stays `agent`. |
+| `agent` | `agent.*` | `span`: one lane per `agent` key, or per `session` key when there is no `agent`. One bar runs from `agent.spawned` to the last `agent.stopped`, coloured by the last `outcome` through `AGENT_OUTCOME_STATES` (a neutral grey when `outcome` is null). `agent.messaged` and each stop draw as markers on the bar. `agent.stopped` carries a `worktree` too, but the lane key stays `agent`. |
 | any other prefix | the same prefix | `marks`: a generic lane, labelled with the prefix. |
 
 Events with no batch go in a final group named "No batch". A batch with no `branch` shows

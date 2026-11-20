@@ -68,7 +68,8 @@ repository shares it. The user can ask for another path.
 
 The exit code is the result. Do not pipe the tool, and do not read `PIPESTATUS`: it is empty
 in zsh. Exit 0 means the page is written, and `snapshot` prints one line on stderr
-(`wrote <path>: <n> events, <n> lanes, <n> problems`). Any other exit code means no new page:
+(`wrote <path>: <n> events, <n> lanes, <n> problems`). A problem is a rework request, a
+changes-requested review or a failed CI run. The page lists them in its Problems view. Any other exit code means no new page:
 2 is a failed fetch or a failed render, 5 is a bad flag. Say so with the error text. Do not
 write an empty page.
 
@@ -93,7 +94,8 @@ python3 "${CLAUDE_PLUGIN_ROOT}/scripts/timeline.py" watch --forge <forge> --repo
 1. Print the **absolute path** of the page.
 2. Open it only when the session is interactive: run `open <path>` on macOS or
    `xdg-open <path>` on Linux. In a headless session (`claude -p`), do not open it. Print the
-   path only, and say the user can open it in a browser.
+   path only, and say the user can open it in a browser. When you cannot tell whether the
+   session is interactive, treat it as headless: print the path and do not run `open`.
 3. Live mode: tell the user the page reloads every `<interval>` seconds, that the loop
    ends after `<max-minutes>` minutes, and how to stop it. When the user asks you to
    stop it, end the background shell (`TaskStop`, or `kill <pid>`). `SIGTERM` ends the
