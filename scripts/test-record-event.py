@@ -220,7 +220,7 @@ with tempfile.TemporaryDirectory() as tmp:
     if len(got) == 2:
         e = got[1]
         check(e["agent"] == "ae15" and e["outcome"] is None and e["issue"] is None, f"unverdicted stop fields: {e}")
-        check(e["worktree"] == agent_wt, f"stop worktree falls back to the agent's cwd: {e}")
+        check(e["worktree"] == agent_wt, f"stop worktree falls back to the cwd named agent-<agent_id>: {e}")
     # A verdict's own worktree wins over the cwd.
     run(live_spawn | {"tool_response": {"agentId": "ae16", "status": "async_launched"}})
     run(live_stop(json.dumps({"issue": 86, "outcome": "blocked", "worktree": "/w/own"}), agent_id="ae16"))
@@ -231,7 +231,13 @@ with tempfile.TemporaryDirectory() as tmp:
     check(len(events(live)) == before, "a stop with no spawn line, no verdict and no worker type writes nothing")
     # A worker stop without a verdict records the cwd as its worktree too.
     run(live_stop("crashed", agent_id="w9", agent_type="issue-flow:issue-worker"))
-    check(events(live)[-1]["worktree"] == agent_wt, f"worker stop without verdict uses cwd: {events(live)[-1:]}")
+    check(events(live)[-1]["worktree"] is None,
+          f"a cwd that is not agent-<agent_id> is not recorded as the worktree: {events(live)[-1:]}")
+    # A resumed agent's stop reports the parent session's directory, which is not the agent's worktree.
+    run(live_stop("resumed", agent_id="ae15", cwd=live))
+    check(events(live)[-1]["worktree"] is None, f"a resumed stop with the parent cwd has no worktree: {events(live)[-1:]}")
+    run(live_stop("done", agent_id="ae15"))
+    check(events(live)[-1]["worktree"] == agent_wt, f"a cwd named agent-<agent_id> is the worktree: {events(live)[-1:]}")
     # An unreadable log line never stops the lookup.
     with open(os.path.join(live, ".git", "issue-flow", "events.jsonl"), "a") as handle:
         handle.write("garbage line\n")

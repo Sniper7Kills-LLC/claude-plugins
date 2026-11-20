@@ -15,7 +15,8 @@ Events (kinds are documented in references/timeline.md):
   agent type is an issue-worker, or the log already holds an `agent.spawned` line for the
   agent. The last case gives a crashed or fallback worker a lane end. `outcome`, `branch` and
   `worktree` come from the verdict. Without a verdict `worktree` is the `cwd` of the stop event,
-  which is the agent's own worktree.
+  but only when its last path component is `agent-<agent_id>`, the harness's name for an agent
+  worktree. A resumed agent's stop reports the parent session's directory, which is not its worktree.
 * `PostToolUse` on `SendMessage` -> `agent.messaged`, when the PM messages an agent (a worker
   sent back for rework, for example). The line holds the recipient and the time. It never holds
   the message text, the summary or the reply.
@@ -129,6 +130,14 @@ def was_spawned(path, agent):
     return False
 
 
+def agent_worktree(payload, agent):
+    """Return the stop event's cwd when it is the agent's own worktree, else None."""
+    cwd = text(payload.get("cwd"))
+    if cwd and agent and os.path.basename(cwd.rstrip("/\\")) == f"agent-{agent}":
+        return cwd
+    return None
+
+
 def stopped(payload, path=None):
     message = payload.get("last_assistant_message")
     verdict = verdict_of(message) if isinstance(message, str) else None
@@ -141,7 +150,7 @@ def stopped(payload, path=None):
     issue = verdict.get("issue")
     return event("agent.stopped", payload, agent=agent,
                  issue=issue if isinstance(issue, int) else None,
-                 worktree=text(verdict.get("worktree")) or text(payload.get("cwd")), branch=text(verdict.get("branch")),
+                 worktree=text(verdict.get("worktree")) or agent_worktree(payload, agent), branch=text(verdict.get("branch")),
                  outcome=text(verdict.get("outcome")))
 
 
