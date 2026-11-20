@@ -1,6 +1,6 @@
 ---
 name: timeline
-description: Show what an issue-flow run did as one local HTML page - issue lanes, status changes, pull requests, checkpoints and batch merges - either as a snapshot or as a live page that refreshes while the run goes. Use when the user says "/timeline", "show the issue-flow timeline", "visualize the workflow", "show me what the run did", or "watch the run". Read-only. Writes one HTML file on this machine and publishes nothing.
+description: Show what an issue-flow run did as one local HTML page - issue lanes, status changes, pull requests, checkpoints and batch merges - either as a snapshot or as a live page that refreshes while the run goes. Use when the user says "/timeline", "show the issue-flow timeline", "visualize the workflow", "show me what the run did", or "watch the run". Read-only on the tracker. Writes one HTML file, a read cache and the PR head refs under refs/issue-flow/ on this machine, cleans up old ones, and publishes nothing.
 ---
 
 # Timeline — see what the run did
@@ -11,7 +11,13 @@ merges. The page filters by timeframe in the browser.
 
 The skill is **read-only**. It reads issues, issue timelines, pull requests (with their
 comments, commits, reviews and CI runs) and the local-event log. It needs
-no issue-flow run to be active, and it changes nothing on the tracker.
+no issue-flow run to be active, and it changes nothing on the tracker. To read commit diffs
+without API calls, it fetches PR heads into `refs/issue-flow/` of the local repository. It
+changes no branch, tag or work-tree file. It keeps the reads of unchanged issues, PRs and
+commits in `<git common dir>/issue-flow/cache/`. When nothing changed, a run reads the listings,
+the CI runs of open PRs and of PRs updated in the last hour, and nothing else. On GitHub, an
+unchanged listing page gets a 304, which costs no quota. The cache is shared by every run in
+this repository, so a run you think of as the first can already be warm.
 
 The output is a **local file only**. Never publish it, never upload it, and never create
 an Artifact from it.
@@ -21,7 +27,9 @@ lane kinds are in [references/timeline.md](../../references/timeline.md).
 
 ## 1. Choose the mode and the timeframe
 
-Ask the user with `AskUserQuestion` when the request does not say.
+Ask the user with `AskUserQuestion` when the request does not say. When you cannot ask (a
+headless session, `claude -p`, or no `AskUserQuestion` tool), take a snapshot of `--since 1d`,
+and tell the user that you chose it and how to ask for another mode or timeframe.
 
 - **Snapshot** (default). Write the page once. Right for "what happened".
 - **Live.** Rewrite the page on a timer, and the open page reloads itself. Right for
@@ -50,9 +58,47 @@ Detect the forge as `references/forge.md` `## Detection` describes: a `forge` bl
   3. The user's words, and the `notes` field of `.issue-flow.json`.
   Tell the user which repositories you read.
 
-`collect` reads the tracker on 8 threads by default. `--jobs <n>` (1 to 16) changes that, and
-the document is the same for every value. A tracker rate limit is retried 3 times, then the
-run fails with exit 2. Pass `--jobs 1` only to debug one read at a time.
+`collect` reads the tracker on 4 threads by default. `--jobs <n>` (1 to 16) changes that, and
+the document is the same for every value. Do not raise `--jobs` above 4: more reads at once
+risk GitHub's secondary limits. A tracker rate limit is retried 3 times, then the run fails
+with exit 2. Pass `--jobs 1` only to debug one read at a time.
+
+**The quota guard.** The REST quota is shared: the issue-flow PM, its workers, the user's own
+`gh` use and this skill all draw from it. On GitHub, `collect` reads the quota first, at no
+cost. Before each stage of reads, it estimates the calls of that stage that the cache cannot
+serve. The limit is `--budget` percent (default 50) of the quota at the start, less the calls
+this run already sent. If the stage needs more, `collect` stops with exit 3. It writes no page,
+and it prints one line with the estimate, what remains and the reset time. The estimate covers
+the next stage only: a refusal before the listings can name 12 calls for a run that needs 190.
+Later stages are checked as they come. A quota that is used up until a reset more than 60
+seconds away also gives exit 3. Gitea has no quota to read, so the guard is off there.
+
+Other `gh` users of the same token draw from the same quota at the same time. So the remaining
+count in the summary line can fall by more than the calls of this run.
+
+If the guard stops a snapshot, tell the user the line, and offer these choices:
+
+1. A shorter `--since`, or `--batch <n>` or `--issue <n>`, to read less.
+2. Wait for the reset time in the line, then run again.
+3. A higher `--budget`. Offer it only when nothing else needs the quota until the reset. A
+   running issue-flow PM stops when the quota reaches 0.
+
+Do not raise `--budget` without the user's consent.
+
+`collect` keeps a read cache. Pass `--refresh-cache` when the user says the page shows old
+data: it reads everything again and replaces the cache (`watch` does this on its first cycle
+only). `--no-cache` reads everything and keeps nothing.
+
+**Clean-up.** `snapshot` removes old cache files and the `refs/issue-flow/` refs of PRs closed
+for more than 30 days when it ends. When the user asks to clean up or to remove what the skill
+left on the machine, run `timeline.py gc` (the same clean-up) or `timeline.py gc --all` (the
+whole cache and every `refs/issue-flow/` ref). Pass `--dry-run` first to show what goes, and
+run `gc --all` only with the user's consent. Tell the user that the next run after `gc --all` is
+cold and costs the full quota: measured, a cold snapshot made 176 API calls, and a warm one 14.
+`gc` prints one `ref <name>` line for each ref first, and the summary names up to 3 refs.
+`--dry-run` lists each file too, and `--verbose` lists them in a real run. `gc` cuts no list;
+a `...` cut comes from the display, so send stdout to a file and read it.
+`references/timeline.md` has the rules.
 
 `collect` does not detect the forge by itself. It stops with exit 5 when `--forge` and
 `--repo` are both missing.
@@ -72,10 +118,13 @@ repository shares it. The user can ask for another path.
 
 The exit code is the result. Do not pipe the tool, and do not read `PIPESTATUS`: it is empty
 in zsh. Exit 0 means the page is written, and `snapshot` prints one line on stderr
-(`wrote <path>: <n> events, <n> lanes, <n> problems`). A problem is a rework request, a
+(`wrote <path>: <n> events, <n> lanes, <n> problems; <n> API calls (<n> cached, <n> not modified), <n> remaining`).
+"Cached" counts the reads that the cache served in this run. A cold run can show cached
+reads: a read that the run wrote to the cache earlier is served from it again. The last count is
+the quota left after the run; Gitea leaves it out. A problem is a rework request, a
 changes-requested review or a failed CI run. The page lists them in its Problems view. Any other exit code means no new page:
-2 is a failed fetch or a failed render, 5 is a bad flag. Say so with the error text. Do not
-write an empty page.
+2 is a failed fetch or a failed render, 3 is the quota guard (see section 2), 5 is a bad flag.
+Say so with the error text. Do not write an empty page.
 
 ## 4. Live
 
@@ -88,10 +137,25 @@ python3 "${CLAUDE_PLUGIN_ROOT}/scripts/timeline.py" watch --forge <forge> --repo
 
 - `watch` collects, renders with `--refresh <interval>`, sleeps, and repeats. It is a
   sleep loop, not a busy loop. Do not add `/loop` or a cron job.
+- To wait for `watch`, wait for the background shell to complete: the harness tells you when it
+  exits. Do not run `sleep` in the foreground, and do not poll its output file in a loop.
+- `watch` prints one start line on stderr:
+  `watch: started; a refresh every <interval> s until <time>; page <path>`.
+- Each good cycle prints one line:
+  `wrote <path> at <time>; <n> API calls (<n> cached, <n> not modified), <n> remaining`. When
+  nothing changed, the not-modified count equals the listing pages, and the calls are those
+  pages plus the CI runs of open PRs.
 - `--interval` is 60 seconds or more. The default is 300. Take a shorter interval as 60.
-- `--max-minutes` is the lifetime. The default is 240. The loop ends itself at that time.
+- `--max-minutes` is the lifetime. The default is 240. A sleep ends at that time at the
+  latest. `watch` then writes one last cycle and stops.
+- When the loop ends, it prints one end line: `watch: stopped after <n> cycles: <reason>`. The
+  reason is `--max-minutes reached`, `SIGTERM`, `SIGINT`, `3 failed refreshes in a row (exit 2)`
+  or `a bad flag (exit 5)`. A stop with no end line is a crash.
 - A failed fetch keeps the last good page. Three failures in a row end the loop with
   exit 2.
+- When the quota guard stops a cycle, `watch` skips it, keeps the last page and prints
+  `watch: skipped this refresh to save the API quota; ... next attempt at <time>`. The loop
+  goes on. A skip is not a failure. If the user sees skip lines, offer a shorter `--since`.
 
 ## 5. Show the result
 

@@ -244,11 +244,15 @@ address bar holds the view (open lane, timeframe, log filters, search), so you c
 The **Theme** button in the page header cycles auto (the browser setting), light and dark. The page
 remembers the choice in the browser. Every lane and marker works from the keyboard.
 
-The skill is read-only and needs only the tracker, so it works outside a run. It writes
-to `<git common dir>/issue-flow/timeline.html` (no commit carries it, and every worktree
-shares it) or to the `--out` path you give. It publishes nothing. The script is
-`scripts/timeline.py` (`collect`, `render`, `snapshot`, `watch`, `path`); the schema is in
-[references/timeline.md](references/timeline.md).
+The skill is read-only on the tracker, so it works outside a run. It reads the tracker and the
+checkout's git: commit diffs come from local git, and it fetches PR heads into
+`refs/issue-flow/` of the checkout for them (no branch, tag or work-tree file changes). On this
+machine it writes the page to `<git common dir>/issue-flow/timeline.html` (no commit carries it,
+and every worktree shares it) or to the `--out` path you give, and it keeps a read cache in
+`<git common dir>/issue-flow/cache/`. `snapshot` removes old cache files and the refs of PRs
+closed long ago, and `timeline.py gc --all` removes all of them. It publishes nothing. The
+script is `scripts/timeline.py` (`collect`, `render`, `snapshot`, `watch`, `path`, `gc`); the
+schema and the API cost are in [references/timeline.md](references/timeline.md).
 
 ## What earns an issue
 

@@ -7,10 +7,18 @@
         --pr-repo owner/pr-repo --batch 78
     python3 "${CLAUDE_PLUGIN_ROOT}/scripts/timeline.py" collect --fixture bundle.json   # test/dry-run
 
-`collect` reads the tracker on `--jobs` threads (1 to 16, default 8; `snapshot` and `watch` pass it
+`collect` reads the tracker on `--jobs` threads (1 to 16, default 4; `snapshot` and `watch` pass it
 on). The document is the same for every value. A rate-limit reply (GitHub secondary rate limit,
-HTTP 429) is retried until 3 attempts have run, after `Retry-After` seconds or 2 s, 4 s. Any other
-failed read fails the whole collect.
+HTTP 429) is retried until 3 attempts have run, after `Retry-After` seconds or 2 s, 4 s. A
+primary-limit reply (the quota is used up) waits for the quota's reset when it comes in 60 s or
+less, else it stops the collect with exit 3. Any other failed read fails the whole collect.
+
+The quota guard (GitHub): `collect` reads the quota with `gh api rate_limit`, which costs no
+quota. Before each wave of reads it estimates the calls of that wave's uncached reads. If the
+calls sent plus the estimate are more than --budget percent (default 50) of the quota at the
+start, it stops with exit 3 and one stderr line: the estimate of the next wave, what remains,
+the reset time and the options. Later waves are checked when they come, so the estimate is not
+the cost of the whole run. Gitea has no rate-limit route, so the guard is off there.
 
 Render the document as one HTML page (no server, no external requests):
 
@@ -26,10 +34,11 @@ documented in references/timeline.md.
 
 `snapshot` runs `collect` and `render` in one process and takes every `collect` flag plus --out
 (the page path; default `<git common dir>/issue-flow/timeline.html`). It exits 0 only when the
-page is written, and prints one stderr line with the path and the event, lane and problem counts.
-`watch` runs the same code on a timer.
+page is written, and prints one stderr line with the path, the event, lane and problem counts, and
+`<n> API calls (<m> cached, <k> not modified), <q> remaining`. `<q>` is the quota read after the
+run, and a forge with no quota to read leaves it out. `watch` runs the same code on a timer.
 
-`collect` is read-only. It reads issues, issue timelines and pull requests (paged until
+`collect` is read-only on the tracker. It reads issues, issue timelines and pull requests (paged until
 an empty page) and prints one JSON document, or writes it to --out. The schema is in
 references/timeline.md; this script is its only producer.
 
@@ -41,7 +50,35 @@ Commits, comment roles, reviews, CI runs and the links from a problem to its fix
 document too (references/timeline.md). A patch is cut at 400 lines or 32 KB per file, and the
 patches of one document share --max-diff-bytes (default 4194304). A cut patch has `truncated`
 set. --no-diffs leaves every patch out and keeps the per-file stats. A GitHub commit lists its
-first 300 files. A Gitea commit takes its stats and patches from the `.diff` route.
+first 300 files. A Gitea commit takes its stats and patches from the `.diff` route. A hunk
+header keeps its line ranges and drops the section heading, which each source finds differently.
+
+--diff-source git|api|auto (default auto) says where a commit's files and patches come from.
+`auto` reads them from the --repo-path checkout and costs no API call. First it fetches, for
+each PR repository, the heads of the PRs that hold a commit git lacks, with one `git fetch`
+through the remote whose URL ends in that `owner/name`: refs/pull/<n>/head goes to
+refs/issue-flow/pull/<owner>/<repo>/<n>, and no branch, tag, remote ref or work-tree file
+changes. A fetch never prompts and stops after 60 s. A commit git still lacks is read through
+the API, and one stderr line counts them and names git's first error line.
+`git` fails on such a commit (exit 2); `api` reads every commit through the API. The "API cost"
+section of references/timeline.md has the details and a measurement.
+
+A read cache in <git common dir>/issue-flow/cache/ (or --cache-dir PATH) keeps every read but the
+listings, keyed by the item's updated_at, a PR's head sha, a commit's sha, or a run's time. A
+second collect with no changes reads only the listings, and on GitHub each unchanged listing
+page gets a 304. The listing query sends --since rounded down to the start of its UTC hour, so
+a relative --since gives the same query for an hour. The CI runs of an open PR, or of a PR
+updated in the last hour, are read every time, and a run list that holds a run still going is
+not kept. --no-cache neither reads nor writes the cache; --refresh-cache reads nothing from it
+and writes every read. The document is the same with and without the cache.
+
+`gc` removes the cache files that no collect touched for 30 days, the temporary files older than
+1 hour, and the refs/issue-flow/pull/ refs of PRs that the cache shows closed for more than 30
+days. `gc --all` removes the whole cache and every refs/issue-flow/ ref, so the next collect is
+cold. gc prints one `ref <name>` line on stdout for each ref, first. `--dry-run` also prints one
+`cache <path>` line for each file and removes nothing; `--verbose` prints the same lines in a
+real run. The stderr summary names up to 3 refs. `snapshot` runs the same gc (never --all) after
+it writes the page.
 
 Flags: --since/--until take an ISO date, an ISO timestamp, or a relative age (`7d`,
 `24h`, `2w`). --issue and --batch keep one issue or one batch (a tracking-issue number).
@@ -64,18 +101,29 @@ Endpoints were checked against https://docs.github.com/en/rest/pulls/pulls,
 https://docs.github.com/en/rest/pulls/reviews, https://docs.github.com/en/rest/pulls/comments,
 https://docs.github.com/en/rest/commits/commits, https://docs.github.com/en/rest/actions/workflow-runs,
 https://docs.github.com/en/rest/actions/workflow-jobs and the Gitea swagger file at
-https://gitea.com/swagger.v1.json (retrieved 2026-11-19).
+https://gitea.com/swagger.v1.json (retrieved 2026-11-19). The PR head refs were checked against
+https://docs.github.com/en/pull-requests/collaborating-with-pull-requests/reviewing-changes-in-pull-requests/checking-out-pull-requests-locally,
+https://github.com/go-gitea/gitea/blob/main/modules/git/ref.go (`refs/pull/` + `/head`), the
+Gitea `.diff` command at https://github.com/go-gitea/gitea/blob/main/modules/git/diff.go, and
+https://git-scm.com/docs/git-fetch (retrieved 2026-11-19). The quota read and the primary-limit
+reply were checked against https://docs.github.com/en/rest/rate-limit/rate-limit and
+https://docs.github.com/en/rest/using-the-rest-api/rate-limits-for-the-rest-api, and the absence
+of a Gitea rate-limit route against https://gitea.com/swagger.v1.json (retrieved 2026-11-19).
 
 Keep a page current while a run is going (the /timeline skill starts this in the background):
 
     python3 "${CLAUDE_PLUGIN_ROOT}/scripts/timeline.py" watch --forge github --repo owner/name --interval 300 --max-minutes 240
 
 `watch` runs `collect`, then `render --refresh <interval>`, then sleeps, until --max-minutes
-passes or it gets SIGINT or SIGTERM (both exit 0). It takes every `collect` flag, and it
+passes or it gets SIGINT or SIGTERM (both exit 0). A sleep ends at the deadline at the latest,
+and watch then runs one last cycle. It prints one start line on stderr (the interval, the stop
+time and the page path) and one end line (`watch: stopped after <n> cycles: <reason>`). It takes every `collect` flag, and it
 owns --out: the default is <git common dir>/issue-flow/timeline.html, which no commit
 carries and every worktree shares. It replaces the page in one step, so a browser never
 reads half a page. --interval is 60 seconds or more (default 300). --max-minutes defaults
-to 240. A failed fetch keeps the last good page; three failed fetches in a row exit 2.
+to 240. A failed fetch keeps the last good page; three failed fetches in a row exit 2. When the
+quota guard stops a collect, `watch` skips the cycle, keeps the last page, prints one line that
+names the next attempt, and goes on. The guard never ends a watch.
 IFW_WATCH_FAST=1 lifts the 60-second floor, for tests only. `path` prints the default page
 path (exit 2 outside a git repository).
 
@@ -83,10 +131,13 @@ Environment: IFW_GH and IFW_TEA replace the `gh` and `tea` commands (for tests).
 `tea api` exits 0 on an API error and prints an error object, so every body is checked.
 
 Exit codes: 0 = document written, 2 = a fetch failed or the forge returned an error
-body (nothing is printed to stdout), 5 = the invocation is malformed.
+body (nothing is printed to stdout), 3 = the quota guard stopped the collect, or the quota is
+used up until a reset more than 60 s away (nothing is printed to stdout), 5 = the invocation is
+malformed.
 """
 
 import argparse
+import hashlib
 import html
 import json
 import os
@@ -95,6 +146,7 @@ import signal
 import subprocess
 import sys
 import tempfile
+import threading
 import time
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timedelta, timezone
@@ -133,20 +185,60 @@ EXCERPT_CHARS = 300
 MAX_PATCH_LINES = 400
 MAX_PATCH_BYTES = 32 * 1024
 DEFAULT_MAX_DIFF_BYTES = 4 * 1024 * 1024
-DEFAULT_JOBS = 8
+# Four reads at once keep a collect well under GitHub's secondary (burst and concurrency) limits.
+DEFAULT_JOBS = 4
 MAX_JOBS = 16
 RETRY_ATTEMPTS = 3
 RETRY_AFTER_CAP = 60
 RATE_LIMITED = re.compile(r"secondary rate limit|rate limit exceeded|abuse detection|\b429\b|too many requests", re.I)
 RETRY_AFTER = re.compile(r"retry-after:?\s*(\d+)", re.I)
+# GitHub's primary-limit reply is a 403 or 429 with x-ratelimit-remaining 0. `gh api` prints the
+# message, not the headers, so the reset time comes from the reply only when it carries the header.
+PRIMARY_LIMIT = re.compile(r"API rate limit exceeded|x-ratelimit-remaining:?\s*0\b", re.I)
+RATELIMIT_RESET = re.compile(r"x-ratelimit-reset:?\s*(\d+)", re.I)
+# GET /rate_limit costs no quota: https://docs.github.com/en/rest/rate-limit/rate-limit
+RATE_LIMIT_PATH = "rate_limit"
+DEFAULT_BUDGET = 50
+# A paged read sends at least two requests: the page with the rows and the empty page that ends it.
+PAGED_READ_CALLS = 2
 RUN_FAILED = ("failure", "timed_out", "startup_failure")
 REVIEW_STATES = {"APPROVED": "approved", "CHANGES_REQUESTED": "changes_requested", "REQUEST_CHANGES": "changes_requested",
                  "COMMENT": "commented", "COMMENTED": "commented", "DISMISSED": "dismissed"}
 FILE_STATUS = {"deleted": "removed"}
+FULL_SHA = re.compile(r"^(?:[0-9a-f]{40}|[0-9a-f]{64})$")
+# `git diff --name-status` letters, as the GitHub commit API names them.
+GIT_STATUS = {"A": "added", "D": "removed", "M": "modified", "R": "renamed", "C": "copied", "T": "changed"}
+MAX_COMMIT_FILES = 300
+# The section heading after a hunk's `@@ … @@` comes from per-language rules. GitHub, Gitea and
+# local git apply different rules (GitHub finds `def` lines in Python, git's default finds any
+# line that starts with a letter), so the heading is dropped and a patch is the same from every source.
+HUNK_HEADING = re.compile(r"^(@@ -\d+(?:,\d+)? \+\d+(?:,\d+)? @@).*$", re.M)
+DIFF_SOURCES = ("auto", "git", "api")
+CACHE_VERSION = 1
+# A closed PR updated this recently can still get a CI run that does not change its updated_at.
+RUNS_STALE_AFTER = timedelta(hours=1)
+# A fetch that hangs (a dead network, a server that never answers) must not stop the collect.
+GIT_FETCH_TIMEOUT = 60
+# git's error for a refspec whose source the remote does not have (a PR ref that is gone).
+MISSING_REF = re.compile(r"couldn't find remote ref", re.I)
+# gc: a cache file that no read touched for GC_MAX_AGE goes, and so does the ref of a PR that
+# closed more than GC_MAX_AGE ago. A temporary file older than GC_TMP_AGE is a killed write.
+GC_MAX_AGE = timedelta(days=30)
+GC_TMP_AGE = timedelta(hours=1)
+CACHE_DIR_NAME = re.compile(r"^[0-9a-f]{2}$")
+CACHE_FILE_NAME = re.compile(r"^[0-9a-f]{64}\.json$")
+CACHE_TMP_NAME = re.compile(r"^\..*\.tmp$")
+STATE_KEY = re.compile(r"^(?:github|gitea)/(.+)/pull/(\d+)/[^/]+/[^/]+/state$")
+ENTRY_KEY = re.compile(r'"key":\s*"((?:[^"\\]|\\.)*)"')
+PR_REF = re.compile(r"^refs/issue-flow/pull/(.+)/(\d+)$")
 
 
 class FetchError(Exception):
     pass
+
+
+class QuotaRefused(FetchError):
+    """The quota guard stopped the collect. The message is the one line to print; the exit code is 3."""
 
 
 # ------------------------------------------------------------------ small helpers
@@ -194,6 +286,18 @@ def parse_when(text, now=None):
         return to_utc(text)
     except ValueError:
         raise ValueError(f"cannot read {text!r}: use an ISO date, an ISO timestamp, or 7d / 24h / 2w")
+
+
+def api_since(since):
+    """Return `since` rounded down to the start of its UTC hour, or None for no `since`.
+
+    A relative --since (`1d`) gives a new timestamp every second. The rounded value goes into the
+    API query, and so into the listing's cache key, so collects in the same hour send the same
+    query and get 304. The exact `since` still filters the results on this side.
+    """
+    if not since:
+        return None
+    return _parse_dt(since).replace(minute=0, second=0, microsecond=0).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
 def _login(raw, *keys):
@@ -412,6 +516,8 @@ def _commit_event(raw, issue, pr, batch, diffs, budget):
         patch, adds, dels = f.get("patch"), f.get("additions"), f.get("deletions")
         if path in from_diff:
             patch, adds, dels = from_diff[path]
+        if patch:
+            patch = HUNK_HEADING.sub(r"\1", patch)
         patch, truncated = _cap_patch(patch, budget, diffs)
         files.append({"path": path, "status": FILE_STATUS.get(f.get("status"), f.get("status")),
                       "additions": adds, "deletions": dels, "patch": patch, "truncated": truncated})
@@ -692,8 +798,10 @@ def normalize(bundle, since=None, until=None, only_issue=None, only_batch=None, 
 class Api:
     """Reads one forge through `gh api` or `tea api`; every body is checked for an error object.
 
-    Calls are safe to make from many threads: an `Api` holds only its settings. `pmap` runs
-    reads on a bounded pool and returns the results in the order of the inputs.
+    Calls are safe to make from many threads: an `Api` holds only its settings and a call count.
+    `pmap` runs reads on a bounded pool and returns the results in the order of the inputs.
+    `sent` counts the requests sent, and a retry is one more request. `not_modified` counts the
+    sent requests that got a 304 (see `conditional`).
     """
 
     def __init__(self, forge_type, repo_path=".", jobs=DEFAULT_JOBS):
@@ -702,6 +810,9 @@ class Api:
         self.jobs = jobs
         self.cmd = os.environ.get("IFW_GH", "gh") if forge_type == "github" else os.environ.get("IFW_TEA", "tea")
         self.limit = "per_page=100" if forge_type == "github" else "limit=50"
+        self.sent = 0
+        self.not_modified = 0
+        self._sent_lock = threading.Lock()
 
     def path(self, repo, suffix):
         return f"{'repos' if self.forge_type == 'github' else '/repos'}/{repo}{suffix}"
@@ -722,15 +833,23 @@ class Api:
         finally:
             pool.shutdown(wait=True, cancel_futures=True)
 
-    def _run(self, path):
+    def _run(self, path, count=True):
         """Run one `api` call and return its stdout. A failed call raises FetchError.
 
         A rate-limit reply is retried until RETRY_ATTEMPTS attempts have run. The wait is the
         `Retry-After` value when the reply has one, else 2, 4, then 8 seconds, and never
         more than RETRY_AFTER_CAP. Any other failure is raised at once.
+
+        A primary-limit reply (the quota is used up) waits for the quota's reset only when the
+        reset comes in RETRY_AFTER_CAP seconds or less. Otherwise it raises QuotaRefused at once,
+        because a retry before the reset fails too. `count=False` keeps the call out of `sent`,
+        for the quota reads, which cost no quota.
         """
         base = float(os.environ.get("IFW_RETRY_DELAY", "2"))
         for attempt in range(1, RETRY_ATTEMPTS + 1):
+            if count:
+                with self._sent_lock:
+                    self.sent += 1
             try:
                 result = subprocess.run([self.cmd, "api", path], cwd=self.repo_path, capture_output=True, text=True)
             except OSError as exc:
@@ -738,12 +857,54 @@ class Api:
             if result.returncode == 0:
                 return result.stdout
             reason = (result.stderr or result.stdout).strip()
+            if PRIMARY_LIMIT.search(reason) and path != RATE_LIMIT_PATH:
+                reset = self._reset_of(reason)
+                wait = None if reset is None else max(0.0, reset - time.time() + 1)
+                if wait is None or wait > RETRY_AFTER_CAP or attempt == RETRY_ATTEMPTS:
+                    raise QuotaRefused(f"collect: the API quota is used up. {reset_text(reset)} "
+                                       "Use a shorter --since, or wait for the reset.")
+                time.sleep(wait)
+                continue
             limited = RATE_LIMITED.search(reason)
             if not limited or attempt == RETRY_ATTEMPTS:
                 suffix = f" (rate limit; gave up after {attempt} attempts)" if limited else ""
                 raise FetchError(f"{self.cmd} api {path} failed: {reason}{suffix}")
             wait = RETRY_AFTER.search(reason)
             time.sleep(min(float(wait.group(1)) if wait else base * 2 ** (attempt - 1), RETRY_AFTER_CAP))
+
+    def _reset_of(self, reason):
+        """Return the quota's reset as a Unix time: the reply's x-ratelimit-reset, else the quota read."""
+        header = RATELIMIT_RESET.search(reason)
+        if header:
+            return int(header.group(1))
+        quota = self.quota()
+        return quota["reset"] if quota else None
+
+    def quota(self):
+        """Return the core REST quota as {"limit", "remaining", "reset"}, or None when there is none.
+
+        The read is GET /rate_limit, which costs no quota, so it is not in `sent`. Gitea has no
+        rate-limit route, and a GitHub server with rate limits off answers 404: both give None.
+        """
+        if self.forge_type != "github":
+            return None
+        try:
+            out = self._run(RATE_LIMIT_PATH, count=False)
+            body = json.loads(out)
+        except FetchError as exc:
+            if _not_found(exc):
+                return None
+            raise
+        except ValueError:
+            raise FetchError(f"{self.cmd} api {RATE_LIMIT_PATH} returned a body that is not JSON: {out[:200]!r}")
+        core = ((body.get("resources") or {}).get("core") or {}) if isinstance(body, dict) else {}
+        if isinstance(body, dict) and "message" in body and not core:
+            if _not_found(FetchError(body["message"])):
+                return None
+            raise FetchError(f"{self.cmd} api {RATE_LIMIT_PATH} returned an error: {body['message']}")
+        if not all(isinstance(core.get(k), int) for k in ("limit", "remaining", "reset")):
+            raise FetchError(f"{self.cmd} api {RATE_LIMIT_PATH} has no resources.core quota: {out[:200]!r}")
+        return {k: core[k] for k in ("limit", "remaining", "reset")}
 
     def get(self, path):
         out = self._run(path)
@@ -782,9 +943,436 @@ class Api:
                 break
         return rows
 
+    def conditional(self, path, etag=None):
+        """Read one GitHub page with `--include`, and send `If-None-Match: <etag>` when `etag` is set.
+
+        Returns (304, etag, None) when the page did not change, else (200, etag or None, body).
+        gh reports a 304 with exit 1 and `gh: HTTP 304`, so the status line decides, not the exit
+        code. A 304 is never an error and is never retried. Any other failure gives the read to
+        `get`, which retries it as `_run` does; that costs one more request, on a failure only.
+        """
+        args = [self.cmd, "api", "--include"] + (["-H", f"If-None-Match: {etag}"] if etag else []) + [path]
+        with self._sent_lock:
+            self.sent += 1
+        try:
+            result = subprocess.run(args, cwd=self.repo_path, capture_output=True, text=True)
+        except OSError as exc:
+            raise FetchError(f"cannot run {self.cmd}: {exc}")
+        status, headers, out = parse_include(result.stdout)
+        if status == 304:
+            with self._sent_lock:
+                self.not_modified += 1
+            return 304, headers.get("etag") or etag, None
+        if result.returncode != 0 or status is None or not 200 <= status < 300:
+            return 200, None, self.get(path)
+        try:
+            body = json.loads(out)
+        except ValueError:
+            raise FetchError(f"{self.cmd} api {path} returned a body that is not JSON: {out[:200]!r}")
+        if isinstance(body, dict) and "message" in body and "number" not in body:
+            raise FetchError(f"{self.cmd} api {path} returned an error: {body['message']}")
+        return 200, headers.get("etag"), body
+
+
+def parse_include(text):
+    """Split `gh api --include` output into (status, headers, body). No status line gives (None, {}, text).
+
+    gh writes `HTTP/2.0 200 OK`, then one `Name: value` line per header, then an empty line.
+    Header names are made lower case.
+    """
+    match = re.match(r"HTTP/\S+ (\d{3})[^\n]*\n", text)
+    if not match:
+        return None, {}, text
+    parts = re.split(r"\r?\n\r?\n", text[match.end():], maxsplit=1)
+    head, body = parts[0], parts[1] if len(parts) > 1 else ""
+    headers = {}
+    for line in head.splitlines():
+        name, sep, value = line.partition(":")
+        if sep:
+            headers[name.strip().lower()] = value.strip()
+    return int(match.group(1)), headers, body
+
+
+def listing_key(forge_type, path):
+    """Return the cache key of a listing's ETags and pages. `path` holds the query, not the page."""
+    return f"etag/{forge_type}/{path}"
+
+
+def read_listing(api, cache, path, keep_going=None):
+    """Read every page of a GitHub listing, and send each page's stored ETag as `If-None-Match`.
+
+    A 304 reuses the stored page. The stored pages are one snapshot, so when a page after the
+    first changed, the walk starts again at page 1 with no ETags. A change on page 1 needs no
+    restart, because no stored page was used yet. The new pages and ETags are stored under
+    `listing_key` when every page has an ETag. The walk ends as `Api.paged` ends.
+
+    A stored ETag is not a cached read: a request is still sent. So the entry is read without
+    counting a hit, and `api.not_modified` counts the 304s.
+    """
+    key = listing_key(api.forge_type, path)
+    entry = cache.peek(key)
+    stored = entry.get("pages") if isinstance(entry, dict) else None
+    if not isinstance(stored, list) or not all(isinstance(p, dict) and p.get("etag") and isinstance(p.get("body"), list)
+                                               for p in stored):
+        stored = []
+    sep = "&" if "?" in path else "?"
+    while True:
+        pages, rows, restart = [], [], False
+        for page in range(1, 1000):
+            old = stored[page - 1] if page <= len(stored) else None
+            status, etag, body = api.conditional(f"{path}{sep}{api.limit}&page={page}", old and old["etag"])
+            if status == 304 and old is not None:
+                etag, body = old["etag"], old["body"]
+            elif old is not None:
+                stored = []
+                if page > 1:
+                    restart = True
+                    break
+            if not isinstance(body, list):
+                raise FetchError(f"api {path} page {page} is not a list: {str(body)[:200]}")
+            pages.append({"etag": etag, "body": body})
+            if not body:
+                break
+            rows.extend(body)
+            if keep_going and not keep_going(body):
+                break
+        if not restart:
+            break
+    if all(p["etag"] for p in pages):
+        cache.put(key, {"pages": pages})
+    return rows
+
 
 def _not_found(exc):
     return "Not Found" in str(exc) or "404" in str(exc)
+
+
+def _error_line(stderr):
+    """Return the first `fatal:` or `error:` line of git's stderr, else its first line."""
+    lines = [line.strip() for line in (stderr or "").splitlines() if line.strip()]
+    for line in lines:
+        if line.lower().startswith(("fatal:", "error:")):
+            return line
+    return lines[0] if lines else "git fetch failed with no message"
+
+
+def _url_repo(url):
+    """Return the `owner/name` at the end of a remote URL, in lower case, or None.
+
+    The last two path parts name the repository in every URL form a forge gives:
+    `https://host/o/r.git`, `git@host:o/r.git`, `ssh://git@host:22/o/r` and a local path.
+    """
+    url = (url or "").strip().rstrip("/")
+    if url.endswith(".git"):
+        url = url[:-4]
+    parts = [p for p in re.split(r"[/:]", url) if p]
+    return "/".join(parts[-2:]).lower() if len(parts) >= 2 else None
+
+
+class GitDiffs:
+    """Reads commit files and patches from the local repository, so they cost no API call.
+
+    Commits are content-addressed: a commit git has is the commit the forge has, whichever
+    remote it came from. `fetch` puts PR heads under refs/issue-flow/ only, so it never moves a
+    branch, a tag, a remote-tracking ref or the work tree. A commit git cannot read returns
+    None, and the caller reads it through the API instead.
+    """
+
+    def __init__(self, repo_path="."):
+        self.repo_path = repo_path
+
+    def _call(self, args, stdin=None, timeout=None, env=None):
+        """Run one git command. Return (exit code, stdout, stderr).
+
+        A git that cannot start, or that runs past `timeout` seconds, gives the exit code None
+        and a stderr text that names the cause. With no `stdin`, git reads /dev/null, so a
+        prompt can never wait for input.
+        """
+        streams = {"input": stdin.encode()} if stdin is not None else {"stdin": subprocess.DEVNULL}
+        try:
+            result = subprocess.run(["git", "-C", self.repo_path, "-c", "core.quotePath=false", *args],
+                                    capture_output=True, timeout=timeout,
+                                    env=env or {**os.environ, "GIT_TERMINAL_PROMPT": "0"}, **streams)
+        except subprocess.TimeoutExpired:
+            return None, "", f"git {args[0]} timed out after {timeout:g} s"
+        except OSError as exc:
+            return None, "", f"cannot run git: {exc}"
+        return result.returncode, result.stdout.decode("utf-8", "replace"), result.stderr.decode("utf-8", "replace")
+
+    def _git(self, *args, stdin=None):
+        code, out, _ = self._call(args, stdin)
+        return out if code == 0 else None
+
+    def _fetch_env(self):
+        """Return the environment of a fetch: no password prompt, and SSH in batch mode.
+
+        BatchMode goes after the SSH command the user set (GIT_SSH_COMMAND, else core.sshCommand),
+        so their key and options still apply. A GIT_SSH program takes no `-o`, so it is left alone.
+        """
+        env = {**os.environ, "GIT_TERMINAL_PROMPT": "0"}
+        ssh = os.environ.get("GIT_SSH_COMMAND") or (self._git("config", "--get", "core.sshCommand") or "").strip()
+        if ssh or not os.environ.get("GIT_SSH"):
+            env["GIT_SSH_COMMAND"] = f"{ssh or 'ssh'} -o BatchMode=yes"
+        return env
+
+    def known(self, shas):
+        """Return the set of `shas` that are commits in the local repository."""
+        want = [s for s in shas if s and FULL_SHA.match(s)]
+        if not want:
+            return set()
+        out = self._git("cat-file", "--batch-check=%(objectname) %(objecttype)", stdin="\n".join(want) + "\n")
+        return {line.split()[0] for line in (out or "").splitlines() if line.endswith(" commit")}
+
+    def remote_for(self, repo):
+        """Return the name of the remote whose URL ends in `repo` (`owner/name`), or None.
+
+        When several remotes match, the first name in sort order wins, so the choice is stable.
+        """
+        out = self._git("config", "--get-regexp", r"^remote\..*\.url$") or ""
+        names = []
+        for line in out.splitlines():
+            key, _, url = line.partition(" ")
+            if _url_repo(url) == repo.lower():
+                names.append(key[len("remote."):-len(".url")])
+        return min(names) if names else None
+
+    def fetch(self, repo, numbers):
+        """Fetch the head of each PR in `numbers` from `repo` into refs/issue-flow/pull/<repo>/<n>.
+
+        One `git fetch` reads every head. A PR ref that is gone fails the whole call, so after a
+        missing-ref error each head is fetched alone, and one bad ref costs only its own commits.
+        Any other failure (no access, no network, a timeout) would fail each retry too, so it
+        stops at once. Each fetch stops after GIT_FETCH_TIMEOUT seconds and never prompts.
+        Return the first line of git's first error, or None when every head was fetched.
+        """
+        remote = self.remote_for(repo)
+        if remote is None:
+            return f"no remote URL of {self.repo_path} ends in {repo}"
+        # --refmap= stops the configured refspecs from updating remote-tracking refs as a side effect.
+        base = ["fetch", "--quiet", "--no-tags", "--no-write-fetch-head", "--no-auto-maintenance",
+                "--no-recurse-submodules", "--refmap=", remote]
+        spec = lambda n: f"+refs/pull/{n}/head:refs/issue-flow/pull/{repo}/{n}"  # noqa: E731
+        env = self._fetch_env()
+        code, _, err = self._call([*base, *(spec(n) for n in numbers)], timeout=GIT_FETCH_TIMEOUT, env=env)
+        if code == 0:
+            return None
+        if len(numbers) == 1 or not MISSING_REF.search(err):
+            return _error_line(err)
+        errors = []
+        for n in numbers:
+            code, _, err = self._call([*base, spec(n)], timeout=GIT_FETCH_TIMEOUT, env=env)
+            if code != 0:
+                errors.append(_error_line(err))
+        return errors[0] if errors else None
+
+    def _range(self, sha, parents):
+        """Return the diff-tree arguments that compare `sha` with its first parent, as the forge does."""
+        if parents is None:
+            out = self._git("rev-list", "--parents", "-n", "1", sha)
+            if out is None:
+                return None
+            parents = out.split()[1:]
+        return [parents[0], sha] if parents else ["--root", sha]
+
+    def diff(self, sha, parents=None):
+        """Return the `git diff` text of one commit, the same text as Gitea's `.diff` route, or None."""
+        span = self._range(sha, parents)
+        return None if span is None else self._git("diff-tree", "-r", "-M", "-p", "--no-commit-id", *span)
+
+    def files(self, sha, parents=None):
+        """Return one commit's files in the shape of GitHub's `commits/{sha}` `files`, or None.
+
+        Each file has `filename`, `status`, `additions`, `deletions`, and `patch` when the diff
+        has a hunk. A renamed or copied file has `previous_filename`. A binary file counts 0 and
+        0, as GitHub counts it. The list stops at MAX_COMMIT_FILES, like GitHub's first page.
+        """
+        span = self._range(sha, parents)
+        if span is None:
+            return None
+        names = self._git("diff-tree", "-r", "-M", "-z", "--no-commit-id", "--name-status", *span)
+        stats = self._git("diff-tree", "-r", "-M", "-z", "--no-commit-id", "--numstat", *span)
+        # GitHub joins two hunks that one unchanged line keeps apart; git's default keeps them apart.
+        # Measured against 185 files of this repository's own commits (references/timeline.md).
+        text = self._git("diff-tree", "-r", "-M", "-p", "--inter-hunk-context=1", "--no-commit-id", *span)
+        if names is None or stats is None or text is None:
+            return None
+        entries, tokens = [], names.split("\0")
+        i = 0
+        while i < len(tokens) and tokens[i]:
+            code = tokens[i]
+            if code[0] in "RC":
+                entries.append((code[0], tokens[i + 1], tokens[i + 2]))
+                i += 3
+            else:
+                entries.append((code[0], None, tokens[i + 1]))
+                i += 2
+        counts, tokens = [], stats.split("\0")
+        i = 0
+        while i < len(tokens) and tokens[i]:
+            adds, dels, path = tokens[i].split("\t", 2)
+            i += 3 if path == "" else 1
+            counts.append((int(adds) if adds.isdigit() else 0, int(dels) if dels.isdigit() else 0))
+        # Every file of the diff has one `diff --git` header, in the same order as the lists above.
+        # A content line never starts with it: each one starts with "+", "-", " " or "\".
+        chunks = re.split(r"^diff --git ", text, flags=re.M)[1:]
+        if not len(entries) == len(counts) == len(chunks):
+            return None
+        files = []
+        for (code, old, path), (adds, dels), chunk in list(zip(entries, counts, chunks))[:MAX_COMMIT_FILES]:
+            entry = {"filename": path, "status": GIT_STATUS.get(code, "modified"), "additions": adds, "deletions": dels}
+            if old is not None:
+                entry["previous_filename"] = old
+            hunk = re.search(r"^@@", chunk, re.M)
+            if hunk:
+                entry["patch"] = chunk[hunk.start():].rstrip("\n")
+            files.append(entry)
+        return files
+
+
+class Cache:
+    """Keeps the result of one read per key in a directory, as one JSON file per key.
+
+    A file holds {"cache_version", "key", "value"}. `get` returns None for a miss: no file, a file
+    that does not parse, another `cache_version`, or another key. A value is never None. Every
+    write goes to a temporary file in the same directory and then replaces the entry in one
+    rename. So two collects that write the same key leave one whole entry, the last one written.
+
+    `read=False` makes every `get` and `has` a miss. `write=False` makes `put` do nothing.
+    `Cache(None)` does neither. `hits` counts the `get` calls that found an entry.
+    """
+
+    def __init__(self, root, read=True, write=True):
+        self.root = root
+        self.read = read and root is not None
+        self.write = write and root is not None
+        self.hits = 0
+        self._lock = threading.Lock()
+
+    def path_of(self, key):
+        """Return the file of `key`. The name is a hash, so any key is a safe file name."""
+        digest = hashlib.sha256(key.encode()).hexdigest()
+        return os.path.join(self.root, digest[:2], digest + ".json")
+
+    def peek(self, key):
+        """Return the value of `key`, or None for a miss. It does not count as a hit.
+
+        A found entry gets its file time set to now, so `gc` removes only the entries that no
+        collect used for GC_MAX_AGE.
+        """
+        if not self.read or key is None:
+            return None
+        path = self.path_of(key)
+        try:
+            with open(path, encoding="utf-8") as handle:
+                entry = json.load(handle)
+        except (OSError, ValueError):
+            return None
+        if not isinstance(entry, dict) or entry.get("cache_version") != CACHE_VERSION or entry.get("key") != key:
+            return None
+        try:
+            os.utime(path)
+        except OSError:
+            pass
+        return entry.get("value")
+
+    def has(self, key):
+        """Return True when `get(key)` would find an entry. It does not count as a hit."""
+        return self.peek(key) is not None
+
+    def get(self, key):
+        value = self.peek(key)
+        if value is not None:
+            with self._lock:
+                self.hits += 1
+        return value
+
+    def put(self, key, value):
+        """Store `value` under `key`. A failed write leaves the old entry; the collect goes on."""
+        if not self.write or key is None or value is None:
+            return
+        path = self.path_of(key)
+        tmp = None
+        try:
+            os.makedirs(os.path.dirname(path), exist_ok=True)
+            fd, tmp = tempfile.mkstemp(dir=os.path.dirname(path), prefix=".", suffix=".tmp")
+            with os.fdopen(fd, "w", encoding="utf-8") as handle:
+                json.dump({"cache_version": CACHE_VERSION, "key": key, "value": value}, handle, ensure_ascii=False)
+            os.replace(tmp, path)
+        except OSError:
+            if tmp and os.path.exists(tmp):
+                os.unlink(tmp)
+
+    def cached(self, key, read, refresh=False, keep=None):
+        """Return a callable that gives the entry of `key`, or runs `read` and stores its result.
+
+        A `key` of None turns the cache off for this read. `refresh=True` runs `read` even when
+        an entry exists, and stores the new result. `keep(value)`, when given, must be True for
+        the result to be stored.
+        """
+        if key is None:
+            return read
+
+        def go():
+            if not refresh:
+                value = self.get(key)
+                if value is not None:
+                    return value
+            value = read()
+            if keep is None or keep(value):
+                self.put(key, value)
+            return value
+        return go
+
+
+# The cache keys. A read whose key holds no updated_at (or no sha) is never cached.
+def issue_key(forge_type, repo, number, updated_at):
+    return f"{forge_type}/{repo}/issue/{number}/{updated_at}" if updated_at else None
+
+
+def pull_key(forge_type, repo, pr):
+    updated, sha = pr.get("updated_at"), (pr.get("head") or {}).get("sha")
+    return f"{forge_type}/{repo}/pull/{pr['number']}/{updated}/{sha}" if updated and sha else None
+
+
+def commit_key(forge_type, sha):
+    """A commit never changes, so its key holds only the sha. The forge sets the value's shape."""
+    return f"{forge_type}/commit/{sha}" if sha else None
+
+
+def jobs_key(forge_type, repo, run):
+    updated = run.get("updated_at") or run.get("completed_at")
+    return f"{forge_type}/{repo}/run/{run.get('id')}/{updated}/jobs" if updated and run.get("id") is not None else None
+
+
+def runs_may_change(pr, now):
+    """Return True when a PR's CI runs can change while its updated_at stays the same.
+
+    A run on an open PR starts and ends without a PR event. A run that a merge or a close
+    started can still be going, so a PR updated in the last RUNS_STALE_AFTER counts too.
+    """
+    if pr.get("state") == "open":
+        return True
+    if not pr.get("updated_at"):
+        return True
+    return _parse_dt(pr["updated_at"]) >= now - RUNS_STALE_AFTER
+
+
+def runs_ended(runs):
+    """Return True when every run in `runs` has ended, so the list can go into the cache.
+
+    A run that is queued or in progress ends with no change to the PR's updated_at. A stored
+    list that holds one would show it as running for as long as the entry lives. Both forges
+    give an ended run the status `completed`.
+    """
+    return all(isinstance(run, dict) and run.get("status") == "completed" for run in runs or [])
+
+
+def _cached_commit_reader(cache, forge_type, read_commit):
+    """Return a `read_commit` that asks the cache first, then `read_commit` (or the API read)."""
+    def read(commit, api_read):
+        inner = (lambda: read_commit(commit, api_read)) if read_commit else api_read
+        return cache.cached(commit_key(forge_type, commit.get("sha")), inner)()
+    return read
 
 
 def _pull_reads(api, repo, pr):
@@ -813,15 +1401,19 @@ def _pull_reads(api, repo, pr):
     return reads
 
 
-def _pull_followups(api, repo, pr, first):
+def _pull_followups(api, repo, pr, first, read_commit=None, cache=None):
     """Return the second-wave reads of one PR, as a list of (apply, callable).
 
     These need the first wave: a commit's files or diff, a review's comments, a failed run's jobs.
     `apply(value)` stores the result into `first`, so a read's place in the document never
-    depends on when it ends.
+    depends on when it ends. `read_commit(commit, api_read)`, when given, reads a commit's files
+    or diff and calls `api_read()` only for a commit it cannot read. `cache` keeps a review's
+    comments under the PR's key and a run's jobs under the run's key.
     """
     n = pr["number"]
     github = api.forge_type == "github"
+    cache = cache or Cache(None)
+    base = pull_key(api.forge_type, repo, pr)
     reads = []
     for commit in first["commits"]:
         key = "files" if github else "diff"
@@ -829,13 +1421,16 @@ def _pull_followups(api, repo, pr, first):
             read = lambda c=commit: api.get(api.path(repo, f"/commits/{c['sha']}")).get("files") or []
         else:
             read = lambda c=commit: api.text(api.path(repo, f"/git/commits/{c['sha']}.diff"))
+        if read_commit is not None:
+            read = lambda c=commit, api_read=read: read_commit(c, api_read)
         reads.append((lambda value, c=commit, k=key: c.__setitem__(k, value), read))
     if not github:
         first["review_comments"] = []
         for review in first["reviews"]:
             if review.get("comments_count"):
-                reads.append((first["review_comments"].extend,
-                              lambda r=review: api.paged(api.path(repo, f"/pulls/{n}/reviews/{r['id']}/comments"))))
+                read = lambda r=review: api.paged(api.path(repo, f"/pulls/{n}/reviews/{r['id']}/comments"))  # noqa: E731
+                key = f"{base}/review/{review.get('id')}/comments" if base else None
+                reads.append((first["review_comments"].extend, cache.cached(key, read)))
     limit = "?per_page=100" if github else "?limit=50"
     first["runs"] = [{"run": run, "jobs": []} for run in first.get("runs") or []]
     for entry in first["runs"]:
@@ -847,8 +1442,43 @@ def _pull_followups(api, repo, pr, first):
                     if _not_found(exc):
                         return []
                     raise
-            reads.append((lambda value, e=entry: e.__setitem__("jobs", value), read_jobs))
+            reads.append((lambda value, e=entry: e.__setitem__("jobs", value),
+                          cache.cached(jobs_key(api.forge_type, repo, entry["run"]), read_jobs)))
     return reads
+
+
+def _git_commit_reader(git, prs, firsts, forge_type, mode, fallbacks):
+    """Fetch the PR heads that hold a commit git lacks. Return (read_commit, local, error).
+
+    One `git fetch` runs per PR repository, and only for the PRs that need it. `local` is the
+    set of shas git has after the fetch, for the wave-3 estimate. `error` is the first line of
+    the first failed fetch, or None. Each commit the reader cannot take from git is read through
+    the API and its sha is added to `fallbacks`. With `mode` `git`, such a commit fails the
+    collect instead.
+    """
+    shas = [c.get("sha") for first in firsts for c in first["commits"]]
+    local = git.known(shas)
+    need = {}
+    for (pr_repo_name, pr), first in zip(prs, firsts):
+        if any(c.get("sha") not in local for c in first["commits"]):
+            need.setdefault(pr_repo_name, []).append(pr["number"])
+    errors = [git.fetch(pr_repo_name, numbers) for pr_repo_name, numbers in need.items()]
+    if need:
+        local = git.known(shas)
+    github = forge_type == "github"
+
+    def read_commit(commit, api_read):
+        sha = commit.get("sha")
+        if sha in local:
+            parents = [p.get("sha") for p in commit["parents"]] if isinstance(commit.get("parents"), list) else None
+            value = git.files(sha, parents) if github else git.diff(sha, parents)
+            if value is not None:
+                return value
+        if mode == "git":
+            raise FetchError(f"commit {sha} is not in the local repository at {git.repo_path} (--diff-source git)")
+        fallbacks.append(sha)
+        return api_read()
+    return read_commit, local, next((e for e in errors if e), None)
 
 
 def pr_repo_list(repo, values):
@@ -865,15 +1495,125 @@ def pr_repo_list(repo, values):
     return repos
 
 
-def fetch_bundle(forge_type, repo, pr_repo=None, repo_path=".", since=None, only_issue=None, jobs=DEFAULT_JOBS):
+def reset_text(reset):
+    """Return the sentence that names the quota's reset time, from a Unix time or None."""
+    if reset is None:
+        return "The reset time is unknown."
+    at = datetime.fromtimestamp(reset, timezone.utc).isoformat(timespec="seconds").replace("+00:00", "Z")
+    return f"The quota resets at {at} (in {max(0, int(-(-(reset - time.time()) // 60)))} min)."
+
+
+class QuotaGuard:
+    """Stops a collect before its reads take more than `budget` percent of the API quota.
+
+    The quota is read once before the first read. Before each wave, `check(estimate)` adds the
+    calls already sent to the wave's estimate, and raises QuotaRefused when the sum is more than
+    the budget allows. A listing call counts in full even when the forge answers it with 304,
+    because the answer is not known in advance. With no quota to read (Gitea, or a GitHub server
+    with rate limits off) or no budget, the guard is off.
+    """
+
+    def __init__(self, api, budget):
+        self.api = api
+        self.budget = budget
+        self.start = api.quota() if budget is not None else None
+        self.sent_before = api.sent
+
+    def check(self, estimate):
+        if self.start is None:
+            return
+        spent = self.api.sent - self.sent_before
+        allowed = int(self.start["remaining"] * self.budget / 100) - spent
+        if estimate > allowed:
+            raise QuotaRefused(
+                f"collect: stopped before the next stage of reads: that stage needs about "
+                f"{_plural(estimate, 'API call')}, and --budget {self.budget:g} allows {max(0, allowed)} of the "
+                f"{max(0, self.start['remaining'] - spent)} that remain. The estimate covers the next stage only; "
+                f"later stages are checked as they come. {reset_text(self.start['reset'])} Use a shorter --since, "
+                "a higher --budget, or wait for the reset.")
+
+    def remaining(self):
+        """Return the quota left after the run (Q), or None when the guard is off or the read fails.
+
+        The reads are done by then, so a failed quota read only leaves Q out of the summary.
+        """
+        if self.start is None:
+            return None
+        try:
+            quota = self.api.quota()
+        except FetchError:
+            return None
+        return quota["remaining"] if quota else None
+
+
+def pull_read_estimate(api, forge_type, repo, issue_numbers, raws, prs, cache, now):
+    """Return the calls that wave 2 sends: two per uncached paged read of an issue or a PR."""
+    calls = sum(PAGED_READ_CALLS for n in issue_numbers
+                if not cache.has(issue_key(forge_type, repo, n, raws[n].get("updated_at"))))
+    for pr_repo_name, pr in prs:
+        base = pull_key(forge_type, pr_repo_name, pr)
+        for name in _pull_reads(api, pr_repo_name, pr):
+            fresh = name == "runs" and runs_may_change(pr, now)
+            if base is None or fresh or not cache.has(f"{base}/{name}"):
+                calls += PAGED_READ_CALLS
+    return calls
+
+
+def followup_estimate(forge_type, prs, firsts, cache, diff_source, git_has=None):
+    """Return the calls that wave 3 sends for the uncached reads.
+
+    An uncached commit costs one call with `diff_source` `api`. With `auto` it costs one call
+    when its sha is not in `git_has`, the shas git has after the fetch. With `git` it costs
+    none: a commit git lacks fails the collect. A Gitea review's comments cost a paged read. A
+    failed run's jobs cost one call. `firsts` holds the wave-2 results, with `runs` still the
+    raw run list.
+    """
+    calls = 0
+    git_has = git_has or set()
+    for (pr_repo_name, pr), first in zip(prs, firsts):
+        if diff_source != "git":
+            calls += sum(1 for c in first.get("commits") or [] if not cache.has(commit_key(forge_type, c.get("sha")))
+                         and (diff_source == "api" or c.get("sha") not in git_has))
+        base = pull_key(forge_type, pr_repo_name, pr)
+        if forge_type != "github":
+            for review in first.get("reviews") or []:
+                key = f"{base}/review/{review.get('id')}/comments" if base else None
+                if review.get("comments_count") and not cache.has(key):
+                    calls += PAGED_READ_CALLS
+        for run in first.get("runs") or []:
+            if run.get("conclusion") in RUN_FAILED and not cache.has(jobs_key(forge_type, pr_repo_name, run)):
+                calls += 1
+    return calls
+
+
+def fetch_bundle(forge_type, repo, pr_repo=None, repo_path=".", since=None, only_issue=None, jobs=DEFAULT_JOBS,
+                 diff_source="auto", cache=None, stats=None, budget=None):
     """Read the issues of `repo` and the PRs of `repo` plus every `pr_repo` (a string, or a list of strings).
 
     The reads go in waves: the listings, then each issue's and PR's own reads, then the reads that
     need those results (a commit's files, a review's comments, a failed run's jobs). A wave runs
     on up to `jobs` threads. Every result goes where its place in the plan says, so `jobs` never
     changes the document.
+
+    `diff_source` says where a commit's files or diff come from: `api` reads each one through the
+    forge; `git` reads each one from the checkout at `repo_path` and fails on a commit it does
+    not have; `auto` reads from git and falls back to the API per commit.
+
+    `cache` (a `Cache`) serves every read but the listings when its key matches. The commit cache
+    comes before git, so the fetch runs only for PRs that hold an uncached commit. On GitHub each
+    listing page is a conditional request (`read_listing`) when a cache is on. `stats`, a dict, gets
+    `calls` (requests sent), `cached` (reads served by the cache) and `not_modified` (requests that
+    got a 304).
+
+    `budget`, a percent, turns the quota guard on (`QuotaGuard`): before each wave it estimates
+    the uncached calls the wave sends and raises QuotaRefused when they do not fit. A listing page
+    counts as one call even when it may get a 304. `stats` then also gets `remaining`, the quota
+    read after the run.
     """
     api = Api(forge_type, repo_path, jobs)
+    guard = QuotaGuard(api, budget)
+    cache = cache or Cache(None)
+    now = datetime.now(timezone.utc)
     owner, _, name = repo.partition("/")
     forge = {"type": forge_type, "host": None, "owner": owner, "repo": name}
     pr_repos = pr_repo_list(repo, [pr_repo] if isinstance(pr_repo, str) else pr_repo)
@@ -887,27 +1627,38 @@ def fetch_bundle(forge_type, repo, pr_repo=None, repo_path=".", since=None, only
     pr_query = "?state=all" + ("&sort=updated&direction=desc" if forge_type == "github" else "")
     keep_going = recent if forge_type == "github" else None
 
+    def listing(path, keep_going=None):
+        # Gitea's API sends no ETag, so its listings are read plain. With no cache, no If-None-Match.
+        if forge_type != "github" or not (cache.read or cache.write):
+            return api.paged(path, keep_going=keep_going)
+        return read_listing(api, cache, path, keep_going)
+
     # Wave 1: every listing.
     listings = []
     if only_issue is not None:
         listings.append(lambda: api.get(api.path(repo, f"/issues/{only_issue}")))
     else:
-        query = base_q + (f"&since={quote(since)}" if since else "")
-        listings.append(lambda: api.paged(api.path(repo, "/issues" + query)))
+        query = base_q + (f"&since={quote(api_since(since))}" if since else "")
+        listings.append(lambda: listing(api.path(repo, "/issues" + query)))
         # Tracking and status issues carry batch membership and convergence data even
         # when they were not updated in the range.
         for label in ("type:batch", "type:epic", "flow:status"):
-            listings.append(lambda label=label: api.paged(api.path(repo, "/issues" + base_q + f"&labels={quote(label)}")))
+            listings.append(lambda label=label: listing(api.path(repo, "/issues" + base_q + f"&labels={quote(label)}")))
     for pr_repo_name in pr_repos:
-        listings.append(lambda r=pr_repo_name: api.paged(api.path(r, "/pulls" + pr_query), keep_going=keep_going))
+        listings.append(lambda r=pr_repo_name: listing(api.path(r, "/pulls" + pr_query), keep_going=keep_going))
+    guard.check(PAGED_READ_CALLS * len(listings) - (PAGED_READ_CALLS - 1 if only_issue is not None else 0))
     results = api.pmap(lambda read: read(), listings)
     raws = {}
     if only_issue is not None:
         raws[only_issue] = results[0]
         pr_results = results[1:]
     else:
-        for rows in results[:4]:
+        for i, rows in enumerate(results[:4]):
             for raw in rows:
+                updated = to_utc(raw.get("updated_at"))
+                # The range listing asked from the start of the hour; the exact --since filters here.
+                if i == 0 and since and updated and updated < since:
+                    continue
                 if "pull_request" not in raw:
                     raws.setdefault(raw["number"], raw)
         pr_results = results[4:]
@@ -918,25 +1669,53 @@ def fetch_bundle(forge_type, repo, pr_repo=None, repo_path=".", since=None, only
             if since and to_utc(pr.get("updated_at")) and to_utc(pr["updated_at"]) < since:
                 continue
             prs.append((pr_repo_name, pr))
+    # gc reads these records to find the PRs that closed long ago, whose refs/issue-flow/ refs can go.
+    for pr_repo_name, pr in prs:
+        key = pull_key(forge_type, pr_repo_name, pr)
+        if key and not cache.has(f"{key}/state"):
+            cache.put(f"{key}/state", {k: pr.get(k) for k in ("state", "closed_at", "updated_at")})
 
     # Wave 2: each issue's timeline and each PR's own reads.
-    tasks = [lambda n=n: api.paged(api.path(repo, f"/issues/{n}/timeline")) for n in issue_numbers]
+    guard.check(pull_read_estimate(api, forge_type, repo, issue_numbers, raws, prs, cache, now))
+    tasks = [cache.cached(issue_key(forge_type, repo, n, raws[n].get("updated_at")),
+                          lambda n=n: api.paged(api.path(repo, f"/issues/{n}/timeline"))) for n in issue_numbers]
     names = []
     for pr_repo_name, pr in prs:
         reads = _pull_reads(api, pr_repo_name, pr)
+        base = pull_key(forge_type, pr_repo_name, pr)
         names.append(list(reads))
-        tasks.extend(reads.values())
+        # The runs entry is written again on each re-read, so a later hit holds the newest runs.
+        # A list that holds a run still going is not written: no PR event says when it ends.
+        tasks.extend(cache.cached(base and f"{base}/{name}", read, refresh=name == "runs" and runs_may_change(pr, now),
+                                  keep=runs_ended if name == "runs" else None)
+                     for name, read in reads.items())
     results = iter(api.pmap(lambda read: read(), tasks))
     timelines = [next(results) for _ in issue_numbers]
     firsts = [{key: next(results) for key in keys} for keys in names]
 
+    # The fetch comes before the wave-3 check, so the estimate counts the commits git still lacks.
+    read_commit, fallbacks, git_has, fetch_error = None, [], None, None
+    if diff_source != "api":
+        uncached = [{"commits": [c for c in first["commits"] if not cache.has(commit_key(forge_type, c.get("sha")))]}
+                    for first in firsts]
+        read_commit, git_has, fetch_error = _git_commit_reader(GitDiffs(repo_path), prs, uncached, forge_type,
+                                                               diff_source, fallbacks)
+    guard.check(followup_estimate(forge_type, prs, firsts, cache, diff_source, git_has))
+    read_commit = _cached_commit_reader(cache, forge_type, read_commit)
+
     # Wave 3: the reads that need wave 2.
     followups = []
     for (pr_repo_name, pr), first in zip(prs, firsts):
-        followups.extend(_pull_followups(api, pr_repo_name, pr, first))
+        followups.extend(_pull_followups(api, pr_repo_name, pr, first, read_commit, cache))
     for (apply, _), value in zip(followups, api.pmap(lambda item: item[1](), followups)):
         apply(value)
+    if fallbacks:
+        print(f"collect: read {_plural(len(fallbacks), 'commit')} through the API: not in the local repository at "
+              f"{repo_path}" + (f" (git fetch: {fetch_error})" if fetch_error else ""), file=sys.stderr)
 
+    if stats is not None:
+        stats.update(calls=api.sent, cached=cache.hits, not_modified=api.not_modified)
+        stats["remaining"] = guard.remaining()
     issues = [{"issue": raws[n], "timeline": timeline} for n, timeline in zip(issue_numbers, timelines)]
     pulls = []
     for (pr_repo_name, pr), first in zip(prs, firsts):
@@ -1031,7 +1810,39 @@ def local_events_path(args):
         return None
 
 
+# The counts of the last collect in this process, for the summary line of `snapshot` and `watch`.
+# `cache_root` and `repo_path` tell `snapshot` where its light gc runs (None: no cache was written).
+LAST_COLLECT = {"calls": 0, "cached": 0, "not_modified": 0, "remaining": None, "cache_root": None, "repo_path": "."}
+
+
+def open_cache(args):
+    """Return the Cache this collect uses. --no-cache and --fixture use none.
+
+    The default directory is <git common dir>/issue-flow/cache of --repo-path, which every
+    worktree shares and no commit carries. Outside a git repository there is no default cache.
+    """
+    if args.fixture or args.no_cache:
+        return Cache(None)
+    root = args.cache_dir
+    if not root:
+        try:
+            root = common_dir_path("cache", args.repo_path)
+        except (RuntimeError, OSError):
+            return Cache(None)
+    return Cache(root, read=not args.refresh_cache)
+
+
+def calls_summary():
+    text = (f"{_plural(LAST_COLLECT['calls'], 'API call')} ({LAST_COLLECT['cached']} cached, "
+            f"{LAST_COLLECT['not_modified']} not modified)")
+    # Q, the quota left after the run (#93). A forge with no quota to read has none.
+    if LAST_COLLECT.get("remaining") is not None:
+        text += f", {LAST_COLLECT['remaining']} remaining"
+    return text
+
+
 def cmd_collect(args):
+    LAST_COLLECT.update(calls=0, cached=0, not_modified=0, remaining=None, cache_root=None, repo_path=args.repo_path)
     try:
         since = parse_when(args.since) if args.since else None
         until = parse_when(args.until) if args.until else None
@@ -1044,6 +1855,9 @@ def cmd_collect(args):
     if not 1 <= args.jobs <= MAX_JOBS:
         print(f"error: --jobs takes a number from 1 to {MAX_JOBS}", file=sys.stderr)
         return 5
+    if not 0 < args.budget <= 100:
+        print("error: --budget takes a percent more than 0 and at most 100", file=sys.stderr)
+        return 5
     if not args.fixture and not args.forge:
         print("error: specify --forge (with --repo) or --fixture", file=sys.stderr)
         return 5
@@ -1055,11 +1869,17 @@ def cmd_collect(args):
             with open(args.fixture) as handle:
                 bundle = json.load(handle)
         else:
-            bundle = fetch_bundle(args.forge, args.repo, args.pr_repo, args.repo_path, since, args.issue, args.jobs)
+            cache = open_cache(args)
+            LAST_COLLECT["cache_root"] = cache.root if cache.write else None
+            bundle = fetch_bundle(args.forge, args.repo, args.pr_repo, args.repo_path, since, args.issue, args.jobs,
+                                  args.diff_source, cache, LAST_COLLECT, args.budget)
         doc = normalize(bundle, since, until, args.issue, args.batch, not args.no_diffs, args.max_diff_bytes)
         log = local_events_path(args)
         if log:
             merge_local(doc, read_local_events(log), since, until, args.issue, args.batch)
+    except QuotaRefused as exc:
+        print(exc, file=sys.stderr)
+        return 3
     except (FetchError, OSError, ValueError, KeyError) as exc:
         print(json.dumps({"error": f"collect failed: {exc}"}), file=sys.stderr)
         return 2
@@ -2334,10 +3154,16 @@ def cmd_snapshot(args):
         code, doc = write_snapshot(args.collect_args, out_path, None, scratch)
     if code != 0:
         return code
+    # A light gc: the age rules only, never --all. A gc failure never fails the snapshot.
+    if LAST_COLLECT.get("cache_root"):
+        try:
+            run_gc(LAST_COLLECT["cache_root"], LAST_COLLECT.get("repo_path") or ".")
+        except OSError:
+            pass
     groups, _ = build_model(doc)
     lanes = sum(len(group["lanes"]) for group in groups)
-    print(f"wrote {out_path}: {len(doc['events'])} events, {lanes} lanes, {len(problem_rows(doc))} problems",
-          file=sys.stderr)
+    print(f"wrote {out_path}: {len(doc['events'])} events, {lanes} lanes, {len(problem_rows(doc))} problems; "
+          f"{calls_summary()}", file=sys.stderr)
     return 0
 
 
@@ -2356,33 +3182,189 @@ def cmd_watch(args):
         print(json.dumps({"error": f"watch failed: {exc}"}), file=sys.stderr)
         return 2
 
+    caught = {"signal": "SIGINT"}
+
     def stop(signum, frame):
+        caught["signal"] = signal.Signals(signum).name
         raise KeyboardInterrupt
 
     signal.signal(signal.SIGTERM, stop)
     deadline = time.monotonic() + args.max_minutes * 60
+    stop_at = datetime.now(timezone.utc) + timedelta(minutes=args.max_minutes)
+    # A clean stop and a crash both end the process. The end line tells them apart.
+    print(f"watch: started; a refresh every {args.interval:g} s until "
+          f"{stop_at.isoformat(timespec='seconds').replace('+00:00', 'Z')}; page {out_path}", file=sys.stderr, flush=True)
+    cycles = 0
+
+    def ended(reason, code):
+        print(f"watch: stopped after {_plural(cycles, 'cycle')}: {reason}", file=sys.stderr, flush=True)
+        return code
+
     failures_in_a_row = 0
+    collect_args = args.collect_args
     try:
         with tempfile.TemporaryDirectory() as scratch:
             while True:
-                code = _watch_once(args.collect_args, out_path, args.interval, scratch)
+                code = _watch_once(collect_args, out_path, args.interval, scratch)
+                cycles += 1
+                # --refresh-cache renews the cache once. Later cycles read it, or each cycle reads everything.
+                collect_args = [a for a in collect_args if a != "--refresh-cache"]
                 if code == 5:
-                    return 5
+                    return ended("a bad flag (exit 5)", 5)
+                remaining = deadline - time.monotonic()
+                if code == 3:
+                    # The quota guard refused: skip this cycle. It is not a failure, so watch never exits on it.
+                    attempt = datetime.now(timezone.utc) + timedelta(seconds=min(args.interval, max(0, remaining)))
+                    nxt = (f"next attempt at {attempt.isoformat(timespec='seconds').replace('+00:00', 'Z')}"
+                           if remaining > 0 else "no next attempt: --max-minutes ends the watch")
+                    print(f"watch: skipped this refresh to save the API quota; the last page stays; {nxt}",
+                          file=sys.stderr, flush=True)
+                    if remaining <= 0:
+                        return ended("--max-minutes reached", 0)
+                    time.sleep(min(args.interval, remaining))
+                    continue
                 failures_in_a_row = failures_in_a_row + 1 if code else 0
                 if code:
                     print(f"watch: refresh failed (exit {code}); the last page stays", file=sys.stderr, flush=True)
                     if failures_in_a_row >= WATCH_FAILURE_LIMIT:
-                        return 2
+                        return ended(f"{WATCH_FAILURE_LIMIT} failed refreshes in a row (exit 2)", 2)
                 else:
-                    print(f"wrote {out_path} at {datetime.now(timezone.utc).isoformat(timespec='seconds')}",
-                          file=sys.stderr, flush=True)
+                    print(f"wrote {out_path} at {datetime.now(timezone.utc).isoformat(timespec='seconds')}; "
+                          f"{calls_summary()}", file=sys.stderr, flush=True)
                 remaining = deadline - time.monotonic()
                 if remaining <= 0:
-                    return 0
+                    return ended("--max-minutes reached", 0)
+                # The sleep ends at the deadline at the latest, and the loop then writes one last cycle.
                 time.sleep(min(args.interval, remaining))
     except KeyboardInterrupt:
-        print("watch: stopped", file=sys.stderr, flush=True)
-        return 0
+        return ended(caught["signal"], 0)
+
+
+# ------------------------------------------------------------------ gc
+
+def _entry_key(path):
+    """Return the key of a cache file from its first bytes, or None. `put` writes the key first."""
+    try:
+        with open(path, encoding="utf-8", errors="replace") as handle:
+            head = handle.read(4096)
+    except OSError:
+        return None
+    match = ENTRY_KEY.search(head)
+    if not match:
+        return None
+    try:
+        return json.loads(f'"{match.group(1)}"')
+    except ValueError:
+        return None
+
+
+def gc_plan(root, repo_path, everything=False, now=None):
+    """Return (cache files, temporary files, refs) that `gc` removes.
+
+    Only files in the cache layout count: `<root>/<2 hex>/<64 hex>.json` and the `.<name>.tmp`
+    files that `Cache.put` writes beside them. Any other file under `root` stays. Without
+    `everything`, a cache file goes when no read or write touched it for GC_MAX_AGE, a temporary
+    file goes when it is older than GC_TMP_AGE, and a refs/issue-flow/pull/ ref goes when the
+    newest state record of its PR shows it closed more than GC_MAX_AGE ago. With `everything`,
+    every cache file, every temporary file and every refs/issue-flow/ ref goes.
+    """
+    now = now or datetime.now(timezone.utc)
+    files, tmps, states = [], [], {}
+    for name in sorted(os.listdir(root)) if root and os.path.isdir(root) else []:
+        folder = os.path.join(root, name)
+        if not CACHE_DIR_NAME.match(name) or not os.path.isdir(folder):
+            continue
+        for leaf in sorted(os.listdir(folder)):
+            path = os.path.join(folder, leaf)
+            try:
+                age = now - datetime.fromtimestamp(os.stat(path).st_mtime, timezone.utc)
+            except OSError:
+                continue
+            if CACHE_TMP_NAME.match(leaf):
+                if everything or age > GC_TMP_AGE:
+                    tmps.append(path)
+                continue
+            if not CACHE_FILE_NAME.match(leaf):
+                continue
+            if everything or age > GC_MAX_AGE:
+                files.append(path)
+            key = None if everything else _entry_key(path)
+            found = STATE_KEY.match(key or "")
+            if found:
+                try:
+                    with open(path, encoding="utf-8") as handle:
+                        value = json.load(handle).get("value") or {}
+                except (OSError, ValueError, AttributeError):
+                    continue
+                pr = (found.group(1), int(found.group(2)))
+                if isinstance(value, dict) and (value.get("updated_at") or "") >= (states.get(pr, {}).get("updated_at") or ""):
+                    states[pr] = value
+    refs = []
+    out = GitDiffs(repo_path)._git("for-each-ref", "--format=%(refname)", "refs/issue-flow/") or ""
+    cutoff = (now - GC_MAX_AGE).strftime("%Y-%m-%dT%H:%M:%SZ")
+    for ref in out.split():
+        found = PR_REF.match(ref)
+        record = states.get((found.group(1), int(found.group(2)))) if found else None
+        closed = to_utc(record.get("closed_at")) if record and record.get("state") == "closed" else None
+        if everything or (closed and closed < cutoff):
+            refs.append(ref)
+    return files, tmps, refs
+
+
+def run_gc(root, repo_path, everything=False, dry_run=False):
+    """Remove what `gc_plan` names, unless `dry_run`. Return (files, tmps, refs)."""
+    files, tmps, refs = gc_plan(root, repo_path, everything)
+    if dry_run:
+        return files, tmps, refs
+    for path in files + tmps:
+        try:
+            os.unlink(path)
+        except OSError:
+            pass
+    for name in os.listdir(root) if root and os.path.isdir(root) else []:
+        folder = os.path.join(root, name)
+        if CACHE_DIR_NAME.match(name) and os.path.isdir(folder) and not os.listdir(folder):
+            os.rmdir(folder)
+    if refs:
+        GitDiffs(repo_path)._git("update-ref", "--stdin", stdin="".join(f"delete {ref}\n" for ref in refs))
+    return files, tmps, refs
+
+
+GC_REFS_NAMED = 3
+
+
+def _gc_refs_text(refs):
+    """Return the ref count of the gc summary, with the first GC_REFS_NAMED refs named."""
+    text = _plural(len(refs), "ref")
+    if not refs:
+        return text
+    named = ", ".join(refs[:GC_REFS_NAMED])
+    if len(refs) > GC_REFS_NAMED:
+        return f"{text} ({named} and {len(refs) - GC_REFS_NAMED} more: the `ref` lines on stdout name them all)"
+    return f"{text} ({named})"
+
+
+def cmd_gc(args):
+    root = args.cache_dir
+    if not root:
+        try:
+            root = common_dir_path("cache", args.repo_path)
+        except (RuntimeError, OSError) as exc:
+            print(json.dumps({"error": f"gc failed: {exc}; give --cache-dir"}), file=sys.stderr)
+            return 2
+    files, tmps, refs = run_gc(root, args.repo_path, args.all, args.dry_run)
+    # The refs come first: they are few, and a display that cuts a long list keeps its head.
+    for ref in refs:
+        print(f"ref {ref}")
+    listed = args.dry_run or args.verbose
+    if listed:
+        for path in files + tmps:
+            print(f"cache {path}")
+    verb = "would remove" if args.dry_run else "removed"
+    hint = "; --verbose lists each file" if (files or tmps) and not listed else ""
+    print(f"gc: {verb} {_plural(len(files), 'cache file')}, {_plural(len(tmps), 'temporary file')} and "
+          f"{_gc_refs_text(refs)} ({root}){hint}", file=sys.stderr)
+    return 0
 
 
 def main(argv=None):
@@ -2394,7 +3376,9 @@ def main(argv=None):
     collect.add_argument("--pr-repo", action="append", metavar="OWNER/NAME[,OWNER/NAME]",
                          help="another repository that holds pull requests; repeat the flag or give a comma list "
                               "(the --repo repository is always read)")
-    collect.add_argument("--repo-path", default=".", help="checkout that `tea api` resolves its login from")
+    collect.add_argument("--repo-path", default=".",
+                         help="local checkout: commit diffs are read from its git (--diff-source), the default cache "
+                              "is in its git common dir, and `tea api` resolves its login from it (default: .)")
     collect.add_argument("--fixture", help="read a recorded bundle instead of the tracker")
     collect.add_argument("--since")
     collect.add_argument("--until")
@@ -2408,6 +3392,19 @@ def main(argv=None):
                          help="cap on the patch text in the whole document (default 4194304)")
     collect.add_argument("--jobs", type=int, default=DEFAULT_JOBS,
                          help=f"reads to run at once, 1 to {MAX_JOBS} (default {DEFAULT_JOBS}; 1 reads one at a time)")
+    collect.add_argument("--budget", type=float, default=DEFAULT_BUDGET, metavar="PERCENT",
+                         help="stop with exit 3 when the reads need more than this percent of the API quota that "
+                              f"remains (default {DEFAULT_BUDGET}; GitHub only, Gitea has no quota to read)")
+    collect.add_argument("--diff-source", choices=DIFF_SOURCES, default="auto",
+                         help="where commit files and patches come from: `git` (the --repo-path checkout), `api`, "
+                              "or `auto`, git first and the API for a commit git lacks (default auto)")
+    cache_mode = collect.add_mutually_exclusive_group()
+    cache_mode.add_argument("--no-cache", action="store_true",
+                            help="read nothing from the read cache and write nothing to it")
+    cache_mode.add_argument("--refresh-cache", action="store_true",
+                            help="read nothing from the read cache, and write every read to it")
+    collect.add_argument("--cache-dir", metavar="PATH",
+                         help="the read cache directory (default: <git common dir>/issue-flow/cache of --repo-path)")
     collect.add_argument("--out", help="write the document here instead of stdout")
     collect.set_defaults(func=cmd_collect)
     render = sub.add_parser("render", help="turn a timeline document into one self-contained HTML page")
@@ -2428,6 +3425,18 @@ def main(argv=None):
     snapshot.set_defaults(func=cmd_snapshot)
     path = sub.add_parser("path", help="print the default page path")
     path.set_defaults(func=cmd_path)
+    gc = sub.add_parser("gc", help="remove old cache files and the refs/issue-flow/ refs of PRs closed long ago",
+                        description="Removes cache files that no collect touched for 30 days, temporary files older "
+                                    "than 1 hour, and the refs/issue-flow/pull/ refs of PRs that the cache shows "
+                                    "closed for more than 30 days. `snapshot` runs the same gc at its end.")
+    gc.add_argument("--repo-path", default=".", help="checkout whose refs/issue-flow/ refs and default cache gc cleans")
+    gc.add_argument("--cache-dir", metavar="PATH", help="the read cache directory (default: <git common dir>/issue-flow/cache)")
+    gc.add_argument("--all", action="store_true", help="remove the whole cache and every refs/issue-flow/ ref")
+    gc.add_argument("--dry-run", action="store_true", help="print what gc would remove (one `cache` or `ref` line each) "
+                                                            "and remove nothing")
+    gc.add_argument("--verbose", action="store_true", help="also print one `cache` line for each file removed "
+                                                            "(a `ref` line for each ref is always printed)")
+    gc.set_defaults(func=cmd_gc)
     args, extra = parser.parse_known_args(argv)
     if args.command in ("watch", "snapshot"):
         args.collect_args = extra
