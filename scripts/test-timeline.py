@@ -174,8 +174,17 @@ with tempfile.TemporaryDirectory() as tmp:
           f"common_dir_path: {got}")
 
 # ---------------------------------------------------------------- CLI
+# Hermetic runs: the hook writes a real events.jsonl in every developer's git common dir, so a
+# test must never read the one of the checkout that holds it. `run` starts in a scratch repo
+# and passes `--local-events off` unless the test names its own source.
+HERMETIC = tempfile.mkdtemp(prefix="ifw-hermetic-")
+subprocess.run(["git", "init", "-q", HERMETIC], check=True)
+
+
 def run(args, env=None):
-    return subprocess.run([sys.executable, SCRIPT, *args], capture_output=True, text=True,
+    if args[:1] in (["collect"], ["snapshot"], ["watch"]) and "--local-events" not in args:
+        args = [*args, "--local-events", "off"]
+    return subprocess.run([sys.executable, SCRIPT, *args], capture_output=True, text=True, cwd=HERMETIC,
                           env={**os.environ, **(env or {})})
 
 
@@ -551,6 +560,38 @@ with tempfile.TemporaryDirectory() as tmp:
         child.kill()
         code = None
     check(code == 0, f"SIGTERM stops watch with exit 0 (got {code})")
+
+# Guard: a log planted in the scratch repo's common dir changes no fixture or live-fake result.
+with tempfile.TemporaryDirectory() as tmp:
+    planted = os.path.join(HERMETIC, ".git", "issue-flow")
+    os.makedirs(planted, exist_ok=True)
+    with open(os.path.join(planted, "events.jsonl"), "w") as handle:
+        handle.write(json.dumps({"ts": "2026-05-01T10:00:00Z", "kind": "agent.spawned", "agent": "planted",
+                                 "issue": 51}) + "\nnot json\n")
+    try:
+        fx = os.path.join(tmp, "gh.json")
+        with open(fx, "w") as handle:
+            json.dump(build("github"), handle)
+        fixture_run = run(["collect", "--fixture", fx])
+        check(fixture_run.returncode == 0
+              and not any(e["kind"].startswith("agent.") for e in json.loads(fixture_run.stdout)["events"]),
+              "a planted events.jsonl does not reach a fixture collect")
+        fake = os.path.join(tmp, "fake-gh.py")
+        with open(fake, "w") as handle:
+            handle.write(FAKE_SRC)
+        wrapper = os.path.join(tmp, "fake-gh")
+        with open(wrapper, "w") as handle:
+            handle.write(f'#!/bin/sh\nexec "{sys.executable}" "{fake}" "$@"\n')
+        os.chmod(wrapper, 0o755)
+        data = os.path.join(tmp, "data.json")
+        with open(data, "w") as handle:
+            json.dump(build("github"), handle)
+        live_run = run(["collect", "--forge", "github", "--repo", "o/r"], {"IFW_GH": wrapper, "FAKE_DATA": data})
+        check(live_run.returncode == 0
+              and not any(e["kind"].startswith("agent.") for e in json.loads(live_run.stdout)["events"]),
+              f"a planted events.jsonl does not reach a live-fake collect: {live_run.stderr[:200]}")
+    finally:
+        os.unlink(os.path.join(planted, "events.jsonl"))
 
 # `snapshot` collects and renders in one process. Its exit code is the only failure signal the skill reads.
 with tempfile.TemporaryDirectory() as tmp:
