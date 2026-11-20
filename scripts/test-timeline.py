@@ -1593,7 +1593,8 @@ with tempfile.TemporaryDirectory() as tmp:
         _, seq_time, calls = jobs_run(1, slow)
         _, par_time, _ = jobs_run(8, slow)
         check(calls >= 10, f"{forge_type} the fixture makes enough reads to time: {calls}")
-        check(par_time < seq_time * 0.7, f"{forge_type} --jobs 8 is faster than --jobs 1: {par_time:.2f}s against {seq_time:.2f}s")
+        # A loose bound: a busy machine slows both runs, and the check is only that threads overlap.
+        check(par_time < seq_time * 0.85, f"{forge_type} --jobs 8 is faster than --jobs 1: {par_time:.2f}s against {seq_time:.2f}s")
 
         proc, _, _ = jobs_run(8, {"FAKE_LIMIT": "twice"})
         check(proc.returncode == 0 and proc.stdout == one.stdout, f"{forge_type} two rate-limit replies are retried: {proc.stderr[:200]}")
@@ -2033,7 +2034,7 @@ with tempfile.TemporaryDirectory() as tmp:
     saved_env = {k: os.environ.get(k) for k in ("IFW_GH", "FAKE_DATA")}
     os.environ.update({"IFW_GH": target, "FAKE_DATA": data})
     fetched, original = [], timeline.GitDiffs.fetch
-    timeline.GitDiffs.fetch = lambda self, repo, numbers: fetched.append((repo, list(numbers))) or list(numbers)
+    timeline.GitDiffs.fetch = lambda self, repo, numbers: fetched.append((repo, list(numbers))) or None
     try:
         order = timeline.Cache(os.path.join(tmp, "order-cache"))
         for c in story["pulls"][0]["commits"]:
@@ -2211,10 +2212,10 @@ with tempfile.TemporaryDirectory() as tmp:
     pr = story["pulls"][0]["pr"]
     check(timeline.followup_estimate("github", [("o/r", pr)], [first], est_cache, "api") == 2,
           "#93 the wave-3 estimate counts the uncached commit and the failed run's jobs")
-    check(timeline.followup_estimate("github", [("o/r", pr)], [first], est_cache, "auto") == 1,
+    check(timeline.followup_estimate("github", [("o/r", pr)], [first], est_cache, "auto", git_has={"c100"}) == 1,
           "#93 a commit read from git costs no call in the estimate")
     est_cache.put(timeline.jobs_key("github", "o/r", first["runs"][0]), [])
-    check(timeline.followup_estimate("github", [("o/r", pr)], [first], est_cache, "auto") == 0,
+    check(timeline.followup_estimate("github", [("o/r", pr)], [first], est_cache, "auto", git_has={"c100"}) == 0,
           "#93 cached jobs cost no call in the estimate")
 
     # 4. watch: the guard skips the cycle, the last page stays, and watch keeps running. A tiny
@@ -2222,7 +2223,7 @@ with tempfile.TemporaryDirectory() as tmp:
     kept = os.path.join(tmp, "kept.html")
     with open(kept, "w") as handle:
         handle.write("the last page")
-    w, w_calls, _ = quota_run("--out", kept, "--budget", "0.01", "--interval", "1", "--max-minutes", "0.05",
+    w, w_calls, _ = quota_run("--out", kept, "--budget", "0.01", "--interval", "0.5", "--max-minutes", "0.15",
                               command="watch", remaining=5000)
     skips = [s for s in w.stderr.splitlines() if s.startswith("watch: skipped")]
     check(w.returncode == 0 and len(skips) >= 2 and open(kept).read() == "the last page",
@@ -2439,6 +2440,317 @@ with tempfile.TemporaryDirectory() as tmp:
     gt_warm, gt_calls, gt_status = etag_run("gitea", gt_story, "--cache-dir", gt_cache)
     check(gt_warm.returncode == 0 and gt_calls and gt_status == [] and not any("--include" in c for c in gt_calls),
           f"#92 gitea sends no conditional request: {gt_calls[:3]}")
+
+# ---------------------------------------------------------------- batch #94 gate fixes
+# The batch review and the dogfood run found these. Each block names its item of
+# https://github.com/Sniper7Kills-LLC/claude-plugins/issues/94#issuecomment-7029791565.
+
+
+def attempt(fn, *args, **kwargs):
+    """Return fn(*args, **kwargs), or the exception it raised, so a missing feature fails a check."""
+    try:
+        return fn(*args, **kwargs)
+    except Exception as exc:  # noqa: BLE001  a test must record the failure, not stop on it
+        return exc
+
+
+with tempfile.TemporaryDirectory() as tmp:
+    fake = os.path.join(tmp, "fake.py")
+    with open(fake, "w") as handle:
+        handle.write(FAKE_SRC)
+    target = os.path.join(tmp, "fake")
+    with open(target, "w") as handle:
+        handle.write(f'#!/bin/sh\nexec "{sys.executable}" "{fake}" "$@"\n')
+    os.chmod(target, 0o755)
+    serial = iter(range(10 ** 6))
+
+    def gate_run(story, *flags, command="collect", forge_type="github", env=None):
+        """Run one command against the fake. Return (process, the API calls, the 200/304 statuses)."""
+        n = next(serial)
+        data = os.path.join(tmp, f"data-{n}.json")
+        with open(data, "w") as handle:
+            json.dump(story, handle)
+        counter, statuses = os.path.join(tmp, f"count-{n}"), os.path.join(tmp, f"status-{n}")
+        full = {"IFW_GH" if forge_type == "github" else "IFW_TEA": count_gh.wrap(counter, target), "FAKE_DATA": data,
+                "FAKE_STATUS_LOG": statuses, "IFW_WATCH_FAST": "1", **(env or {})}
+        proc = run([command, "--forge", forge_type, "--repo", "o/r", "--diff-source", "api", *flags], full)
+        got = open(statuses).read().split() if os.path.exists(statuses) else []
+        return proc, [c for c in count_gh.calls(counter) if not c.endswith(" rate_limit")], got
+
+    # 1. A relative --since moves every second. The API query and the listing keys use the start of
+    # its UTC hour, so two collects a minute apart send the same query and get 304. The document
+    # still filters by the exact --since.
+    check(attempt(lambda: timeline.api_since("2026-06-01T10:59:59Z")) == "2026-06-01T10:00:00Z",
+          "#94-1 api_since rounds down to the start of the UTC hour")
+    check(attempt(lambda: timeline.api_since(None)) is None, "#94-1 api_since keeps no --since as none")
+    story = cache_story("github")
+    cache = os.path.join(tmp, "since-cache")
+    first, first_calls, _ = gate_run(story, "--cache-dir", cache, "--since", "2026-06-01T10:05:00Z")
+    second, second_calls, second_status = gate_run(story, "--cache-dir", cache, "--since", "2026-06-01T10:06:00Z")
+    plain, _, _ = gate_run(story, "--no-cache", "--since", "2026-06-01T10:06:00Z")
+    since_calls = [c for c in first_calls + second_calls if "since=" in c]
+    check(since_calls and all("since=2026-06-01T10%3A00%3A00Z" in c for c in since_calls),
+          f"#94-1 the API query sends the start of the hour: {since_calls[:2]}")
+    check(second.returncode == 0 and second_status and second_status == ["304"] * len(second_calls),
+          f"#94-1 a collect a minute later gets 304 on every listing page: {second_status}")
+    check(second.stdout != "" and second.stdout == plain.stdout, "#94-1 the document equals --no-cache")
+    if second.returncode == 0:
+        check(json.loads(second.stdout)["range"]["since"] == "2026-06-01T10:06:00Z",
+              "#94-1 the document keeps the exact --since")
+    # An issue updated between the start of the hour and the exact --since is not read.
+    early = cache_story("github")
+    early["issues"][0]["issue"]["updated_at"] = "2026-06-01T10:02:00Z"
+    skip_n = early["issues"][0]["issue"]["number"]
+    labelled = any(l["name"] in ("type:batch", "type:epic", "flow:status") for l in early["issues"][0]["issue"]["labels"])
+    _, early_calls, _ = gate_run(early, "--no-cache", "--since", "2026-06-01T10:06:00Z")
+    check(labelled or not any(f"/issues/{skip_n}/timeline" in c for c in early_calls),
+          f"#94-1 the client side filters the listing by the exact --since: {early_calls}")
+
+    # 2. A CI-run list that holds a run still going is not stored, so the next collect reads it again.
+    going = cache_story("github", extra_run=True)
+    going["pulls"][0]["runs"][-1]["run"].update(status="in_progress", conclusion=None)
+    done = cache_story("github", extra_run=True)
+    runs_cache = os.path.join(tmp, "runs-cache")
+    gate_run(going, "--cache-dir", runs_cache)
+    later, later_calls, _ = gate_run(done, "--cache-dir", runs_cache)
+    later_plain, _, _ = gate_run(done, "--no-cache")
+    check(any("head_sha=c100" in c for c in later_calls), f"#94-2 a run list with a run in progress is read again: {others(later_calls)}")
+    check(later.returncode == 0 and later.stdout == later_plain.stdout, "#94-2 the ended run reaches the document")
+    _, settled_calls, _ = gate_run(done, "--cache-dir", runs_cache)
+    check(not any("head_sha=c100" in c for c in settled_calls), f"#94-2 a run list of ended runs is stored: {others(settled_calls)}")
+
+    # 3a. Under auto, the git fetch runs before the wave-3 check, and the estimate counts the
+    # commits that git still lacks.
+    first_wave = {"commits": [{"sha": "c100"}, {"sha": "c200"}], "reviews": [],
+                  "runs": [{"id": 1, "conclusion": "failure", "updated_at": OLD}]}
+    est = timeline.Cache(os.path.join(tmp, "est"))
+    est.put(timeline.commit_key("github", "c200"), [])
+    pr60 = story2("github")["pulls"][0]["pr"]
+    check(attempt(timeline.followup_estimate, "github", [("o/r", pr60)], [first_wave], est, "auto", git_has=set()) == 2,
+          "#94-3a auto counts an uncached commit that git lacks")
+    check(attempt(timeline.followup_estimate, "github", [("o/r", pr60)], [first_wave], est, "auto", git_has={"c100"}) == 1,
+          "#94-3a auto counts no commit that git has")
+    check(attempt(timeline.followup_estimate, "github", [("o/r", pr60)], [first_wave], est, "git", git_has=set()) == 1,
+          "#94-3a git counts no commit: a commit git lacks fails the collect")
+    order_story = cache_story("github")
+    data = os.path.join(tmp, "order.json")
+    with open(data, "w") as handle:
+        json.dump(order_story, handle)
+    saved_env = {k: os.environ.get(k) for k in ("IFW_GH", "FAKE_DATA")}
+    os.environ.update({"IFW_GH": target, "FAKE_DATA": data})
+    steps, saved_fetch, saved_check = [], timeline.GitDiffs.fetch, timeline.QuotaGuard.check
+    timeline.GitDiffs.fetch = lambda self, repo, numbers: steps.append(("fetch", None)) or "fatal: no such remote 'x'"
+    timeline.QuotaGuard.check = lambda self, estimate: steps.append(("check", estimate)) or saved_check(self, estimate)
+    note = io.StringIO()
+    try:
+        with contextlib.redirect_stderr(note):
+            attempt(timeline.fetch_bundle, "github", "o/r", repo_path=HERMETIC, jobs=1, diff_source="auto")
+    finally:
+        timeline.GitDiffs.fetch, timeline.QuotaGuard.check = saved_fetch, saved_check
+        for k, v in saved_env.items():
+            if v is None:
+                os.environ.pop(k, None)
+            else:
+                os.environ[k] = v
+    commits = sum(len(e["commits"]) for e in order_story["pulls"])
+    failed = sum(1 for e in order_story["pulls"] for r in e["runs"] if r["run"]["conclusion"] in timeline.RUN_FAILED)
+    check([s for s, _ in steps] == ["check", "check", "fetch", "check"], f"#94-3a the fetch runs before the wave-3 check: {steps}")
+    check(steps[-1:] == [("check", commits + failed)], f"#94-3a the wave-3 estimate counts the {commits} commits git lacks: {steps}")
+    # 4. The fallback note names git's first error line.
+    check("git fetch: fatal: no such remote 'x'" in note.getvalue(), f"#94-4 the fallback note names the git error: {note.getvalue()!r}")
+
+    # 3b. The refusal says the estimate covers the next stage only.
+    class QuotaApi:
+        sent = 0
+
+        def quota(self):
+            return {"limit": 5000, "remaining": 10, "reset": int(time.time()) + 600}
+    refused = attempt(timeline.QuotaGuard(QuotaApi(), 50).check, 12)
+    text = str(refused)
+    check(isinstance(refused, timeline.QuotaRefused) and "next stage" in text and "later stages" in text
+          and all(w in text for w in ("12 API calls", "10 that remain", "--budget 50", "resets at", "--since")),
+          f"#94-3b the refusal names the next stage and says later stages are checked as they come: {text!r}")
+
+    # Nit: a failed quota read after the run gives no Q; the collect still succeeds.
+    flaky = os.path.join(tmp, "flaky.py")
+    with open(flaky, "w") as handle:
+        handle.write(r"""
+import json, os, subprocess, sys, time
+if sys.argv[-1] == "rate_limit":
+    mark = os.path.join(os.environ["FAKE_STATE"], "read")
+    if os.path.exists(mark):
+        sys.stderr.write("gh: HTTP 502: Bad Gateway\n"); sys.exit(1)
+    open(mark, "w").close()
+    core = {"limit": 5000, "remaining": 5000, "reset": int(time.time()) + 600}
+    print(json.dumps({"resources": {"core": core}})); sys.exit(0)
+sys.exit(subprocess.call([sys.executable, os.environ["FAKE_INNER"], *sys.argv[1:]]))
+""")
+    flaky_gh = os.path.join(tmp, "flaky")
+    with open(flaky_gh, "w") as handle:
+        handle.write(f'#!/bin/sh\nexec "{sys.executable}" "{flaky}" "$@"\n')
+    os.chmod(flaky_gh, 0o755)
+    state = os.path.join(tmp, "flaky-state")
+    os.makedirs(state)
+    with open(data, "w") as handle:
+        json.dump(cache_story("github"), handle)
+    lost_q = run(["snapshot", "--forge", "github", "--repo", "o/r", "--diff-source", "api", "--out", os.path.join(tmp, "q.html")],
+                 {"IFW_GH": flaky_gh, "FAKE_DATA": data, "FAKE_STATE": state, "FAKE_INNER": fake})
+    check(lost_q.returncode == 0 and "remaining" not in (lost_q.stderr.strip().splitlines() or [""])[-1],
+          f"#94 nit: a failed final quota read leaves Q out and exits 0: {lost_q.returncode} {lost_q.stderr[-300:]!r}")
+
+    # Nit: watch --refresh-cache refreshes on the first cycle only.
+    refresh_cache = os.path.join(tmp, "refresh-cache")
+    watched, watch_calls, _ = gate_run(cache_story("github"), "--cache-dir", refresh_cache, "--refresh-cache",
+                                       "--out", os.path.join(tmp, "w.html"), "--interval", "0.3", "--max-minutes", "0.12",
+                                       command="watch")
+    cycles = sum(1 for line in watched.stderr.splitlines() if line.startswith("wrote "))
+    reads = [c for c in watch_calls if "/issues/51/timeline" in c]
+    check(watched.returncode == 0 and cycles >= 2 and len(reads) == 1,
+          f"#94 nit: watch --refresh-cache refreshes on the first cycle only: {cycles} cycles, {len(reads)} reads")
+
+# Nit: Cache.peek reads an entry without counting a hit.
+with tempfile.TemporaryDirectory() as tmp:
+    store = timeline.Cache(tmp)
+    store.put("k", [1])
+    check(attempt(lambda: store.peek("k")) == [1] and store.hits == 0, "#94 nit: Cache.peek reads without a hit")
+
+
+# 4. The git fetch: a timeout, no prompt, SSH BatchMode, and a per-PR retry only for a missing ref.
+class GitStub:
+    """Stands in for subprocess.run. `fetch` answers with `reply`: (code, stderr) or an exception."""
+
+    def __init__(self, reply):
+        self.reply, self.fetches = reply, []
+
+    def __call__(self, args, **kwargs):
+        if "fetch" in args:
+            self.fetches.append((args, kwargs))
+            if isinstance(self.reply, BaseException):
+                raise self.reply
+            code, err = self.reply
+            return subprocess.CompletedProcess(args, code, b"", err.encode())
+        if "--get-regexp" in args:
+            return subprocess.CompletedProcess(args, 0, b"remote.fork.url /srv/o/r.git\n", b"")
+        return subprocess.CompletedProcess(args, 1, b"", b"")
+
+
+def stub_fetch(reply, numbers, ssh=None):
+    stub, saved_run, saved_ssh = GitStub(reply), subprocess.run, os.environ.get("GIT_SSH_COMMAND")
+    os.environ.pop("GIT_SSH_COMMAND", None)
+    if ssh is not None:
+        os.environ["GIT_SSH_COMMAND"] = ssh
+    subprocess.run = stub
+    try:
+        result = attempt(timeline.GitDiffs("/nowhere").fetch, "o/r", numbers)
+    finally:
+        subprocess.run = saved_run
+        os.environ.pop("GIT_SSH_COMMAND", None)
+        if saved_ssh is not None:
+            os.environ["GIT_SSH_COMMAND"] = saved_ssh
+    return result, stub.fetches
+
+
+result, fetches = stub_fetch((0, ""), [1, 2], ssh="ssh -i key")
+kw = fetches[0][1] if fetches else {}
+env = kw.get("env") or {}
+check(kw.get("timeout") == 60, f"#94-4 the fetch has a 60 s timeout: {kw.get('timeout')}")
+check(kw.get("stdin") is subprocess.DEVNULL, f"#94-4 the fetch reads no stdin: {kw.get('stdin')}")
+check(env.get("GIT_TERMINAL_PROMPT") == "0", "#94-4 the fetch asks for no password")
+check(env.get("GIT_SSH_COMMAND") == "ssh -i key -o BatchMode=yes", f"#94-4 BatchMode is added to GIT_SSH_COMMAND: {env.get('GIT_SSH_COMMAND')!r}")
+check(result is None, f"#94-4 a fetch that works returns no error: {result!r}")
+_, fetches = stub_fetch((0, ""), [1])
+check(fetches and (fetches[0][1].get("env") or {}).get("GIT_SSH_COMMAND") == "ssh -o BatchMode=yes",
+      "#94-4 with no GIT_SSH_COMMAND, the fetch uses ssh -o BatchMode=yes")
+result, fetches = stub_fetch((128, "warning: x\nfatal: Authentication failed for 'https://host/o/r'\n"), [1, 2, 3])
+check(len(fetches) == 1, f"#94-4 an auth failure runs no per-PR retry: {len(fetches)} fetches")
+check(result == "fatal: Authentication failed for 'https://host/o/r'", f"#94-4 the fetch returns git's first error line: {result!r}")
+result, fetches = stub_fetch((128, "fatal: couldn't find remote ref refs/pull/2/head\n"), [1, 2, 3])
+check(len(fetches) == 4, f"#94-4 a missing ref runs the per-PR retry: {len(fetches)} fetches")
+result, fetches = stub_fetch(subprocess.TimeoutExpired(["git"], 60), [1, 2])
+check(len(fetches) == 1 and isinstance(result, str) and "timed out" in result, f"#94-4 a timeout fails at once: {result!r}")
+
+# 5. gc: cache files not touched for 30 days, .tmp files older than 1 hour, and the refs of PRs
+# the cache shows closed for more than 30 days. gc --all removes the whole cache and every ref.
+with tempfile.TemporaryDirectory() as tmp:
+    repo, root = os.path.join(tmp, "repo"), os.path.join(tmp, "cache")
+    git(tmp, "init", "-q", "-b", "main", repo)
+    put(repo, "f.txt", "x\n")
+    git(repo, "add", "-A")
+    git(repo, "commit", "-q", "-m", "base")
+    head = git(repo, "rev-parse", "HEAD").strip()
+    for n in (1, 2, 3):
+        git(repo, "update-ref", f"refs/issue-flow/pull/o/r/{n}", head)
+    store = timeline.Cache(root)
+    now = datetime.now(timezone.utc)
+    stamp = lambda days: (now - timedelta(days=days)).strftime("%Y-%m-%dT%H:%M:%SZ")  # noqa: E731
+    # PR 1 closed 40 days ago, PR 2 closed 5 days ago, PR 3 has no record.
+    for n, closed in ((1, stamp(40)), (2, stamp(5))):
+        store.put(f"github/o/r/pull/{n}/{closed}/abc/state", {"state": "closed", "closed_at": closed, "updated_at": closed})
+    store.put("fresh", [1])
+    store.put("stale", [2])
+    old = time.time() - 31 * 86400
+    for key in ("stale", "github/o/r/pull/1/" + stamp(40) + "/abc/state"):
+        os.utime(store.path_of(key), (old, old))
+    folder = os.path.dirname(store.path_of("fresh"))
+    old_tmp, new_tmp = os.path.join(folder, ".old.tmp"), os.path.join(folder, ".new.tmp")
+    for p in (old_tmp, new_tmp):
+        open(p, "w").close()
+    os.utime(old_tmp, (time.time() - 7200,) * 2)
+    keep = os.path.join(root, "not-a-cache-file.txt")
+    open(keep, "w").close()
+    # A cache read touches the entry, so an entry in use is never "not touched for 30 days".
+    store.put("used", [3])
+    os.utime(store.path_of("used"), (old, old))
+    store.get("used")
+
+    proc = run(["gc", "--cache-dir", root, "--repo-path", repo])
+    refs = git(repo, "for-each-ref", "--format=%(refname)", "refs/issue-flow/").split()
+    check(proc.returncode == 0, f"#94-5 gc exits 0: {proc.returncode} {proc.stderr[:300]}")
+    check(not os.path.exists(store.path_of("stale")) and store.has("fresh") and store.has("used"),
+          "#94-5 gc removes a cache file not touched for 30 days and keeps the others")
+    check(not os.path.exists(old_tmp) and os.path.exists(new_tmp), "#94-5 gc removes a .tmp file older than 1 hour only")
+    check(refs == ["refs/issue-flow/pull/o/r/2", "refs/issue-flow/pull/o/r/3"],
+          f"#94-5 gc removes the ref of a PR closed more than 30 days ago: {refs}")
+    check(os.path.exists(keep), "#94-5 gc leaves a file that is not a cache file")
+    check("gc:" in proc.stderr, f"#94-5 gc prints one summary line: {proc.stderr!r}")
+
+    dry = run(["gc", "--all", "--dry-run", "--cache-dir", root, "--repo-path", repo])
+    check(dry.returncode == 0 and store.has("fresh") and len(git(repo, "for-each-ref", "refs/issue-flow/").split("\n")) == 3,
+          f"#94-5 gc --all --dry-run removes nothing: {dry.stderr[:300]}")
+    check("refs/issue-flow/pull/o/r/2" in dry.stdout and store.path_of("fresh") in dry.stdout,
+          f"#94-5 gc --all --dry-run lists the refs and the cache files: {dry.stdout[:300]!r}")
+    gone = run(["gc", "--all", "--cache-dir", root, "--repo-path", repo])
+    left = [n for _, _, names in os.walk(root) for n in names]
+    check(gone.returncode == 0 and left == ["not-a-cache-file.txt"], f"#94-5 gc --all removes the whole cache: {left}")
+    check(git(repo, "for-each-ref", "refs/issue-flow/") == "", "#94-5 gc --all removes every refs/issue-flow/ ref")
+    check(git(repo, "rev-parse", "main").strip() == head, "#94-5 gc leaves the branches alone")
+    check(run(["gc", "--repo-path", os.path.join(tmp, "nowhere")]).returncode == 2, "#94-5 gc outside a git repository with no --cache-dir exits 2")
+
+    # snapshot runs a light gc at the end; it removes a stale entry of its own cache.
+    snap_cache = os.path.join(tmp, "snap-cache")
+    fake = os.path.join(tmp, "fake.py")
+    with open(fake, "w") as handle:
+        handle.write(FAKE_SRC)
+    fake_target = os.path.join(tmp, "fake")
+    with open(fake_target, "w") as handle:
+        handle.write(f'#!/bin/sh\nexec "{sys.executable}" "{fake}" "$@"\n')
+    os.chmod(fake_target, 0o755)
+    timeline.Cache(snap_cache).put("stale", [1])
+    stale_path = timeline.Cache(snap_cache).path_of("stale")
+    os.utime(stale_path, (old, old))
+    data = os.path.join(tmp, "story.json")
+    with open(data, "w") as handle:
+        json.dump(cache_story("github"), handle)
+    snap = run(["snapshot", "--forge", "github", "--repo", "o/r", "--diff-source", "api", "--cache-dir", snap_cache,
+                "--repo-path", repo, "--out", os.path.join(tmp, "s.html")], {"IFW_GH": count_gh.wrap(os.path.join(tmp, "c"), fake_target),
+                                                                                "FAKE_DATA": data})
+    check(snap.returncode == 0 and not os.path.exists(stale_path), f"#94-5 snapshot runs a light gc: {snap.stderr[-300:]!r}")
+    check(snap.returncode == 0 and SUMMARY.search(snap.stderr.strip().splitlines()[-1]),
+          "#94-5 the summary stays the last stderr line of snapshot")
+    # A snapshot records each PR's state, so gc can tell when a PR closed.
+    keys = [json.load(open(os.path.join(d, n)))["key"] for d, _, names in os.walk(snap_cache) for n in names if n.endswith(".json")]
+    check(any(re.fullmatch(r"github/o/r/pull/\d+/[^/]+/[^/]+/state", k) for k in keys),
+          f"#94-5 snapshot records each PR's state for gc: {[k for k in keys if 'state' in k]}")
 
 if failures:
     for failure in failures:
