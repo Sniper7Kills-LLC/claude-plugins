@@ -7,14 +7,17 @@ the CLI as a subprocess: with --fixture, and live against a fake `gh`/`tea` that
 serves the same payloads (including the Gitea API-error body that `tea api` prints
 with exit 0). Later issues in the batch add their own sections below."""
 
+import contextlib
 import importlib.util
+import io
 import json
 import os
+import re
 import subprocess
 import sys
 import tempfile
 import time
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 SCRIPT = os.path.join(ROOT, "issue-flow", "scripts", "timeline.py")
@@ -182,9 +185,15 @@ HERMETIC = tempfile.mkdtemp(prefix="ifw-hermetic-")
 subprocess.run(["git", "init", "-q", HERMETIC], check=True)
 
 
+CACHE_FLAGS = ("--no-cache", "--refresh-cache", "--cache-dir")
+
+
 def run(args, env=None):
     if args[:1] in (["collect"], ["snapshot"], ["watch"]) and "--local-events" not in args:
         args = [*args, "--local-events", "off"]
+    # A test that runs the fake forge twice must not get its second answer from the cache (#91).
+    if args[:1] in (["collect"], ["snapshot"], ["watch"]) and not any(f in args for f in CACHE_FLAGS):
+        args = [*args, "--no-cache"]
     return subprocess.run([sys.executable, SCRIPT, *args], capture_output=True, text=True, cwd=HERMETIC,
                           env={**os.environ, **(env or {})})
 
@@ -207,8 +216,28 @@ with tempfile.TemporaryDirectory() as tmp:
     fake = os.path.join(tmp, "fake.py")
     with open(fake, "w") as handle:
         handle.write(r'''
-import json, os, re, sys
+import hashlib, json, os, re, subprocess, sys
 path = sys.argv[-1]
+# A server with rate limits off answers the quota read (#93) with 404, so the quota guard is off.
+if path == "rate_limit":
+    print(json.dumps({"message": "Not Found"})); sys.exit(1)
+# `gh api --include [-H "If-None-Match: <etag>"] <path>` (#92): the ETag is a hash of the body.
+# A match gets a 304 with no body, a "gh: HTTP 304" line and exit 1, as the real gh 2.88 does.
+if "--include" in sys.argv:
+    want = sys.argv[sys.argv.index("-H") + 1].split(":", 1)[1].strip() if "-H" in sys.argv else None
+    inner = subprocess.run([sys.executable, __file__, "api", path], capture_output=True, text=True)
+    if inner.returncode:
+        sys.stderr.write(inner.stderr); sys.exit(inner.returncode)
+    strong = '"%s"' % hashlib.sha256(inner.stdout.encode()).hexdigest()[:16]
+    status = "304" if want and want.removeprefix("W/") == strong else "200"
+    if os.environ.get("FAKE_STATUS_LOG"):
+        with open(os.environ["FAKE_STATUS_LOG"], "a") as log:
+            log.write(status + "\n")
+    if status == "304":
+        sys.stdout.write("HTTP/2.0 304 Not Modified\nEtag: %s\r\n\r\n" % strong)
+        sys.stderr.write("gh: HTTP 304\n"); sys.exit(1)
+    sys.stdout.write("HTTP/2.0 200 OK\nContent-Type: application/json\r\nEtag: W/%s\r\n\r\n%s" % (strong, inner.stdout))
+    sys.exit(0)
 data = json.load(open(os.environ["FAKE_DATA"]))
 if data.get("error"):
     print(json.dumps({"message": "token does not have permission"}))
@@ -533,6 +562,19 @@ with tempfile.TemporaryDirectory() as tmp:
     proc = run(["watch", "--fixture", fx, "--interval", "0.3", "--max-minutes", "0.02", "--out", out], env=FAST)
     check(proc.returncode == 0, f"watch exits 0 at the maximum: {proc.stderr}")
     check(proc.stderr.count("wrote ") >= 2, f"watch writes the page more than once: {proc.stderr!r}")
+    # Dogfood round 2, item 1: one start line and one end line on stderr.
+    lines = proc.stderr.strip().splitlines()
+    check(lines and re.fullmatch(r"watch: started; a refresh every 0\.3 s until \d{4}-\d\d-\d\dT\d\d:\d\d:\d\dZ; "
+                                 r"page " + re.escape(out), lines[0]) is not None,
+          f"#94-r2-1 watch prints a start line with the interval, the stop time and the page: {lines[:1]!r}")
+    cycles = proc.stderr.count("wrote ")
+    check(lines and lines[-1] == f"watch: stopped after {cycles} cycles: --max-minutes reached",
+          f"#94-r2-1 watch prints an end line with the reason and the cycles at the maximum: {lines[-1:]!r}")
+    # The deadline falls in a sleep: watch writes one last cycle at the deadline, then stops.
+    edge = run(["watch", "--fixture", fx, "--interval", "30", "--max-minutes", "0.02", "--out", out], env=FAST)
+    check(edge.returncode == 0 and edge.stderr.count("wrote ") == 2
+          and edge.stderr.strip().splitlines()[-1] == "watch: stopped after 2 cycles: --max-minutes reached",
+          f"#94-r2-3 watch writes one last cycle at the deadline: {edge.stderr!r}")
     if os.path.exists(out):
         with open(out) as handle:
             page = handle.read()
@@ -561,6 +603,9 @@ with tempfile.TemporaryDirectory() as tmp:
         child.kill()
         code = None
     check(code == 0, f"SIGTERM stops watch with exit 0 (got {code})")
+    tail = child.stderr.read().strip().splitlines() if code is not None else []
+    check(tail and re.fullmatch(r"watch: stopped after \d+ cycles?: SIGTERM", tail[-1]) is not None,
+          f"#94-r2-1 watch prints an end line that names the signal: {tail[-1:]!r}")
 
 # Guard: a log planted in the scratch repo's common dir changes no fixture or live-fake result.
 with tempfile.TemporaryDirectory() as tmp:
@@ -1400,6 +1445,9 @@ check(timeline.pr_repo_list("o/r", ["o/fork,o/other", "o/fork", "o/r", " o/x "])
 FAKE_MULTI = r"""
 import json, os, re, sys
 path = sys.argv[-1]
+# A server with rate limits off answers the quota read (#93) with 404, so the quota guard is off.
+if path == "rate_limit":
+    print(json.dumps({"message": "Not Found"})); sys.exit(1)
 data = json.load(open(os.environ["FAKE_DATA"]))
 page = re.search(r"[?&]page=(\d+)", path)
 if page and int(page.group(1)) > 1:
@@ -1561,7 +1609,8 @@ with tempfile.TemporaryDirectory() as tmp:
         _, seq_time, calls = jobs_run(1, slow)
         _, par_time, _ = jobs_run(8, slow)
         check(calls >= 10, f"{forge_type} the fixture makes enough reads to time: {calls}")
-        check(par_time < seq_time * 0.7, f"{forge_type} --jobs 8 is faster than --jobs 1: {par_time:.2f}s against {seq_time:.2f}s")
+        # A loose bound: a busy machine slows both runs, and the check is only that threads overlap.
+        check(par_time < seq_time * 0.85, f"{forge_type} --jobs 8 is faster than --jobs 1: {par_time:.2f}s against {seq_time:.2f}s")
 
         proc, _, _ = jobs_run(8, {"FAKE_LIMIT": "twice"})
         check(proc.returncode == 0 and proc.stdout == one.stdout, f"{forge_type} two rate-limit replies are retried: {proc.stderr[:200]}")
@@ -1574,6 +1623,1166 @@ with tempfile.TemporaryDirectory() as tmp:
         out = os.path.join(tmp, f"broken-{forge_type}.json")
         proc, _, _ = jobs_run(8, {"FAKE_LIMIT": "broken"}, "collect", out)
         check(proc.returncode == 2 and not os.path.exists(out) and proc.stdout == "", f"{forge_type} a failed read under --jobs 8 exits 2 with no document: {proc.returncode}")
+
+# ---------------------------------------------------------------- commit diffs from local git (#90)
+# A fixture checkout has a remote whose URL ends in o/r. A bare repository serves refs/pull/7/head,
+# a tag and a branch that the checkout has never fetched. A fake gh/tea serves PR 7 with the
+# hand-written API payloads of its two commits, so the git-built document can be held against
+# the API-built one. scripts/count-gh.py counts the API calls.
+cspec = importlib.util.spec_from_file_location("count_gh", os.path.join(ROOT, "scripts", "count-gh.py"))
+count_gh = importlib.util.module_from_spec(cspec)
+cspec.loader.exec_module(count_gh)
+
+GIT_ENV = {**os.environ, "GIT_CONFIG_GLOBAL": os.devnull, "GIT_CONFIG_NOSYSTEM": "1",
+           "GIT_AUTHOR_NAME": "Dev", "GIT_AUTHOR_EMAIL": "dev@x", "GIT_COMMITTER_NAME": "Dev",
+           "GIT_COMMITTER_EMAIL": "dev@x", "GIT_AUTHOR_DATE": "2026-06-01T09:00:00Z",
+           "GIT_COMMITTER_DATE": "2026-06-01T09:00:00Z"}
+
+
+def git(cwd, *args):
+    return subprocess.run(["git", "-C", cwd, *args], check=True, capture_output=True, text=True, env=GIT_ENV).stdout
+
+
+def put(root, name, data):
+    with open(os.path.join(root, name), "wb") as handle:
+        handle.write(data if isinstance(data, bytes) else data.encode())
+
+
+def repo_state(path):
+    """Every ref outside refs/issue-flow/, HEAD, the index and work-tree status, and FETCH_HEAD."""
+    refs = [r for r in git(path, "for-each-ref", "--format=%(refname) %(objectname)").splitlines()
+            if not r.startswith("refs/issue-flow/")]
+    return {"refs": refs, "head": git(path, "rev-parse", "HEAD"), "status": git(path, "status", "--porcelain", "--ignored"),
+            "fetch_head": os.path.exists(os.path.join(path, ".git", "FETCH_HEAD"))}
+
+
+GIT_FAKE = r'''
+import json, os, re, sys
+path = sys.argv[-1]
+# A server with rate limits off answers the quota read (#93) with 404, so the quota guard is off.
+if path == "rate_limit":
+    print(json.dumps({"message": "Not Found"})); sys.exit(1)
+data = json.load(open(os.environ["FAKE_DATA"]))
+if re.search(r"[?&]page=([2-9]|\d\d)", path):
+    print("[]"); sys.exit(0)
+m = re.search(r"/pulls/7/commits", path)
+if m:
+    print(json.dumps(data["commits"])); sys.exit(0)
+m = re.search(r"/git/commits/([0-9a-f]+)\.diff$", path)
+if m:
+    sys.stdout.write(data["diffs"][m.group(1)]); sys.exit(0)
+m = re.search(r"/commits/([0-9a-f]+)$", path)
+if m:
+    if m.group(1) not in data["files"]:
+        print(json.dumps({"message": "Not Found"})); sys.exit(1)
+    item = next(c for c in data["commits"] if c["sha"] == m.group(1))
+    print(json.dumps(dict(item, files=data["files"][m.group(1)]))); sys.exit(0)
+if re.search(r"/pulls\?", path):
+    print(json.dumps([data["pr"]])); sys.exit(0)
+print("[]")
+'''
+
+with tempfile.TemporaryDirectory() as tmp:
+    src, co, bare = (os.path.join(tmp, d) for d in ("src", "co", os.path.join("srv", "o", "r.git")))
+    os.makedirs(src)
+    git(tmp, "init", "-q", "-b", "main", src)
+    git(tmp, "init", "-q", "--bare", "-b", "main", bare)
+    put(src, "a.py", "old\n")
+    put(src, "gone.txt", "bye\n")
+    put(src, "move.txt", "".join(f"line {i}\n" for i in range(20)))
+    put(src, "bin.dat", bytes(range(256)))
+    put(src, "gap.txt", "".join(f"g {i}\n" for i in range(20)))
+    git(src, "add", "-A")
+    git(src, "commit", "-q", "-m", "base")
+    git(src, "push", "-q", bare, "main")
+    git(tmp, "clone", "-q", "-o", "fork", bare, co)
+    git(co, "remote", "add", "other", os.path.join(tmp, "srv", "o", "elsewhere.git"))
+    put(co, "untracked.txt", "keep me\n")
+    put(src, "a.py", "new\nnewer\n")
+    put(src, "big.txt", "".join(f"row {i}\n" for i in range(500)))
+    put(src, "wide.txt", "y" * 40000 + "\n")
+    os.unlink(os.path.join(src, "move.txt"))
+    put(src, "moved.txt", "".join(f"line {i}\n" for i in range(19)) + "LINE 19\n")
+    put(src, "bin.dat", bytes(reversed(range(256))))
+    # Two changes one line apart beyond their context: GitHub joins them into one hunk.
+    put(src, "gap.txt", "".join(f"{'G' if i in (3, 11) else 'g'} {i}\n" for i in range(20)))
+    git(src, "add", "-A")
+    git(src, "commit", "-q", "-m", "change files\n\nChange: feature\nWhy: Fixture.")
+    c1 = git(src, "rev-parse", "HEAD").strip()
+    os.unlink(os.path.join(src, "gone.txt"))
+    put(src, "sp ace.txt", "tail")
+    git(src, "add", "-A")
+    git(src, "commit", "-q", "-m", "drop a file")
+    c2 = git(src, "rev-parse", "HEAD").strip()
+    git(src, "push", "-q", bare, f"{c2}:refs/pull/7/head", f"{c2}:refs/heads/feature", f"{c2}:refs/tags/v1")
+    base_sha = git(src, "rev-parse", "HEAD~2").strip()
+
+    # The payloads GitHub's `GET /repos/{o}/{r}/commits/{sha}` gives for these commits, written by hand.
+    api_files = {
+        c1: [{"filename": "a.py", "status": "modified", "additions": 2, "deletions": 1, "changes": 3,
+              "patch": "@@ -1 +1,2 @@\n-old\n+new\n+newer"},
+             {"filename": "big.txt", "status": "added", "additions": 500, "deletions": 0, "changes": 500,
+              "patch": "@@ -0,0 +1,500 @@\n" + "\n".join(f"+row {i}" for i in range(500))},
+             {"filename": "bin.dat", "status": "modified", "additions": 0, "deletions": 0, "changes": 0},
+             {"filename": "gap.txt", "status": "modified", "additions": 2, "deletions": 2, "changes": 4,
+              "patch": "@@ -1,15 +1,15 @@\n g 0\n g 1\n g 2\n-g 3\n+G 3\n" + "".join(f" g {i}\n" for i in range(4, 11))
+                       + "-g 11\n+G 11\n g 12\n g 13\n g 14"},
+             {"filename": "moved.txt", "previous_filename": "move.txt", "status": "renamed", "additions": 1,
+              "deletions": 1, "changes": 2, "patch": "@@ -17,4 +17,4 @@ def heading_github_found():\n line 16\n line 17\n line 18\n-line 19\n+LINE 19"},
+             {"filename": "wide.txt", "status": "added", "additions": 1, "deletions": 0, "changes": 1,
+              "patch": "@@ -0,0 +1 @@\n+" + "y" * 40000}],
+        c2: [{"filename": "gone.txt", "status": "removed", "additions": 0, "deletions": 1, "changes": 1,
+              "patch": "@@ -1 +0,0 @@\n-bye"},
+             {"filename": "sp ace.txt", "status": "added", "additions": 1, "deletions": 0, "changes": 1,
+              "patch": "@@ -0,0 +1 @@\n+tail\n\\ No newline at end of file"}],
+    }
+
+    def item(sha, message, parent):
+        return {"sha": sha, "html_url": f"https://x/commit/{sha}", "parents": [{"sha": parent}],
+                "commit": {"message": message, "author": {"name": "Dev", "date": "2026-06-01T09:00:00Z"},
+                           "committer": {"name": "Dev", "date": "2026-06-01T09:00:00Z"}}, "author": {"login": "dev"}}
+
+    commits = [item(c1, "change files\n\nChange: feature\nWhy: Fixture.", base_sha), item(c2, "drop a file", c1)]
+    pr7 = pr_raw(7, "Diff source", "issue/90-x", "batch/94-x", "2026-06-01T08:00:00Z")
+    fake = os.path.join(tmp, "git-fake.py")
+    with open(fake, "w") as handle:
+        handle.write(GIT_FAKE)
+    target = os.path.join(tmp, "git-fake")
+    with open(target, "w") as handle:
+        handle.write(f'#!/bin/sh\nexec "{sys.executable}" "{fake}" "$@"\n')
+    os.chmod(target, 0o755)
+
+    def fake_data(name, extra=()):
+        data = os.path.join(tmp, f"{name}.json")
+        with open(data, "w") as handle:
+            json.dump({"pr": pr7, "commits": commits + [c for c, _ in extra], "files": dict(api_files, **{c["sha"]: f for c, f in extra}),
+                       "diffs": {}}, handle)
+        return data
+
+    def live(name, diff_source, data, *extra, forge_type="github"):
+        counter = os.path.join(tmp, f"count-{name}")
+        wrapper = count_gh.wrap(counter, target)
+        args = ["collect", "--forge", forge_type, "--repo", "o/r", "--repo-path", co, *extra]
+        if diff_source:
+            args += ["--diff-source", diff_source]
+        proc = run(args, {"IFW_GH" if forge_type == "github" else "IFW_TEA": wrapper, "FAKE_DATA": data})
+        return proc, count_gh.calls(counter, r"/commits/[0-9a-f]{40}")
+
+    data = fake_data("plain")
+    before = repo_state(co)
+    check(subprocess.run(["git", "-C", co, "cat-file", "-e", c2], env=GIT_ENV, capture_output=True).returncode != 0,
+          "#90 the PR commits are not in the checkout before collect")
+
+    # 1. The fetch writes only under refs/issue-flow/, through the remote whose URL matches o/r.
+    proc, git_calls = live("git", None, data)
+    check(proc.returncode == 0, f"#90 auto collect exits 0: {proc.stderr[:300]}")
+    after = repo_state(co)
+    check(after == before, f"#90 the fetch leaves branches, tags, remote refs, HEAD, the work tree and FETCH_HEAD alone:\n{before}\n{after}")
+    check(git(co, "for-each-ref", "--format=%(refname) %(objectname)", "refs/issue-flow/") ==
+          f"refs/issue-flow/pull/o/r/7 {c2}\n", f"#90 the PR head lands in refs/issue-flow/pull/o/r/7: {git(co, 'for-each-ref', 'refs/issue-flow/')}")
+    check("v1" not in git(co, "tag", "--list"), "#90 the fetch takes no tags")
+
+    # 2. Files and patches from git equal the API-built ones, and no commit is read through the API.
+    api_proc, api_calls = live("api", "api", data)
+    check(api_proc.returncode == 0 and len(api_calls) == 2, f"#90 --diff-source api reads each commit through the API: {api_calls} {api_proc.stderr[:300]}")
+    check(git_calls == [], f"#90 the git source makes no commit API call: {git_calls}")
+    if proc.returncode == 0 and api_proc.returncode == 0:
+        got, want = json.loads(proc.stdout), json.loads(api_proc.stdout)
+        check(kinds_of(got, "commit") == kinds_of(want, "commit"),
+              "#90 git-built commit files equal the API-built ones:\n"
+              + json.dumps([[{k: f[k] for k in ("path", "status", "additions", "deletions", "truncated")} for f in e["files"]]
+                            for e in kinds_of(got, "commit")]))
+        check(got == want, "#90 the whole document is the same for --diff-source git and api")
+        wf = {f["path"]: f for e in kinds_of(got, "commit") for f in e["files"]}
+        check(wf["big.txt"]["truncated"] and len(wf["big.txt"]["patch"].split("\n")) == 400 and wf["big.txt"]["additions"] == 500,
+              "#90 the 400-line cap and the uncut counts hold for a git patch")
+        check(wf["wide.txt"]["truncated"] and len(wf["wide.txt"]["patch"].encode()) == 32768, "#90 the 32 KB cap holds for a git patch")
+        check(wf["bin.dat"]["patch"] is None and wf["bin.dat"]["additions"] == 0, "#90 a binary file has no patch and zero counts")
+        check(wf["moved.txt"]["status"] == "renamed" and wf["gone.txt"]["status"] == "removed", "#90 git gives renamed and removed")
+        # git and the forge pick different section headings for a hunk, so every patch drops it.
+        check(wf["moved.txt"]["patch"].startswith("@@ -17,4 +17,4 @@\n line 16"), f"#90 a hunk header keeps no heading: {wf['moved.txt']['patch'][:40]!r}")
+    for label, extra in (("budget", ["--max-diff-bytes", "33000"]), ("nodiffs", ["--no-diffs"])):
+        a, _ = live(f"{label}-api", "api", data, *extra)
+        g, _ = live(f"{label}-git", "git", data, *extra)
+        check(a.returncode == 0 and g.returncode == 0 and a.stdout == g.stdout, f"#90 {label}: git and api documents are equal")
+        if label == "budget" and g.returncode == 0:
+            check(any(f["truncated"] for e in kinds_of(json.loads(g.stdout), "commit") for f in e["files"]
+                      if f["path"] in ("a.py", "gone.txt", "sp ace.txt", "moved.txt")), "#90 the document budget cuts a git patch")
+
+    # Gitea: the `.diff` text comes from git, and the events equal the GitHub API-built ones.
+    gt_commits = [dict(c, files=[{"filename": f["filename"], "status": f["status"]} for f in api_files[c["sha"]]]) for c in commits]
+    gt_data = os.path.join(tmp, "gitea.json")
+    with open(gt_data, "w") as handle:
+        json.dump({"pr": pr7, "commits": gt_commits, "files": {}, "diffs": {}}, handle)
+    gt_proc, gt_calls = live("gitea", None, gt_data, forge_type="gitea")
+    check(gt_proc.returncode == 0 and gt_calls == [], f"#90 gitea reads no .diff through the API: {gt_calls} {gt_proc.stderr[:300]}")
+    if gt_proc.returncode == 0 and api_proc.returncode == 0:
+        # Gitea's `.diff` route runs plain `git diff`, which keeps two hunks one line apart.
+        gt_want = copy.deepcopy([e["files"] for e in kinds_of(json.loads(api_proc.stdout), "commit")])
+        gap = next(f for f in gt_want[0] if f["path"] == "gap.txt")
+        gap["patch"] = ("@@ -1,7 +1,7 @@\n g 0\n g 1\n g 2\n-g 3\n+G 3\n g 4\n g 5\n g 6\n"
+                        "@@ -9,7 +9,7 @@\n g 8\n g 9\n g 10\n-g 11\n+G 11\n g 12\n g 13\n g 14")
+        check([e["files"] for e in kinds_of(json.loads(gt_proc.stdout), "commit")] == gt_want,
+              "#90 gitea git-built files equal the API-built ones")
+
+    # 3. A commit git does not have is read through the API, and one note counts it.
+    lost = "f" * 40
+    lost_files = [{"filename": "z.py", "status": "added", "additions": 1, "deletions": 0, "patch": "@@ -0,0 +1 @@\n+z"}]
+    fb_data = fake_data("fallback", [(item(lost, "force-pushed away", c2), lost_files)])
+    fb, fb_calls = live("fallback", None, fb_data)
+    check(fb.returncode == 0 and fb_calls == [f"api repos/o/r/commits/{lost}"], f"#90 only the missing commit is read through the API: {fb_calls} {fb.stderr[:300]}")
+    notes = [line for line in fb.stderr.splitlines() if "through the API" in line]
+    check(len(notes) == 1 and "1 commit" in notes[0], f"#90 one stderr note counts the fallbacks: {fb.stderr!r}")
+    if fb.returncode == 0:
+        lost_event = [e for e in kinds_of(json.loads(fb.stdout), "commit") if e["sha"] == lost]
+        check(lost_event and lost_event[0]["files"][0]["path"] == "z.py", f"#90 the fallback commit keeps its API files: {lost_event}")
+    check("through the API" not in proc.stderr, f"#90 no note when every commit came from git: {proc.stderr!r}")
+    strict, strict_calls = live("strict", "git", fb_data)
+    check(strict.returncode == 2 and strict.stdout == "" and lost in strict.stderr and strict_calls == [],
+          f"#90 --diff-source git fails on a missing commit and reads nothing through the API: {strict.returncode} {strict.stderr[:300]}")
+    fx_path = os.path.join(tmp, "fx.json")
+    with open(fx_path, "w") as handle:
+        json.dump(build("github"), handle)
+    check(run(["collect", "--fixture", fx_path, "--diff-source", "nope"]).returncode == 5, "#90 an unknown --diff-source exits 5")
+
+    # 4. snapshot and watch pass --diff-source on to collect.
+    page = os.path.join(tmp, "page.html")
+    check(run(["snapshot", "--fixture", fx_path, "--diff-source", "api", "--out", page]).returncode == 0,
+          "#90 snapshot passes --diff-source api through")
+    check(run(["snapshot", "--fixture", fx_path, "--diff-source", "nope", "--out", page]).returncode == 5,
+          "#90 snapshot hands --diff-source to collect, which rejects a bad value")
+    check(run(["watch", "--fixture", fx_path, "--diff-source", "nope", "--out", page, "--interval", "1", "--max-minutes", "0.01"],
+              {"IFW_WATCH_FAST": "1"}).returncode == 5, "#90 watch hands --diff-source to collect, which rejects a bad value")
+
+    # The counting helper counts the calls of a run, and a match narrows the count.
+    counted = subprocess.run([sys.executable, os.path.join(ROOT, "scripts", "count-gh.py"), "count",
+                              os.path.join(tmp, "count-api"), "--match", "/commits/"], capture_output=True, text=True)
+    check(counted.returncode == 0 and counted.stdout == "2\n", f"#90 count-gh count prints the matching calls: {counted.stdout!r}")
+    check(len(count_gh.calls(os.path.join(tmp, "count-api"))) > len(api_calls) == 2, "#90 count-gh logs every call, not only commit reads")
+
+# A remote matches its PR repository in every URL form a forge gives.
+for url in ("https://host/O/R.git", "git@host:o/r.git", "ssh://git@host:2222/o/r", "/srv/o/r.git/", "https://host/o/r"):
+    check(timeline._url_repo(url) == "o/r", f"#90 {url} names o/r: {timeline._url_repo(url)}")
+check(timeline._url_repo("r") is None and timeline._url_repo("") is None, "#90 a URL without an owner names no repository")
+
+# ---------------------------------------------------------------- cache (#91)
+# A fake gh/tea serves a story with two closed PRs: 60 (story2) and 62. scripts/count-gh.py counts
+# the calls. Each run names a --cache-dir in a scratch directory, so no test reads the real cache.
+LISTING = r"/(issues|pulls)\?"
+OLD = "2026-06-01T12:00:00Z"
+
+
+def cache_story(forge_type, pr60_state="closed", pr60_updated=OLD, pr62_updated=OLD, pr62_review=False, extra_run=False):
+    gh = forge_type == "github"
+    data = story2(forge_type)
+    for entry in data["issues"]:
+        entry["issue"]["updated_at"] = OLD
+    pr60 = data["pulls"][0]
+    merged = "2026-06-01T11:30:00Z" if pr60_state == "closed" else None
+    pr60["pr"].update(state=pr60_state, updated_at=pr60_updated, merged_at=merged, closed_at=merged)
+    if extra_run:
+        run_902 = {"id": 902, "name": "ci", "conclusion": "success", "status": "completed", "head_sha": "c100",
+                   "html_url": "https://x/runs/902"}
+        if gh:
+            run_902.update({"run_started_at": "2026-06-01T11:40:00Z", "updated_at": "2026-06-01T11:41:00Z"})
+        else:
+            run_902.pop("name")
+            run_902.update({"started_at": "2026-06-01T11:40:00+00:00", "completed_at": "2026-06-01T11:41:00+00:00",
+                            "path": ".gitea/workflows/ci.yaml"})
+        pr60["runs"].append({"run": run_902, "jobs": []})
+    c700 = gh_commit("c700", "second change", [{"filename": "src/b.py"}], ts="2026-06-01T11:00:00Z")
+    if not gh:
+        c700["diff"] = "diff --git a/src/b.py b/src/b.py\n--- a/src/b.py\n+++ b/src/b.py\n@@ -1 +1 @@\n-b\n+B\n"
+        c700["files"] = [{"filename": "src/b.py", "status": "modified"}]
+    reviews = [{"id": 20, "state": "APPROVED", "body": "Fine.", "user": {"login": "rev"}, "submitted_at": "2026-06-01T12:30:00Z",
+                "html_url": "https://x/pull/62#pullrequestreview-20", "comments_count": 0}] if pr62_review else []
+    pr62 = dict(pr_raw(62, "Second", "issue/52-x", "batch/50-bar", "2026-06-01T10:30:00Z", merged="2026-06-01T11:45:00Z"),
+                head={"ref": "issue/52-x", "sha": "c700"}, updated_at=pr62_updated)
+    data["pulls"].append({"pr": pr62, "timeline": [], "commits": [c700], "reviews": reviews, "review_comments": [], "runs": []})
+    return data
+
+
+with tempfile.TemporaryDirectory() as tmp:
+    fake = os.path.join(tmp, "fake.py")
+    with open(fake, "w") as handle:
+        handle.write(FAKE_SRC)
+    target = os.path.join(tmp, "fake")
+    with open(target, "w") as handle:
+        handle.write(f'#!/bin/sh\nexec "{sys.executable}" "{fake}" "$@"\n')
+    os.chmod(target, 0o755)
+    serial = iter(range(10 ** 6))
+
+    def cache_run(forge_type, story, *flags, command="collect", cwd=None):
+        n = next(serial)
+        data = os.path.join(tmp, f"data-{n}.json")
+        with open(data, "w") as handle:
+            json.dump(story, handle)
+        counter = os.path.join(tmp, f"count-{n}")
+        env = {"IFW_GH" if forge_type == "github" else "IFW_TEA": count_gh.wrap(counter, target), "FAKE_DATA": data,
+               "IFW_WATCH_FAST": "1"}
+        args = [command, "--forge", forge_type, "--repo", "o/r", "--diff-source", "api", *flags]
+        if cwd is None:
+            proc = run(args, env)
+        else:
+            proc = subprocess.run([sys.executable, SCRIPT, *args, "--local-events", "off"], capture_output=True,
+                                  text=True, cwd=cwd, env={**os.environ, **env})
+        # The quota reads (#93) cost no quota and are not in the summary's count.
+        return proc, [c for c in count_gh.calls(counter) if not c.endswith(" rate_limit")]
+
+    def others(calls):
+        return [c for c in calls if not re.search(LISTING, c)]
+
+    for forge_type in ("github", "gitea"):
+        tag = f"#91 {forge_type}"
+        cache = os.path.join(tmp, f"cache-{forge_type}")
+        story = cache_story(forge_type)
+        cold, cold_calls = cache_run(forge_type, story, "--cache-dir", cache)
+        plain, plain_calls = cache_run(forge_type, story, "--no-cache")
+        warm, warm_calls = cache_run(forge_type, story, "--cache-dir", cache)
+        listings = [c for c in cold_calls if re.search(LISTING, c)]
+        check(cold.returncode == 0 and warm.returncode == 0 and plain.returncode == 0,
+              f"{tag} cold, warm and --no-cache collects exit 0: {cold.stderr[:200]} {warm.stderr[:200]}")
+        check(len(cold_calls) > len(listings) > 0, f"{tag} a cold collect reads more than the listings: {len(cold_calls)}")
+        # 1. A warm cache and no changes: only the listings are read.
+        check(others(warm_calls) == [] and len(warm_calls) == len(listings),
+              f"{tag} a warm collect makes only the listing calls: {others(warm_calls)}")
+        check(cold.stdout != "" and warm.stdout == plain.stdout == cold.stdout,
+              f"{tag} the warm, cold and --no-cache documents are byte-identical")
+        check(len(plain_calls) == len(cold_calls), f"{tag} --no-cache reads everything: {len(plain_calls)} against {len(cold_calls)}")
+
+        # 2. A changed updated_at on PR 62 re-reads that PR only. Its commit is kept by sha.
+        changed = cache_story(forge_type, pr62_updated="2026-06-01T13:00:00Z", pr62_review=True)
+        moved, moved_calls = cache_run(forge_type, changed, "--cache-dir", cache)
+        moved_plain, _ = cache_run(forge_type, changed, "--no-cache")
+        extra = others(moved_calls)
+        check(extra and all(re.search(r"/(pulls|issues)/62/|head_sha=c700", c) for c in extra),
+              f"{tag} a changed PR re-reads only that PR: {extra}")
+        check(not any("commits/c700" in c for c in extra), f"{tag} a cached commit is not read again: {extra}")
+        check(moved.returncode == 0 and moved.stdout == moved_plain.stdout != cold.stdout,
+              f"{tag} the document after one PR changed equals --no-cache")
+
+        # 3. The CI runs of an open PR are read again; its other reads and its failed run's jobs are not.
+        opened = cache_story(forge_type, pr60_state="open", extra_run=True)
+        op, op_calls = cache_run(forge_type, opened, "--cache-dir", cache)
+        op_plain, _ = cache_run(forge_type, opened, "--no-cache")
+        extra = others(op_calls)
+        check(extra and all("head_sha=c100" in c for c in extra), f"{tag} an open PR re-reads only its CI runs: {extra}")
+        check(op.returncode == 0 and op.stdout == op_plain.stdout and "runs/902" in op.stdout,
+              f"{tag} a new run on an open PR reaches the document")
+        # A closed PR updated in the last hour re-reads its runs too, on every collect.
+        recent = (datetime.now(timezone.utc) - timedelta(minutes=10)).strftime("%Y-%m-%dT%H:%M:%SZ")
+        fresh = cache_story(forge_type, pr60_updated=recent)
+        cache_run(forge_type, fresh, "--cache-dir", cache)
+        _, again_calls = cache_run(forge_type, fresh, "--cache-dir", cache)
+        extra = others(again_calls)
+        check(extra and all("head_sha=c100" in c for c in extra), f"{tag} a PR updated in the last hour re-reads its CI runs: {extra}")
+        _, old_calls = cache_run(forge_type, story, "--cache-dir", cache)
+        check(others(old_calls) == [], f"{tag} a closed PR updated more than an hour ago reads no runs: {others(old_calls)}")
+
+        # 4. --refresh-cache reads nothing from the cache and writes every entry again.
+        key = timeline.issue_key(forge_type, "o/r", 51, OLD)
+        bogus = [{"event": "labeled", "created_at": "2026-06-01T09:00:00Z", "actor": {"login": "x"}, "label": {"name": "status:blocked"}}]
+        if forge_type == "gitea":
+            bogus = [{"type": "label", "created_at": "2026-06-01T09:00:00+00:00", "user": {"login": "x"},
+                      "label": {"name": "status:blocked"}, "body": "1"}]
+        timeline.Cache(cache).put(key, bogus)
+        poisoned, _ = cache_run(forge_type, story, "--cache-dir", cache)
+        check(poisoned.stdout != cold.stdout, f"{tag} the test entry is read from the cache")
+        refreshed, refreshed_calls = cache_run(forge_type, story, "--cache-dir", cache, "--refresh-cache")
+        check(refreshed.stdout == cold.stdout and len(refreshed_calls) == len(cold_calls),
+              f"{tag} --refresh-cache reads nothing from the cache: {len(refreshed_calls)} calls")
+        after, after_calls = cache_run(forge_type, story, "--cache-dir", cache)
+        check(after.stdout == cold.stdout and others(after_calls) == [], f"{tag} --refresh-cache writes every entry again")
+
+        # 5. An entry with another cache_version is a miss, and the next write replaces it.
+        for folder, _, names in os.walk(cache):
+            for name in names:
+                with open(os.path.join(folder, name)) as handle:
+                    entry = json.load(handle)
+                entry["cache_version"] = timeline.CACHE_VERSION + 1
+                with open(os.path.join(folder, name), "w") as handle:
+                    json.dump(entry, handle)
+        stale, stale_calls = cache_run(forge_type, story, "--cache-dir", cache)
+        check(stale.stdout == cold.stdout and len(stale_calls) == len(cold_calls),
+              f"{tag} a cache_version mismatch discards the entries: {len(stale_calls)} calls")
+        _, next_calls = cache_run(forge_type, story, "--cache-dir", cache)
+        check(others(next_calls) == [], f"{tag} the entries are written again after a version mismatch")
+
+        # 6. --no-cache neither reads nor writes.
+        empty = os.path.join(tmp, f"empty-{forge_type}")
+        os.makedirs(empty)
+        _, nc_calls = cache_run(forge_type, story, "--cache-dir", cache, "--no-cache")
+        cache_run(forge_type, story, "--cache-dir", empty, "--no-cache")
+        check(len(nc_calls) == len(cold_calls) and os.listdir(empty) == [], f"{tag} --no-cache reads and writes nothing")
+
+        # 7. snapshot reports the calls and the cache hits; watch passes the cache flags to collect.
+        page = os.path.join(tmp, f"page-{forge_type}.html")
+        snap, snap_calls = cache_run(forge_type, story, "--cache-dir", cache, "--out", page, command="snapshot")
+        line = snap.stderr.strip().splitlines()[-1] if snap.stderr.strip() else ""
+        found = re.search(r"; (\d+) API calls? \((\d+) cached, \d+ not modified\)$", line)
+        check(snap.returncode == 0 and found and int(found.group(1)) == len(snap_calls) == len(listings) and int(found.group(2)) > 0,
+              f"{tag} the snapshot summary counts the calls and the cached reads: {line!r} ({len(snap_calls)} calls)")
+        watched = os.path.join(tmp, f"watch-cache-{forge_type}")
+        proc, _ = cache_run(forge_type, story, "--cache-dir", watched, "--out", page, "--interval", "1", "--max-minutes", "0.01",
+                            command="watch")
+        check(proc.returncode == 0 and os.path.isdir(watched) and os.listdir(watched), f"{tag} watch passes --cache-dir to collect: {proc.stderr[:200]}")
+        check("API call" in proc.stderr, f"{tag} the watch line counts the calls: {proc.stderr[:200]!r}")
+
+    # The default cache is <git common dir>/issue-flow/cache of the --repo-path checkout.
+    repo = os.path.join(tmp, "repo")
+    subprocess.run(["git", "init", "-q", repo], check=True)
+    proc, _ = cache_run("github", cache_story("github"), cwd=repo)
+    default = os.path.join(repo, ".git", "issue-flow", "cache")
+    check(proc.returncode == 0 and os.path.isdir(default) and os.listdir(default), f"#91 the default cache is in the common dir: {proc.stderr[:200]}")
+    both = run(["collect", "--forge", "github", "--repo", "o/r", "--no-cache", "--refresh-cache"])
+    check(both.returncode == 5, f"#91 --no-cache with --refresh-cache exits 5: {both.returncode}")
+    fx = os.path.join(tmp, "fx.json")
+    with open(fx, "w") as handle:
+        json.dump(build("github"), handle)
+    snap = run(["snapshot", "--fixture", fx, "--out", os.path.join(tmp, "fx.html")])
+    check(snap.stderr.strip().endswith("; 0 API calls (0 cached, 0 not modified)"), f"#91 a fixture snapshot makes no call: {snap.stderr!r}")
+
+    # Cache order for commits: the git fetch runs only for PRs that hold an uncached commit.
+    story = cache_story("github")
+    data = os.path.join(tmp, "order.json")
+    with open(data, "w") as handle:
+        json.dump(story, handle)
+    saved_env = {k: os.environ.get(k) for k in ("IFW_GH", "FAKE_DATA")}
+    os.environ.update({"IFW_GH": target, "FAKE_DATA": data})
+    fetched, original = [], timeline.GitDiffs.fetch
+    timeline.GitDiffs.fetch = lambda self, repo, numbers: fetched.append((repo, list(numbers))) or None
+    try:
+        order = timeline.Cache(os.path.join(tmp, "order-cache"))
+        for c in story["pulls"][0]["commits"]:
+            order.put(timeline.commit_key("github", c["sha"]), c["files"])
+        with contextlib.redirect_stderr(io.StringIO()):
+            timeline.fetch_bundle("github", "o/r", repo_path=HERMETIC, jobs=1, cache=order)
+        check(fetched == [("o/r", [62])], f"#91 the fetch skips a PR whose commits are all cached: {fetched}")
+        fetched.clear()
+        timeline.fetch_bundle("github", "o/r", repo_path=HERMETIC, jobs=1, cache=order)
+        check(fetched == [], f"#91 a warm cache runs no git fetch: {fetched}")
+    finally:
+        timeline.GitDiffs.fetch = original
+        for k, v in saved_env.items():
+            if v is None:
+                os.environ.pop(k, None)
+            else:
+                os.environ[k] = v
+
+# The Cache class: get, put and has, and a torn file never reads as an entry.
+WRITER = r"""
+import importlib.util, sys
+spec = importlib.util.spec_from_file_location("timeline", sys.argv[1])
+timeline = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(timeline)
+cache = timeline.Cache(sys.argv[2])
+for _ in range(150):
+    cache.put("race", [sys.argv[3] * 200000])
+"""
+with tempfile.TemporaryDirectory() as tmp:
+    store = timeline.Cache(tmp)
+    check(store.get("k") is None and not store.has("k"), "#91 an empty cache has no entry")
+    store.put("k", [])
+    check(store.has("k") and store.get("k") == [], "#91 an empty list is an entry, not a miss")
+    store.put("none", None)
+    store.put(None, [1])
+    check(not store.has("none"), "#91 None is never stored")
+    check(store.hits == 1, f"#91 get counts the hits, has does not: {store.hits}")
+    os.makedirs(os.path.dirname(store.path_of("bad")), exist_ok=True)
+    with open(store.path_of("bad"), "w") as handle:
+        handle.write('{"cache_version": 1, "key": "bad", "val')
+    check(store.get("bad") is None, "#91 a torn file reads as a miss")
+    check(timeline.Cache(tmp, read=False).get("k") is None, "#91 a cache with reads off reads nothing")
+    timeline.Cache(tmp, write=False).put("w", [1])
+    check(not store.has("w"), "#91 a cache with writes off writes nothing")
+    store.put("other", [1])
+    with open(store.path_of("k"), "w") as handle:
+        handle.write(open(store.path_of("other")).read())
+    check(store.get("k") is None, "#91 an entry stored under another key is a miss")
+
+    writers = [subprocess.Popen([sys.executable, "-c", WRITER, SCRIPT, tmp, letter]) for letter in "AB"]
+    seen, torn = set(), 0
+    while any(w.poll() is None for w in writers):
+        value = store.get("race")
+        if value is None:
+            continue
+        if len(value) == 1 and value[0] in ("A" * 200000, "B" * 200000):
+            seen.add(value[0][0])
+        else:
+            torn += 1
+    check(all(w.returncode == 0 for w in writers), "#91 both writers finish")
+    check(torn == 0 and seen, f"#91 two concurrent writers never leave a torn entry: {torn} torn, saw {seen}")
+    check(store.get("race") in (["A" * 200000], ["B" * 200000]), "#91 the last write wins")
+    leftovers = [n for _, _, names in os.walk(tmp) for n in names if not n.endswith(".json")]
+    check(leftovers == [], f"#91 no temporary file is left: {leftovers}")
+
+# ---------------------------------------------------------------- quota guard (#93)
+# A wrapper in front of the canned fake answers `gh api rate_limit` with FAKE_REMAINING, less the
+# calls already made, so Q after the run is FAKE_REMAINING - C. FAKE_PRIMARY makes the other calls
+# fail with GitHub's primary-limit reply: `short` fails the first call only and the quota resets in
+# FAKE_RESET_IN seconds; `long` fails every call; `header` fails the first call and puts a near
+# `x-ratelimit-reset` in the reply while rate_limit names a far reset.
+QUOTA_WRAPPER = r"""
+import json, os, subprocess, sys, time
+state, path = os.environ["FAKE_STATE"], sys.argv[-1]
+spent = os.path.join(state, "spent")
+reset = int(time.time()) + int(os.environ.get("FAKE_RESET_IN", "1800"))
+if path == "rate_limit" and os.environ.get("FAKE_REMAINING"):
+    used = len(open(spent).read().split()) if os.path.exists(spent) else 0
+    left = max(0, int(os.environ["FAKE_REMAINING"]) - used)
+    core = {"limit": 5000, "remaining": left, "reset": reset, "used": 5000 - left}
+    print(json.dumps({"resources": {"core": core}, "rate": core})); sys.exit(0)
+if path != "rate_limit":
+    with open(spent, "a") as handle:
+        handle.write("x\n")
+    mode = os.environ.get("FAKE_PRIMARY", "")
+    first = False
+    if mode in ("short", "header"):
+        try:
+            os.close(os.open(os.path.join(state, "limited"), os.O_CREAT | os.O_EXCL))
+            first = True
+        except FileExistsError:
+            pass
+    if mode == "long" or first:
+        print(json.dumps({"message": "API rate limit exceeded for user ID 1."}))
+        sys.stderr.write("gh: API rate limit exceeded for user ID 1. (HTTP 403)\n")
+        if mode == "header":
+            sys.stderr.write(f"x-ratelimit-remaining: 0\nx-ratelimit-reset: {int(time.time()) + 1}\n")
+        sys.exit(1)
+sys.exit(subprocess.call([sys.executable, os.environ["FAKE_INNER"], *sys.argv[1:]]))
+"""
+SUMMARY = re.compile(r"; (\d+) API calls? \((\d+) cached[^)]*\)(?:, (\d+) remaining)?$")
+with tempfile.TemporaryDirectory() as tmp:
+    inner = os.path.join(tmp, "inner.py")
+    with open(inner, "w") as handle:
+        handle.write(FAKE_SRC)
+    outer = os.path.join(tmp, "quota.py")
+    with open(outer, "w") as handle:
+        handle.write(QUOTA_WRAPPER)
+    target = os.path.join(tmp, "quota")
+    with open(target, "w") as handle:
+        handle.write(f'#!/bin/sh\nexec "{sys.executable}" "{outer}" "$@"\n')
+    os.chmod(target, 0o755)
+    serial = iter(range(10 ** 6))
+
+    def quota_run(*flags, command="snapshot", forge_type="github", story=None, **fake):
+        """Run one command against the quota fake. Return (process, the API calls, the rate_limit calls)."""
+        n = next(serial)
+        data = os.path.join(tmp, f"data-{n}.json")
+        with open(data, "w") as handle:
+            json.dump(story or cache_story(forge_type), handle)
+        state, counter = os.path.join(tmp, f"state-{n}"), os.path.join(tmp, f"count-{n}")
+        os.makedirs(state)
+        env = {"IFW_GH" if forge_type == "github" else "IFW_TEA": count_gh.wrap(counter, target), "FAKE_DATA": data,
+               "FAKE_STATE": state, "FAKE_INNER": inner, "IFW_WATCH_FAST": "1",
+               **{f"FAKE_{k.upper()}": str(v) for k, v in fake.items()}}
+        proc = run([command, "--forge", forge_type, "--repo", "o/r", "--diff-source", "api", *flags], env)
+        logged = count_gh.calls(counter)
+        return proc, [c for c in logged if not c.endswith(" rate_limit")], [c for c in logged if c.endswith(" rate_limit")]
+
+    def last_line(proc):
+        lines = proc.stderr.strip().splitlines()
+        return lines[-1] if lines else ""
+
+    # 1. A full quota: the summary line ends with Q, read after the run. The rate_limit reads are not in C.
+    page = os.path.join(tmp, "page.html")
+    ok, ok_calls, ok_quota = quota_run("--out", page, remaining=5000)
+    found = SUMMARY.search(last_line(ok))
+    check(ok.returncode == 0 and found and found.group(3) is not None, f"#93 the snapshot summary names the remaining quota: {last_line(ok)!r}")
+    if found and found.group(3) is not None:
+        check(int(found.group(1)) == len(ok_calls) and int(found.group(3)) == 5000 - len(ok_calls),
+              f"#93 C counts the API calls only, and Q is read after the run: {last_line(ok)!r}, {len(ok_calls)} calls")
+    check(len(ok_quota) == 2, f"#93 a collect reads the quota twice, before and after: {ok_quota}")
+
+    # 2. A low quota: snapshot exits 3 with one clear line, sends no API call and writes no page.
+    low_page = os.path.join(tmp, "low.html")
+    low, low_calls, _ = quota_run("--out", low_page, remaining=10)
+    line = low.stderr.strip()
+    check(low.returncode == 3 and not os.path.exists(low_page), f"#93 a low quota exits 3 with no page: {low.returncode} {low.stderr[:300]}")
+    check(len(line.splitlines()) == 1 and all(w in line for w in ("10 that remain", "--budget 50", "resets at", "--since")),
+          f"#93 the refusal is one line with the estimate, what remains, the reset and the options: {line!r}")
+    check(low_calls == [], f"#93 the guard stops before the listings when they do not fit: {low_calls}")
+    check(quota_run("--out", low_page, "--budget", "0")[0].returncode == 5, "#93 --budget 0 exits 5")
+    check(quota_run("--out", low_page, "--budget", "101")[0].returncode == 5, "#93 --budget 101 exits 5")
+
+    # 3. The estimate counts only the uncached reads. A quota that the listings fit, and the cold
+    # reads do not, refuses a cold collect and lets a warm one run.
+    cache = os.path.join(tmp, "cache")
+    listings = [c for c in ok_calls if re.search(LISTING, c)]
+    tight = len(listings) + 4
+    cold, cold_calls, _ = quota_run("--cache-dir", cache, "--budget", "100", command="collect", remaining=tight)
+    check(cold.returncode == 3 and len(cold_calls) == len(listings), f"#93 a cold collect over the budget stops after the listings: {cold.returncode} {len(cold_calls)} calls")
+    filled, _, _ = quota_run("--cache-dir", cache, command="collect", remaining=5000)
+    warm, warm_calls, _ = quota_run("--cache-dir", cache, "--budget", "100", command="collect", remaining=tight)
+    check(filled.returncode == 0 and warm.returncode == 0 and warm.stdout == filled.stdout,
+          f"#93 a warm cache brings the same collect under the budget: {warm.returncode} {warm.stderr[:300]}")
+    check(len(warm_calls) == len(listings), f"#93 the warm collect reads only the listings: {len(warm_calls)}")
+
+    # The wave-3 estimate: an uncached commit costs one call with --diff-source api and none from
+    # git; a cached one costs none; a failed run's jobs cost one call.
+    story = story2("github")
+    first = {"commits": [{"sha": "c100"}, {"sha": "c200"}], "reviews": [],
+             "runs": [{"id": 1, "conclusion": "failure", "updated_at": OLD}, {"id": 2, "conclusion": "success", "updated_at": OLD}]}
+    est_cache = timeline.Cache(os.path.join(tmp, "est"))
+    est_cache.put(timeline.commit_key("github", "c200"), [])
+    pr = story["pulls"][0]["pr"]
+    check(timeline.followup_estimate("github", [("o/r", pr)], [first], est_cache, "api") == 2,
+          "#93 the wave-3 estimate counts the uncached commit and the failed run's jobs")
+    check(timeline.followup_estimate("github", [("o/r", pr)], [first], est_cache, "auto", git_has={"c100"}) == 1,
+          "#93 a commit read from git costs no call in the estimate")
+    est_cache.put(timeline.jobs_key("github", "o/r", first["runs"][0]), [])
+    check(timeline.followup_estimate("github", [("o/r", pr)], [first], est_cache, "auto", git_has={"c100"}) == 0,
+          "#93 cached jobs cost no call in the estimate")
+
+    # 4. watch: the guard skips the cycle, the last page stays, and watch keeps running. A tiny
+    # --budget against a full quota also proves that watch passes --budget to collect.
+    kept = os.path.join(tmp, "kept.html")
+    with open(kept, "w") as handle:
+        handle.write("the last page")
+    w, w_calls, _ = quota_run("--out", kept, "--budget", "0.01", "--interval", "0.5", "--max-minutes", "0.15",
+                              command="watch", remaining=5000)
+    skips = [s for s in w.stderr.splitlines() if s.startswith("watch: skipped")]
+    check(w.returncode == 0 and len(skips) >= 2 and open(kept).read() == "the last page",
+          f"#93 watch skips each refused cycle, keeps the page and runs on: {w.returncode} {w.stderr[-400:]!r}")
+    check(skips and "next attempt at" in skips[0] and w_calls == [], f"#93 the skip line names the next attempt: {skips[:1]}")
+
+    # 5. The primary limit: a reset within 60 seconds is waited for, a later one fails with the clear line.
+    plain, _, _ = quota_run(command="collect", remaining=5000)
+    short, short_calls, _ = quota_run(command="collect", remaining=5000, primary="short", reset_in=1)
+    check(short.returncode == 0 and short.stdout == plain.stdout, f"#93 a primary limit that resets in 1 s is retried: {short.stderr[:300]}")
+    header, _, _ = quota_run(command="collect", remaining=5000, primary="header", reset_in=3600)
+    check(header.returncode == 0 and header.stdout == plain.stdout, f"#93 the retry waits for x-ratelimit-reset when the reply has it: {header.stderr[:300]}")
+    long_page = os.path.join(tmp, "long.html")
+    started = time.monotonic()
+    far, far_calls, _ = quota_run("--out", long_page, remaining=5000, primary="long", reset_in=3600)
+    check(far.returncode == 3 and not os.path.exists(long_page) and "resets at" in far.stderr and time.monotonic() - started < 30,
+          f"#93 a primary limit that resets in an hour fails at once with exit 3: {far.returncode} {far.stderr[:300]}")
+    check(len(far_calls) <= 5, f"#93 a far reset sends no retry: {len(far_calls)} calls")
+
+    # 6. No quota to read: Gitea has no rate-limit route, and a GitHub server with rate limits off
+    # answers 404. The guard is off and the summary has no remaining count.
+    for forge_type, fake in (("gitea", {"remaining": 10}), ("github", {})):
+        none, _, none_quota = quota_run("--out", page, forge_type=forge_type, **fake)
+        check(none.returncode == 0 and SUMMARY.search(last_line(none)) and "remaining" not in last_line(none),
+              f"#93 {forge_type} with no quota route runs without the guard: {last_line(none)!r}")
+        check(len(none_quota) == (0 if forge_type == "gitea" else 1), f"#93 {forge_type} quota reads: {none_quota}")
+
+check(timeline.DEFAULT_JOBS == 4 and "default 4" in run(["collect", "--help"]).stdout, "#93 --jobs defaults to 4")
+
+# ---------------------------------------------------------------- conditional listings (#92)
+# GitHub answers `If-None-Match` with 304 when the listing page is unchanged, and a 304 does not
+# count against the primary quota. The fake gh of section 3 sends an ETag with `--include`.
+# A stub Api drives the page walk in process; the fake drives it end to end.
+import hashlib  # noqa: E402
+
+
+class StubListingApi:
+    """Serves `pages` (the server's listing) through `conditional`, and logs (page, etag sent)."""
+
+    forge_type, limit = "github", "per_page=100"
+
+    def __init__(self, pages, etags=True):
+        self.pages, self.etags, self.log = pages, etags, []
+
+    def conditional(self, path, etag=None):
+        n = int(re.search(r"[?&]page=(\d+)", path).group(1))
+        body = self.pages[n - 1] if n <= len(self.pages) else []
+        tag = f'W/"{hashlib.sha256(json.dumps(body).encode()).hexdigest()[:12]}"' if self.etags else None
+        self.log.append((n, etag))
+        if etag is not None and etag == tag:
+            return 304, tag, None
+        return 200, tag, body
+
+
+with tempfile.TemporaryDirectory() as tmp:
+    store = timeline.Cache(tmp)
+    path = "repos/o/r/issues?state=all"
+    server = StubListingApi([[{"n": 1}, {"n": 2}], [{"n": 3}]])
+    cold = timeline.read_listing(server, store, path)
+    check(cold == [{"n": 1}, {"n": 2}, {"n": 3}], f"#92 a cold listing reads every page: {cold}")
+    check(server.log == [(1, None), (2, None), (3, None)], f"#92 a cold listing sends no If-None-Match: {server.log}")
+    check(store.has(timeline.listing_key("github", path)) and timeline.listing_key("github", path).startswith("etag/"),
+          "#92 the ETags and pages are stored under a key that starts etag/")
+    check(store.hits == 0, "#92 a stored ETag is not a cached read")
+
+    server.log = []
+    warm = timeline.read_listing(server, store, path)
+    check(warm == cold, f"#92 a 304 reuses the stored body: {warm}")
+    check(len(server.log) == 3 and all(etag for _, etag in server.log), f"#92 a warm listing sends If-None-Match on every page: {server.log}")
+    check(store.hits == 0, f"#92 a 304 is not counted as a cached read: {store.hits}")
+
+    # A change on page 2: pages 1 and 2 were answered, then the whole listing is read again from page 1.
+    server.pages = [[{"n": 1}, {"n": 2}], [{"n": 3}, {"n": 4}]]
+    server.log = []
+    moved = timeline.read_listing(server, store, path)
+    check(moved == [{"n": 1}, {"n": 2}, {"n": 3}, {"n": 4}], f"#92 a changed page gives the new listing: {moved}")
+    check([n for n, _ in server.log] == [1, 2, 1, 2, 3] and [e for _, e in server.log[2:]] == [None, None, None],
+          f"#92 a changed page re-reads the whole listing without If-None-Match: {server.log}")
+    server.log = []
+    check(timeline.read_listing(server, store, path) == moved and all(e for _, e in server.log),
+          f"#92 the re-read listing is stored again: {server.log}")
+
+    # A change on page 1: the walk goes on from there without If-None-Match; nothing is read twice.
+    server.pages = [[{"n": 0}], [{"n": 3}, {"n": 4}]]
+    server.log = []
+    first = timeline.read_listing(server, store, path)
+    check(first == [{"n": 0}, {"n": 3}, {"n": 4}] and [n for n, _ in server.log] == [1, 2, 3] and server.log[1][1] is None,
+          f"#92 a changed first page reads the rest without If-None-Match: {first} {server.log}")
+
+    # keep_going stops the walk at the same page on a warm read.
+    sorted_path = "repos/o/r/pulls?state=all"
+    server = StubListingApi([[{"u": "b"}], [{"u": "a"}], []])
+    keep = lambda page: page[0]["u"] >= "c"  # noqa: E731
+    check(timeline.read_listing(server, store, sorted_path, keep) == [{"u": "b"}] and len(server.log) == 1,
+          f"#92 keep_going ends a cold walk: {server.log}")
+    server.log = []
+    check(timeline.read_listing(server, store, sorted_path, keep) == [{"u": "b"}] and len(server.log) == 1 and server.log[0][1],
+          f"#92 keep_going ends a warm walk: {server.log}")
+
+    # A page without an ETag leaves the listing unstored, so the next read sends no If-None-Match.
+    bare_path = "repos/o/r/issues?state=all&labels=x"
+    server = StubListingApi([[{"n": 1}]], etags=False)
+    timeline.read_listing(server, store, bare_path)
+    check(not store.has(timeline.listing_key("github", bare_path)), "#92 a listing with a page that has no ETag is not stored")
+
+    # A cache with reads off (--refresh-cache) sends no If-None-Match and stores the listing again.
+    server = StubListingApi([[{"n": 1}]])
+    timeline.read_listing(server, timeline.Cache(tmp, read=False), "repos/o/r/issues?x=1")
+    check(all(e is None for _, e in server.log), f"#92 --refresh-cache sends no If-None-Match: {server.log}")
+    check(store.has(timeline.listing_key("github", "repos/o/r/issues?x=1")), "#92 --refresh-cache stores the ETags")
+
+    # A bad entry is a miss, not a failure.
+    bad_key = timeline.listing_key("github", path)
+    with open(store.path_of(bad_key), "w") as handle:
+        json.dump({"cache_version": timeline.CACHE_VERSION, "key": bad_key, "value": {"pages": 3}}, handle)
+    server = StubListingApi([[{"n": 1}]])
+    check(timeline.read_listing(server, store, path) == [{"n": 1}] and server.log[0][1] is None, "#92 a bad etag entry is a miss")
+
+    # Api.conditional against a fake gh: a 304 is exit 1 with `gh: HTTP 304`, and is no error.
+    fake_gh = os.path.join(tmp, "gh304")
+    with open(fake_gh, "w") as handle:
+        handle.write("#!/bin/sh\n"
+                     "echo \"$@\" >> \"$0.calls\"\n"
+                     "case \"$*\" in\n"
+                     "  *If-None-Match*) printf 'HTTP/2.0 304 Not Modified\\nEtag: \"e1\"\\r\\n\\r\\n'; echo 'gh: HTTP 304' >&2; exit 1;;\n"
+                     "  *fail*) echo 'gh: HTTP 500: boom' >&2; exit 1;;\n"
+                     "  *--include*) printf 'HTTP/2.0 200 OK\\nEtag: W/\"e1\"\\r\\nLink: <x>\\r\\n\\r\\n[{\"n\": 1}]';;\n"
+                     "  *) printf '[{\"n\": 2}]';;\n"
+                     "esac\n")
+    os.chmod(fake_gh, 0o755)
+    saved = os.environ.get("IFW_GH")
+    os.environ["IFW_GH"] = fake_gh
+    try:
+        api = timeline.Api("github")
+        check(api.conditional("repos/o/r/issues?page=1") == (200, 'W/"e1"', [{"n": 1}]), "#92 a 200 gives its ETag and body")
+        check(api.conditional("repos/o/r/issues?page=1", 'W/"e1"') == (304, '"e1"', None), "#92 a 304 is no error")
+        check(api.sent == 2 and api.not_modified == 1, f"#92 a 304 counts as a sent call and as not modified: {api.sent} {api.not_modified}")
+        try:
+            api.conditional("repos/o/r/fail?page=1")
+            check(False, "#92 a failed conditional read falls back to the plain read")
+        except timeline.FetchError as exc:
+            check("boom" in str(exc), f"#92 a failed conditional read falls back to the plain read and its error: {exc}")
+        calls_log = open(fake_gh + ".calls").read().splitlines()
+        check(calls_log[0].startswith("api --include repos/") and "If-None-Match: W/\"e1\"" in calls_log[1],
+              f"#92 the request uses --include and -H If-None-Match: {calls_log}")
+        check(sum("If-None-Match" in c for c in calls_log) == 1, f"#92 a 304 is not retried: {calls_log}")
+        check(calls_log[-1] == "api repos/o/r/fail?page=1", f"#92 the fallback is the plain read: {calls_log}")
+    finally:
+        if saved is None:
+            os.environ.pop("IFW_GH")
+        else:
+            os.environ["IFW_GH"] = saved
+
+    # End to end: a warm collect with nothing changed sends only conditional listing reads, every one
+    # answered 304, and writes the same document.
+    fake = os.path.join(tmp, "fake.py")
+    with open(fake, "w") as handle:
+        handle.write(FAKE_SRC)
+    target = os.path.join(tmp, "fake")
+    with open(target, "w") as handle:
+        handle.write(f'#!/bin/sh\nexec "{sys.executable}" "{fake}" "$@"\n')
+    os.chmod(target, 0o755)
+    serial = iter(range(10 ** 6))
+
+    def etag_run(forge_type, story, *flags, command="collect"):
+        n = next(serial)
+        data = os.path.join(tmp, f"data-{n}.json")
+        with open(data, "w") as handle:
+            json.dump(story, handle)
+        counter = os.path.join(tmp, f"count-{n}")
+        statuses = os.path.join(tmp, f"status-{n}")
+        env = {"IFW_GH" if forge_type == "github" else "IFW_TEA": count_gh.wrap(counter, target), "FAKE_DATA": data,
+               "FAKE_STATUS_LOG": statuses, "IFW_WATCH_FAST": "1"}
+        proc = run([command, "--forge", forge_type, "--repo", "o/r", "--diff-source", "api", *flags], env)
+        got = open(statuses).read().split() if os.path.exists(statuses) else []
+        # The quota reads (#93) cost no quota and are not in the summary's count.
+        return proc, [c for c in count_gh.calls(counter) if not c.endswith(" rate_limit")], got
+
+    story = cache_story("github")
+    cache = os.path.join(tmp, "cache-github")
+    cold, cold_calls, cold_status = etag_run("github", story, "--cache-dir", cache)
+    plain, plain_calls, _ = etag_run("github", story, "--no-cache")
+    warm, warm_calls, warm_status = etag_run("github", story, "--cache-dir", cache)
+    listings = [c for c in cold_calls if re.search(LISTING, c)]
+    check(cold.returncode == warm.returncode == plain.returncode == 0, f"#92 the collects exit 0: {warm.stderr[:300]}")
+    check(listings and all("--include" in c and "If-None-Match" not in c for c in listings),
+          f"#92 a cold collect reads the listings with --include and no If-None-Match: {listings}")
+    check(len(warm_calls) == len(listings) and all("If-None-Match" in c for c in warm_calls),
+          f"#92 a warm collect sends If-None-Match on every listing page and nothing else: {warm_calls}")
+    check(warm_status == ["304"] * len(warm_calls), f"#92 every warm call is answered 304, so none is rate-limited: {warm_status}")
+    check(warm.stdout != "" and warm.stdout == cold.stdout == plain.stdout, "#92 the document after 304s is byte-identical")
+    check(not any("--include" in c or "If-None-Match" in c for c in plain_calls), f"#92 --no-cache sends no If-None-Match: {plain_calls[:3]}")
+
+    # A changed issue listing: that listing is read again in full; the others stay 304.
+    changed = cache_story("github")
+    changed["issues"][0]["issue"]["title"] = "A new title"
+    moved, moved_calls, moved_status = etag_run("github", changed, "--cache-dir", cache)
+    moved_plain, _, _ = etag_run("github", changed, "--no-cache")
+    check(moved.returncode == 0 and moved.stdout == moved_plain.stdout != cold.stdout, "#92 a changed listing reaches the document")
+    check("200" in moved_status and "304" in moved_status, f"#92 only the changed listing is answered 200: {moved_status}")
+
+    # The summary counts the 304s.
+    page = os.path.join(tmp, "warm.html")
+    snap, snap_calls, snap_status = etag_run("github", changed, "--cache-dir", cache, "--out", page, command="snapshot")
+    line = snap.stderr.strip().splitlines()[-1] if snap.stderr.strip() else ""
+    found = re.search(r"; (\d+) API calls? \((\d+) cached, (\d+) not modified\)$", line)
+    check(snap.returncode == 0 and found and int(found.group(1)) == len(snap_calls) and int(found.group(3)) == snap_status.count("304") > 0,
+          f"#92 the summary counts the not-modified calls: {line!r} {snap_status}")
+
+    # Gitea: no ETag in the API, so the listings are read plain on every collect.
+    gt_story = cache_story("gitea")
+    gt_cache = os.path.join(tmp, "cache-gitea")
+    etag_run("gitea", gt_story, "--cache-dir", gt_cache)
+    gt_warm, gt_calls, gt_status = etag_run("gitea", gt_story, "--cache-dir", gt_cache)
+    check(gt_warm.returncode == 0 and gt_calls and gt_status == [] and not any("--include" in c for c in gt_calls),
+          f"#92 gitea sends no conditional request: {gt_calls[:3]}")
+
+# ---------------------------------------------------------------- batch #94 gate fixes
+# The batch review and the dogfood run found these. Each block names its item of
+# https://github.com/Sniper7Kills-LLC/claude-plugins/issues/94#issuecomment-7029791565.
+
+
+def attempt(fn, *args, **kwargs):
+    """Return fn(*args, **kwargs), or the exception it raised, so a missing feature fails a check."""
+    try:
+        return fn(*args, **kwargs)
+    except Exception as exc:  # noqa: BLE001  a test must record the failure, not stop on it
+        return exc
+
+
+with tempfile.TemporaryDirectory() as tmp:
+    fake = os.path.join(tmp, "fake.py")
+    with open(fake, "w") as handle:
+        handle.write(FAKE_SRC)
+    target = os.path.join(tmp, "fake")
+    with open(target, "w") as handle:
+        handle.write(f'#!/bin/sh\nexec "{sys.executable}" "{fake}" "$@"\n')
+    os.chmod(target, 0o755)
+    serial = iter(range(10 ** 6))
+
+    def gate_run(story, *flags, command="collect", forge_type="github", env=None):
+        """Run one command against the fake. Return (process, the API calls, the 200/304 statuses)."""
+        n = next(serial)
+        data = os.path.join(tmp, f"data-{n}.json")
+        with open(data, "w") as handle:
+            json.dump(story, handle)
+        counter, statuses = os.path.join(tmp, f"count-{n}"), os.path.join(tmp, f"status-{n}")
+        full = {"IFW_GH" if forge_type == "github" else "IFW_TEA": count_gh.wrap(counter, target), "FAKE_DATA": data,
+                "FAKE_STATUS_LOG": statuses, "IFW_WATCH_FAST": "1", **(env or {})}
+        proc = run([command, "--forge", forge_type, "--repo", "o/r", "--diff-source", "api", *flags], full)
+        got = open(statuses).read().split() if os.path.exists(statuses) else []
+        return proc, [c for c in count_gh.calls(counter) if not c.endswith(" rate_limit")], got
+
+    # 1. A relative --since moves every second. The API query and the listing keys use the start of
+    # its UTC hour, so two collects a minute apart send the same query and get 304. The document
+    # still filters by the exact --since.
+    check(attempt(lambda: timeline.api_since("2026-06-01T10:59:59Z")) == "2026-06-01T10:00:00Z",
+          "#94-1 api_since rounds down to the start of the UTC hour")
+    check(attempt(lambda: timeline.api_since(None)) is None, "#94-1 api_since keeps no --since as none")
+    story = cache_story("github")
+    cache = os.path.join(tmp, "since-cache")
+    first, first_calls, _ = gate_run(story, "--cache-dir", cache, "--since", "2026-06-01T10:05:00Z")
+    second, second_calls, second_status = gate_run(story, "--cache-dir", cache, "--since", "2026-06-01T10:06:00Z")
+    plain, _, _ = gate_run(story, "--no-cache", "--since", "2026-06-01T10:06:00Z")
+    since_calls = [c for c in first_calls + second_calls if "since=" in c]
+    check(since_calls and all("since=2026-06-01T10%3A00%3A00Z" in c for c in since_calls),
+          f"#94-1 the API query sends the start of the hour: {since_calls[:2]}")
+    check(second.returncode == 0 and second_status and second_status == ["304"] * len(second_calls),
+          f"#94-1 a collect a minute later gets 304 on every listing page: {second_status}")
+    check(second.stdout != "" and second.stdout == plain.stdout, "#94-1 the document equals --no-cache")
+    if second.returncode == 0:
+        check(json.loads(second.stdout)["range"]["since"] == "2026-06-01T10:06:00Z",
+              "#94-1 the document keeps the exact --since")
+    # An issue updated between the start of the hour and the exact --since is not read.
+    early = cache_story("github")
+    early["issues"][0]["issue"]["updated_at"] = "2026-06-01T10:02:00Z"
+    skip_n = early["issues"][0]["issue"]["number"]
+    labelled = any(l["name"] in ("type:batch", "type:epic", "flow:status") for l in early["issues"][0]["issue"]["labels"])
+    _, early_calls, _ = gate_run(early, "--no-cache", "--since", "2026-06-01T10:06:00Z")
+    check(labelled or not any(f"/issues/{skip_n}/timeline" in c for c in early_calls),
+          f"#94-1 the client side filters the listing by the exact --since: {early_calls}")
+
+    # 2. A CI-run list that holds a run still going is not stored, so the next collect reads it again.
+    going = cache_story("github", extra_run=True)
+    going["pulls"][0]["runs"][-1]["run"].update(status="in_progress", conclusion=None)
+    done = cache_story("github", extra_run=True)
+    runs_cache = os.path.join(tmp, "runs-cache")
+    gate_run(going, "--cache-dir", runs_cache)
+    later, later_calls, _ = gate_run(done, "--cache-dir", runs_cache)
+    later_plain, _, _ = gate_run(done, "--no-cache")
+    check(any("head_sha=c100" in c for c in later_calls), f"#94-2 a run list with a run in progress is read again: {others(later_calls)}")
+    check(later.returncode == 0 and later.stdout == later_plain.stdout, "#94-2 the ended run reaches the document")
+    _, settled_calls, _ = gate_run(done, "--cache-dir", runs_cache)
+    check(not any("head_sha=c100" in c for c in settled_calls), f"#94-2 a run list of ended runs is stored: {others(settled_calls)}")
+
+    # 3a. Under auto, the git fetch runs before the wave-3 check, and the estimate counts the
+    # commits that git still lacks.
+    first_wave = {"commits": [{"sha": "c100"}, {"sha": "c200"}], "reviews": [],
+                  "runs": [{"id": 1, "conclusion": "failure", "updated_at": OLD}]}
+    est = timeline.Cache(os.path.join(tmp, "est"))
+    est.put(timeline.commit_key("github", "c200"), [])
+    pr60 = story2("github")["pulls"][0]["pr"]
+    check(attempt(timeline.followup_estimate, "github", [("o/r", pr60)], [first_wave], est, "auto", git_has=set()) == 2,
+          "#94-3a auto counts an uncached commit that git lacks")
+    check(attempt(timeline.followup_estimate, "github", [("o/r", pr60)], [first_wave], est, "auto", git_has={"c100"}) == 1,
+          "#94-3a auto counts no commit that git has")
+    check(attempt(timeline.followup_estimate, "github", [("o/r", pr60)], [first_wave], est, "git", git_has=set()) == 1,
+          "#94-3a git counts no commit: a commit git lacks fails the collect")
+    order_story = cache_story("github")
+    data = os.path.join(tmp, "order.json")
+    with open(data, "w") as handle:
+        json.dump(order_story, handle)
+    saved_env = {k: os.environ.get(k) for k in ("IFW_GH", "FAKE_DATA")}
+    os.environ.update({"IFW_GH": target, "FAKE_DATA": data})
+    steps, saved_fetch, saved_check = [], timeline.GitDiffs.fetch, timeline.QuotaGuard.check
+    timeline.GitDiffs.fetch = lambda self, repo, numbers: steps.append(("fetch", None)) or "fatal: no such remote 'x'"
+    timeline.QuotaGuard.check = lambda self, estimate: steps.append(("check", estimate)) or saved_check(self, estimate)
+    note = io.StringIO()
+    try:
+        with contextlib.redirect_stderr(note):
+            attempt(timeline.fetch_bundle, "github", "o/r", repo_path=HERMETIC, jobs=1, diff_source="auto")
+    finally:
+        timeline.GitDiffs.fetch, timeline.QuotaGuard.check = saved_fetch, saved_check
+        for k, v in saved_env.items():
+            if v is None:
+                os.environ.pop(k, None)
+            else:
+                os.environ[k] = v
+    commits = sum(len(e["commits"]) for e in order_story["pulls"])
+    failed = sum(1 for e in order_story["pulls"] for r in e["runs"] if r["run"]["conclusion"] in timeline.RUN_FAILED)
+    check([s for s, _ in steps] == ["check", "check", "fetch", "check"], f"#94-3a the fetch runs before the wave-3 check: {steps}")
+    check(steps[-1:] == [("check", commits + failed)], f"#94-3a the wave-3 estimate counts the {commits} commits git lacks: {steps}")
+    # 4. The fallback note names git's first error line.
+    check("git fetch: fatal: no such remote 'x'" in note.getvalue(), f"#94-4 the fallback note names the git error: {note.getvalue()!r}")
+
+    # 3b. The refusal says the estimate covers the next stage only.
+    class QuotaApi:
+        sent = 0
+
+        def quota(self):
+            return {"limit": 5000, "remaining": 10, "reset": int(time.time()) + 600}
+    refused = attempt(timeline.QuotaGuard(QuotaApi(), 50).check, 12)
+    text = str(refused)
+    check(isinstance(refused, timeline.QuotaRefused) and "next stage" in text and "later stages" in text
+          and all(w in text for w in ("12 API calls", "10 that remain", "--budget 50", "resets at", "--since")),
+          f"#94-3b the refusal names the next stage and says later stages are checked as they come: {text!r}")
+
+    # Nit: a failed quota read after the run gives no Q; the collect still succeeds.
+    flaky = os.path.join(tmp, "flaky.py")
+    with open(flaky, "w") as handle:
+        handle.write(r"""
+import json, os, subprocess, sys, time
+if sys.argv[-1] == "rate_limit":
+    mark = os.path.join(os.environ["FAKE_STATE"], "read")
+    if os.path.exists(mark):
+        sys.stderr.write("gh: HTTP 502: Bad Gateway\n"); sys.exit(1)
+    open(mark, "w").close()
+    core = {"limit": 5000, "remaining": 5000, "reset": int(time.time()) + 600}
+    print(json.dumps({"resources": {"core": core}})); sys.exit(0)
+sys.exit(subprocess.call([sys.executable, os.environ["FAKE_INNER"], *sys.argv[1:]]))
+""")
+    flaky_gh = os.path.join(tmp, "flaky")
+    with open(flaky_gh, "w") as handle:
+        handle.write(f'#!/bin/sh\nexec "{sys.executable}" "{flaky}" "$@"\n')
+    os.chmod(flaky_gh, 0o755)
+    state = os.path.join(tmp, "flaky-state")
+    os.makedirs(state)
+    with open(data, "w") as handle:
+        json.dump(cache_story("github"), handle)
+    lost_q = run(["snapshot", "--forge", "github", "--repo", "o/r", "--diff-source", "api", "--out", os.path.join(tmp, "q.html")],
+                 {"IFW_GH": flaky_gh, "FAKE_DATA": data, "FAKE_STATE": state, "FAKE_INNER": fake})
+    check(lost_q.returncode == 0 and "remaining" not in (lost_q.stderr.strip().splitlines() or [""])[-1],
+          f"#94 nit: a failed final quota read leaves Q out and exits 0: {lost_q.returncode} {lost_q.stderr[-300:]!r}")
+
+    # Nit: watch --refresh-cache refreshes on the first cycle only.
+    refresh_cache = os.path.join(tmp, "refresh-cache")
+    watched, watch_calls, _ = gate_run(cache_story("github"), "--cache-dir", refresh_cache, "--refresh-cache",
+                                       "--out", os.path.join(tmp, "w.html"), "--interval", "0.3", "--max-minutes", "0.12",
+                                       command="watch")
+    cycles = sum(1 for line in watched.stderr.splitlines() if line.startswith("wrote "))
+    reads = [c for c in watch_calls if "/issues/51/timeline" in c]
+    check(watched.returncode == 0 and cycles >= 2 and len(reads) == 1,
+          f"#94 nit: watch --refresh-cache refreshes on the first cycle only: {cycles} cycles, {len(reads)} reads")
+
+# Nit: Cache.peek reads an entry without counting a hit.
+with tempfile.TemporaryDirectory() as tmp:
+    store = timeline.Cache(tmp)
+    store.put("k", [1])
+    check(attempt(lambda: store.peek("k")) == [1] and store.hits == 0, "#94 nit: Cache.peek reads without a hit")
+
+
+# 4. The git fetch: a timeout, no prompt, SSH BatchMode, and a per-PR retry only for a missing ref.
+class GitStub:
+    """Stands in for subprocess.run. `fetch` answers with `reply`: (code, stderr) or an exception."""
+
+    def __init__(self, reply):
+        self.reply, self.fetches = reply, []
+
+    def __call__(self, args, **kwargs):
+        if "fetch" in args:
+            self.fetches.append((args, kwargs))
+            if isinstance(self.reply, BaseException):
+                raise self.reply
+            code, err = self.reply
+            return subprocess.CompletedProcess(args, code, b"", err.encode())
+        if "--get-regexp" in args:
+            return subprocess.CompletedProcess(args, 0, b"remote.fork.url /srv/o/r.git\n", b"")
+        return subprocess.CompletedProcess(args, 1, b"", b"")
+
+
+def stub_fetch(reply, numbers, ssh=None):
+    stub, saved_run, saved_ssh = GitStub(reply), subprocess.run, os.environ.get("GIT_SSH_COMMAND")
+    os.environ.pop("GIT_SSH_COMMAND", None)
+    if ssh is not None:
+        os.environ["GIT_SSH_COMMAND"] = ssh
+    subprocess.run = stub
+    try:
+        result = attempt(timeline.GitDiffs("/nowhere").fetch, "o/r", numbers)
+    finally:
+        subprocess.run = saved_run
+        os.environ.pop("GIT_SSH_COMMAND", None)
+        if saved_ssh is not None:
+            os.environ["GIT_SSH_COMMAND"] = saved_ssh
+    return result, stub.fetches
+
+
+result, fetches = stub_fetch((0, ""), [1, 2], ssh="ssh -i key")
+kw = fetches[0][1] if fetches else {}
+env = kw.get("env") or {}
+check(kw.get("timeout") == 60, f"#94-4 the fetch has a 60 s timeout: {kw.get('timeout')}")
+check(kw.get("stdin") is subprocess.DEVNULL, f"#94-4 the fetch reads no stdin: {kw.get('stdin')}")
+check(env.get("GIT_TERMINAL_PROMPT") == "0", "#94-4 the fetch asks for no password")
+check(env.get("GIT_SSH_COMMAND") == "ssh -i key -o BatchMode=yes", f"#94-4 BatchMode is added to GIT_SSH_COMMAND: {env.get('GIT_SSH_COMMAND')!r}")
+check(result is None, f"#94-4 a fetch that works returns no error: {result!r}")
+_, fetches = stub_fetch((0, ""), [1])
+check(fetches and (fetches[0][1].get("env") or {}).get("GIT_SSH_COMMAND") == "ssh -o BatchMode=yes",
+      "#94-4 with no GIT_SSH_COMMAND, the fetch uses ssh -o BatchMode=yes")
+result, fetches = stub_fetch((128, "warning: x\nfatal: Authentication failed for 'https://host/o/r'\n"), [1, 2, 3])
+check(len(fetches) == 1, f"#94-4 an auth failure runs no per-PR retry: {len(fetches)} fetches")
+check(result == "fatal: Authentication failed for 'https://host/o/r'", f"#94-4 the fetch returns git's first error line: {result!r}")
+result, fetches = stub_fetch((128, "fatal: couldn't find remote ref refs/pull/2/head\n"), [1, 2, 3])
+check(len(fetches) == 4, f"#94-4 a missing ref runs the per-PR retry: {len(fetches)} fetches")
+result, fetches = stub_fetch(subprocess.TimeoutExpired(["git"], 60), [1, 2])
+check(len(fetches) == 1 and isinstance(result, str) and "timed out" in result, f"#94-4 a timeout fails at once: {result!r}")
+
+# 5. gc: cache files not touched for 30 days, .tmp files older than 1 hour, and the refs of PRs
+# the cache shows closed for more than 30 days. gc --all removes the whole cache and every ref.
+with tempfile.TemporaryDirectory() as tmp:
+    repo, root = os.path.join(tmp, "repo"), os.path.join(tmp, "cache")
+    git(tmp, "init", "-q", "-b", "main", repo)
+    put(repo, "f.txt", "x\n")
+    git(repo, "add", "-A")
+    git(repo, "commit", "-q", "-m", "base")
+    head = git(repo, "rev-parse", "HEAD").strip()
+    for n in (1, 2, 3):
+        git(repo, "update-ref", f"refs/issue-flow/pull/o/r/{n}", head)
+    store = timeline.Cache(root)
+    now = datetime.now(timezone.utc)
+    stamp = lambda days: (now - timedelta(days=days)).strftime("%Y-%m-%dT%H:%M:%SZ")  # noqa: E731
+    # PR 1 closed 40 days ago, PR 2 closed 5 days ago, PR 3 has no record.
+    for n, closed in ((1, stamp(40)), (2, stamp(5))):
+        store.put(f"github/o/r/pull/{n}/{closed}/abc/state", {"state": "closed", "closed_at": closed, "updated_at": closed})
+    store.put("fresh", [1])
+    store.put("stale", [2])
+    old = time.time() - 31 * 86400
+    for key in ("stale", "github/o/r/pull/1/" + stamp(40) + "/abc/state"):
+        os.utime(store.path_of(key), (old, old))
+    folder = os.path.dirname(store.path_of("fresh"))
+    old_tmp, new_tmp = os.path.join(folder, ".old.tmp"), os.path.join(folder, ".new.tmp")
+    for p in (old_tmp, new_tmp):
+        open(p, "w").close()
+    os.utime(old_tmp, (time.time() - 7200,) * 2)
+    keep = os.path.join(root, "not-a-cache-file.txt")
+    open(keep, "w").close()
+    # A cache read touches the entry, so an entry in use is never "not touched for 30 days".
+    store.put("used", [3])
+    os.utime(store.path_of("used"), (old, old))
+    store.get("used")
+
+    proc = run(["gc", "--cache-dir", root, "--repo-path", repo])
+    refs = git(repo, "for-each-ref", "--format=%(refname)", "refs/issue-flow/").split()
+    check(proc.returncode == 0, f"#94-5 gc exits 0: {proc.returncode} {proc.stderr[:300]}")
+    check(not os.path.exists(store.path_of("stale")) and store.has("fresh") and store.has("used"),
+          "#94-5 gc removes a cache file not touched for 30 days and keeps the others")
+    check(not os.path.exists(old_tmp) and os.path.exists(new_tmp), "#94-5 gc removes a .tmp file older than 1 hour only")
+    check(refs == ["refs/issue-flow/pull/o/r/2", "refs/issue-flow/pull/o/r/3"],
+          f"#94-5 gc removes the ref of a PR closed more than 30 days ago: {refs}")
+    check(os.path.exists(keep), "#94-5 gc leaves a file that is not a cache file")
+    check("gc:" in proc.stderr, f"#94-5 gc prints one summary line: {proc.stderr!r}")
+    # Dogfood round 2, item 2: gc names each ref it removes, and lists the files with --verbose only.
+    check(proc.stdout.splitlines() == ["ref refs/issue-flow/pull/o/r/1"],
+          f"#94-r2-2 gc prints one `ref` line for each ref it removes, and no file line: {proc.stdout!r}")
+    check("1 ref (refs/issue-flow/pull/o/r/1)" in proc.stderr and "--verbose" in proc.stderr,
+          f"#94-r2-2 the gc summary names the ref and tells how to list the files: {proc.stderr!r}")
+    refs_text = getattr(timeline, "_gc_refs_text", lambda refs: None)  # a missing helper fails the check, not the run
+    check(refs_text([f"refs/issue-flow/pull/o/r/{n}" for n in range(5)])
+          == "5 refs (refs/issue-flow/pull/o/r/0, refs/issue-flow/pull/o/r/1, refs/issue-flow/pull/o/r/2 "
+             "and 2 more: the `ref` lines on stdout name them all)",
+          f"#94-r2-2 the gc summary names 3 refs and counts the rest: {refs_text(['a'] * 5)!r}")
+
+    dry = run(["gc", "--all", "--dry-run", "--cache-dir", root, "--repo-path", repo])
+    check(dry.returncode == 0 and store.has("fresh") and len(git(repo, "for-each-ref", "refs/issue-flow/").split("\n")) == 3,
+          f"#94-5 gc --all --dry-run removes nothing: {dry.stderr[:300]}")
+    check("refs/issue-flow/pull/o/r/2" in dry.stdout and store.path_of("fresh") in dry.stdout,
+          f"#94-5 gc --all --dry-run lists the refs and the cache files: {dry.stdout[:300]!r}")
+    kinds = [line.split(" ", 1)[0] for line in dry.stdout.splitlines()]
+    check(kinds == sorted(kinds, key=lambda k: k != "ref") and kinds.count("ref") == 2,
+          f"#94-r2-2 gc --dry-run prints the `ref` lines first: {kinds}")
+    expected = dry.stdout.splitlines()
+    gone = run(["gc", "--all", "--verbose", "--cache-dir", root, "--repo-path", repo])
+    check(gone.stdout.splitlines() == expected,
+          f"#94-r2-2 gc --verbose prints the same full list as --dry-run: {gone.stdout[:300]!r}")
+    left = [n for _, _, names in os.walk(root) for n in names]
+    check(gone.returncode == 0 and left == ["not-a-cache-file.txt"], f"#94-5 gc --all removes the whole cache: {left}")
+    check(git(repo, "for-each-ref", "refs/issue-flow/") == "", "#94-5 gc --all removes every refs/issue-flow/ ref")
+    check(git(repo, "rev-parse", "main").strip() == head, "#94-5 gc leaves the branches alone")
+    check(run(["gc", "--repo-path", os.path.join(tmp, "nowhere")]).returncode == 2, "#94-5 gc outside a git repository with no --cache-dir exits 2")
+
+    # snapshot runs a light gc at the end; it removes a stale entry of its own cache.
+    snap_cache = os.path.join(tmp, "snap-cache")
+    fake = os.path.join(tmp, "fake.py")
+    with open(fake, "w") as handle:
+        handle.write(FAKE_SRC)
+    fake_target = os.path.join(tmp, "fake")
+    with open(fake_target, "w") as handle:
+        handle.write(f'#!/bin/sh\nexec "{sys.executable}" "{fake}" "$@"\n')
+    os.chmod(fake_target, 0o755)
+    timeline.Cache(snap_cache).put("stale", [1])
+    stale_path = timeline.Cache(snap_cache).path_of("stale")
+    os.utime(stale_path, (old, old))
+    data = os.path.join(tmp, "story.json")
+    with open(data, "w") as handle:
+        json.dump(cache_story("github"), handle)
+    snap = run(["snapshot", "--forge", "github", "--repo", "o/r", "--diff-source", "api", "--cache-dir", snap_cache,
+                "--repo-path", repo, "--out", os.path.join(tmp, "s.html")], {"IFW_GH": count_gh.wrap(os.path.join(tmp, "c"), fake_target),
+                                                                                "FAKE_DATA": data})
+    check(snap.returncode == 0 and not os.path.exists(stale_path), f"#94-5 snapshot runs a light gc: {snap.stderr[-300:]!r}")
+    check(snap.returncode == 0 and SUMMARY.search(snap.stderr.strip().splitlines()[-1]),
+          "#94-5 the summary stays the last stderr line of snapshot")
+    # A snapshot records each PR's state, so gc can tell when a PR closed.
+    keys = [json.load(open(os.path.join(d, n)))["key"] for d, _, names in os.walk(snap_cache) for n in names if n.endswith(".json")]
+    check(any(re.fullmatch(r"github/o/r/pull/\d+/[^/]+/[^/]+/state", k) for k in keys),
+          f"#94-5 snapshot records each PR's state for gc: {[k for k in keys if 'state' in k]}")
 
 if failures:
     for failure in failures:
