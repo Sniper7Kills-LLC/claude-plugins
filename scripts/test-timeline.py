@@ -1575,6 +1575,244 @@ with tempfile.TemporaryDirectory() as tmp:
         proc, _, _ = jobs_run(8, {"FAKE_LIMIT": "broken"}, "collect", out)
         check(proc.returncode == 2 and not os.path.exists(out) and proc.stdout == "", f"{forge_type} a failed read under --jobs 8 exits 2 with no document: {proc.returncode}")
 
+# ---------------------------------------------------------------- commit diffs from local git (#90)
+# A fixture checkout has a remote whose URL ends in o/r. A bare repository serves refs/pull/7/head,
+# a tag and a branch that the checkout has never fetched. A fake gh/tea serves PR 7 with the
+# hand-written API payloads of its two commits, so the git-built document can be held against
+# the API-built one. scripts/count-gh.py counts the API calls.
+cspec = importlib.util.spec_from_file_location("count_gh", os.path.join(ROOT, "scripts", "count-gh.py"))
+count_gh = importlib.util.module_from_spec(cspec)
+cspec.loader.exec_module(count_gh)
+
+GIT_ENV = {**os.environ, "GIT_CONFIG_GLOBAL": os.devnull, "GIT_CONFIG_NOSYSTEM": "1",
+           "GIT_AUTHOR_NAME": "Dev", "GIT_AUTHOR_EMAIL": "dev@x", "GIT_COMMITTER_NAME": "Dev",
+           "GIT_COMMITTER_EMAIL": "dev@x", "GIT_AUTHOR_DATE": "2026-06-01T09:00:00Z",
+           "GIT_COMMITTER_DATE": "2026-06-01T09:00:00Z"}
+
+
+def git(cwd, *args):
+    return subprocess.run(["git", "-C", cwd, *args], check=True, capture_output=True, text=True, env=GIT_ENV).stdout
+
+
+def put(root, name, data):
+    with open(os.path.join(root, name), "wb") as handle:
+        handle.write(data if isinstance(data, bytes) else data.encode())
+
+
+def repo_state(path):
+    """Every ref outside refs/issue-flow/, HEAD, the index and work-tree status, and FETCH_HEAD."""
+    refs = [r for r in git(path, "for-each-ref", "--format=%(refname) %(objectname)").splitlines()
+            if not r.startswith("refs/issue-flow/")]
+    return {"refs": refs, "head": git(path, "rev-parse", "HEAD"), "status": git(path, "status", "--porcelain", "--ignored"),
+            "fetch_head": os.path.exists(os.path.join(path, ".git", "FETCH_HEAD"))}
+
+
+GIT_FAKE = r'''
+import json, os, re, sys
+path = sys.argv[-1]
+data = json.load(open(os.environ["FAKE_DATA"]))
+if re.search(r"[?&]page=([2-9]|\d\d)", path):
+    print("[]"); sys.exit(0)
+m = re.search(r"/pulls/7/commits", path)
+if m:
+    print(json.dumps(data["commits"])); sys.exit(0)
+m = re.search(r"/git/commits/([0-9a-f]+)\.diff$", path)
+if m:
+    sys.stdout.write(data["diffs"][m.group(1)]); sys.exit(0)
+m = re.search(r"/commits/([0-9a-f]+)$", path)
+if m:
+    if m.group(1) not in data["files"]:
+        print(json.dumps({"message": "Not Found"})); sys.exit(1)
+    item = next(c for c in data["commits"] if c["sha"] == m.group(1))
+    print(json.dumps(dict(item, files=data["files"][m.group(1)]))); sys.exit(0)
+if re.search(r"/pulls\?", path):
+    print(json.dumps([data["pr"]])); sys.exit(0)
+print("[]")
+'''
+
+with tempfile.TemporaryDirectory() as tmp:
+    src, co, bare = (os.path.join(tmp, d) for d in ("src", "co", os.path.join("srv", "o", "r.git")))
+    os.makedirs(src)
+    git(tmp, "init", "-q", "-b", "main", src)
+    git(tmp, "init", "-q", "--bare", "-b", "main", bare)
+    put(src, "a.py", "old\n")
+    put(src, "gone.txt", "bye\n")
+    put(src, "move.txt", "".join(f"line {i}\n" for i in range(20)))
+    put(src, "bin.dat", bytes(range(256)))
+    put(src, "gap.txt", "".join(f"g {i}\n" for i in range(20)))
+    git(src, "add", "-A")
+    git(src, "commit", "-q", "-m", "base")
+    git(src, "push", "-q", bare, "main")
+    git(tmp, "clone", "-q", "-o", "fork", bare, co)
+    git(co, "remote", "add", "other", os.path.join(tmp, "srv", "o", "elsewhere.git"))
+    put(co, "untracked.txt", "keep me\n")
+    put(src, "a.py", "new\nnewer\n")
+    put(src, "big.txt", "".join(f"row {i}\n" for i in range(500)))
+    put(src, "wide.txt", "y" * 40000 + "\n")
+    os.unlink(os.path.join(src, "move.txt"))
+    put(src, "moved.txt", "".join(f"line {i}\n" for i in range(19)) + "LINE 19\n")
+    put(src, "bin.dat", bytes(reversed(range(256))))
+    # Two changes one line apart beyond their context: GitHub joins them into one hunk.
+    put(src, "gap.txt", "".join(f"{'G' if i in (3, 11) else 'g'} {i}\n" for i in range(20)))
+    git(src, "add", "-A")
+    git(src, "commit", "-q", "-m", "change files\n\nChange: feature\nWhy: Fixture.")
+    c1 = git(src, "rev-parse", "HEAD").strip()
+    os.unlink(os.path.join(src, "gone.txt"))
+    put(src, "sp ace.txt", "tail")
+    git(src, "add", "-A")
+    git(src, "commit", "-q", "-m", "drop a file")
+    c2 = git(src, "rev-parse", "HEAD").strip()
+    git(src, "push", "-q", bare, f"{c2}:refs/pull/7/head", f"{c2}:refs/heads/feature", f"{c2}:refs/tags/v1")
+    base_sha = git(src, "rev-parse", "HEAD~2").strip()
+
+    # The payloads GitHub's `GET /repos/{o}/{r}/commits/{sha}` gives for these commits, written by hand.
+    api_files = {
+        c1: [{"filename": "a.py", "status": "modified", "additions": 2, "deletions": 1, "changes": 3,
+              "patch": "@@ -1 +1,2 @@\n-old\n+new\n+newer"},
+             {"filename": "big.txt", "status": "added", "additions": 500, "deletions": 0, "changes": 500,
+              "patch": "@@ -0,0 +1,500 @@\n" + "\n".join(f"+row {i}" for i in range(500))},
+             {"filename": "bin.dat", "status": "modified", "additions": 0, "deletions": 0, "changes": 0},
+             {"filename": "gap.txt", "status": "modified", "additions": 2, "deletions": 2, "changes": 4,
+              "patch": "@@ -1,15 +1,15 @@\n g 0\n g 1\n g 2\n-g 3\n+G 3\n" + "".join(f" g {i}\n" for i in range(4, 11))
+                       + "-g 11\n+G 11\n g 12\n g 13\n g 14"},
+             {"filename": "moved.txt", "previous_filename": "move.txt", "status": "renamed", "additions": 1,
+              "deletions": 1, "changes": 2, "patch": "@@ -17,4 +17,4 @@ def heading_github_found():\n line 16\n line 17\n line 18\n-line 19\n+LINE 19"},
+             {"filename": "wide.txt", "status": "added", "additions": 1, "deletions": 0, "changes": 1,
+              "patch": "@@ -0,0 +1 @@\n+" + "y" * 40000}],
+        c2: [{"filename": "gone.txt", "status": "removed", "additions": 0, "deletions": 1, "changes": 1,
+              "patch": "@@ -1 +0,0 @@\n-bye"},
+             {"filename": "sp ace.txt", "status": "added", "additions": 1, "deletions": 0, "changes": 1,
+              "patch": "@@ -0,0 +1 @@\n+tail\n\\ No newline at end of file"}],
+    }
+
+    def item(sha, message, parent):
+        return {"sha": sha, "html_url": f"https://x/commit/{sha}", "parents": [{"sha": parent}],
+                "commit": {"message": message, "author": {"name": "Dev", "date": "2026-06-01T09:00:00Z"},
+                           "committer": {"name": "Dev", "date": "2026-06-01T09:00:00Z"}}, "author": {"login": "dev"}}
+
+    commits = [item(c1, "change files\n\nChange: feature\nWhy: Fixture.", base_sha), item(c2, "drop a file", c1)]
+    pr7 = pr_raw(7, "Diff source", "issue/90-x", "batch/94-x", "2026-06-01T08:00:00Z")
+    fake = os.path.join(tmp, "git-fake.py")
+    with open(fake, "w") as handle:
+        handle.write(GIT_FAKE)
+    target = os.path.join(tmp, "git-fake")
+    with open(target, "w") as handle:
+        handle.write(f'#!/bin/sh\nexec "{sys.executable}" "{fake}" "$@"\n')
+    os.chmod(target, 0o755)
+
+    def fake_data(name, extra=()):
+        data = os.path.join(tmp, f"{name}.json")
+        with open(data, "w") as handle:
+            json.dump({"pr": pr7, "commits": commits + [c for c, _ in extra], "files": dict(api_files, **{c["sha"]: f for c, f in extra}),
+                       "diffs": {}}, handle)
+        return data
+
+    def live(name, diff_source, data, *extra, forge_type="github"):
+        counter = os.path.join(tmp, f"count-{name}")
+        wrapper = count_gh.wrap(counter, target)
+        args = ["collect", "--forge", forge_type, "--repo", "o/r", "--repo-path", co, *extra]
+        if diff_source:
+            args += ["--diff-source", diff_source]
+        proc = run(args, {"IFW_GH" if forge_type == "github" else "IFW_TEA": wrapper, "FAKE_DATA": data})
+        return proc, count_gh.calls(counter, r"/commits/[0-9a-f]{40}")
+
+    data = fake_data("plain")
+    before = repo_state(co)
+    check(subprocess.run(["git", "-C", co, "cat-file", "-e", c2], env=GIT_ENV, capture_output=True).returncode != 0,
+          "#90 the PR commits are not in the checkout before collect")
+
+    # 1. The fetch writes only under refs/issue-flow/, through the remote whose URL matches o/r.
+    proc, git_calls = live("git", None, data)
+    check(proc.returncode == 0, f"#90 auto collect exits 0: {proc.stderr[:300]}")
+    after = repo_state(co)
+    check(after == before, f"#90 the fetch leaves branches, tags, remote refs, HEAD, the work tree and FETCH_HEAD alone:\n{before}\n{after}")
+    check(git(co, "for-each-ref", "--format=%(refname) %(objectname)", "refs/issue-flow/") ==
+          f"refs/issue-flow/pull/o/r/7 {c2}\n", f"#90 the PR head lands in refs/issue-flow/pull/o/r/7: {git(co, 'for-each-ref', 'refs/issue-flow/')}")
+    check("v1" not in git(co, "tag", "--list"), "#90 the fetch takes no tags")
+
+    # 2. Files and patches from git equal the API-built ones, and no commit is read through the API.
+    api_proc, api_calls = live("api", "api", data)
+    check(api_proc.returncode == 0 and len(api_calls) == 2, f"#90 --diff-source api reads each commit through the API: {api_calls} {api_proc.stderr[:300]}")
+    check(git_calls == [], f"#90 the git source makes no commit API call: {git_calls}")
+    if proc.returncode == 0 and api_proc.returncode == 0:
+        got, want = json.loads(proc.stdout), json.loads(api_proc.stdout)
+        check(kinds_of(got, "commit") == kinds_of(want, "commit"),
+              "#90 git-built commit files equal the API-built ones:\n"
+              + json.dumps([[{k: f[k] for k in ("path", "status", "additions", "deletions", "truncated")} for f in e["files"]]
+                            for e in kinds_of(got, "commit")]))
+        check(got == want, "#90 the whole document is the same for --diff-source git and api")
+        wf = {f["path"]: f for e in kinds_of(got, "commit") for f in e["files"]}
+        check(wf["big.txt"]["truncated"] and len(wf["big.txt"]["patch"].split("\n")) == 400 and wf["big.txt"]["additions"] == 500,
+              "#90 the 400-line cap and the uncut counts hold for a git patch")
+        check(wf["wide.txt"]["truncated"] and len(wf["wide.txt"]["patch"].encode()) == 32768, "#90 the 32 KB cap holds for a git patch")
+        check(wf["bin.dat"]["patch"] is None and wf["bin.dat"]["additions"] == 0, "#90 a binary file has no patch and zero counts")
+        check(wf["moved.txt"]["status"] == "renamed" and wf["gone.txt"]["status"] == "removed", "#90 git gives renamed and removed")
+        # git and the forge pick different section headings for a hunk, so every patch drops it.
+        check(wf["moved.txt"]["patch"].startswith("@@ -17,4 +17,4 @@\n line 16"), f"#90 a hunk header keeps no heading: {wf['moved.txt']['patch'][:40]!r}")
+    for label, extra in (("budget", ["--max-diff-bytes", "33000"]), ("nodiffs", ["--no-diffs"])):
+        a, _ = live(f"{label}-api", "api", data, *extra)
+        g, _ = live(f"{label}-git", "git", data, *extra)
+        check(a.returncode == 0 and g.returncode == 0 and a.stdout == g.stdout, f"#90 {label}: git and api documents are equal")
+        if label == "budget" and g.returncode == 0:
+            check(any(f["truncated"] for e in kinds_of(json.loads(g.stdout), "commit") for f in e["files"]
+                      if f["path"] in ("a.py", "gone.txt", "sp ace.txt", "moved.txt")), "#90 the document budget cuts a git patch")
+
+    # Gitea: the `.diff` text comes from git, and the events equal the GitHub API-built ones.
+    gt_commits = [dict(c, files=[{"filename": f["filename"], "status": f["status"]} for f in api_files[c["sha"]]]) for c in commits]
+    gt_data = os.path.join(tmp, "gitea.json")
+    with open(gt_data, "w") as handle:
+        json.dump({"pr": pr7, "commits": gt_commits, "files": {}, "diffs": {}}, handle)
+    gt_proc, gt_calls = live("gitea", None, gt_data, forge_type="gitea")
+    check(gt_proc.returncode == 0 and gt_calls == [], f"#90 gitea reads no .diff through the API: {gt_calls} {gt_proc.stderr[:300]}")
+    if gt_proc.returncode == 0 and api_proc.returncode == 0:
+        # Gitea's `.diff` route runs plain `git diff`, which keeps two hunks one line apart.
+        gt_want = copy.deepcopy([e["files"] for e in kinds_of(json.loads(api_proc.stdout), "commit")])
+        gap = next(f for f in gt_want[0] if f["path"] == "gap.txt")
+        gap["patch"] = ("@@ -1,7 +1,7 @@\n g 0\n g 1\n g 2\n-g 3\n+G 3\n g 4\n g 5\n g 6\n"
+                        "@@ -9,7 +9,7 @@\n g 8\n g 9\n g 10\n-g 11\n+G 11\n g 12\n g 13\n g 14")
+        check([e["files"] for e in kinds_of(json.loads(gt_proc.stdout), "commit")] == gt_want,
+              "#90 gitea git-built files equal the API-built ones")
+
+    # 3. A commit git does not have is read through the API, and one note counts it.
+    lost = "f" * 40
+    lost_files = [{"filename": "z.py", "status": "added", "additions": 1, "deletions": 0, "patch": "@@ -0,0 +1 @@\n+z"}]
+    fb_data = fake_data("fallback", [(item(lost, "force-pushed away", c2), lost_files)])
+    fb, fb_calls = live("fallback", None, fb_data)
+    check(fb.returncode == 0 and fb_calls == [f"api repos/o/r/commits/{lost}"], f"#90 only the missing commit is read through the API: {fb_calls} {fb.stderr[:300]}")
+    notes = [line for line in fb.stderr.splitlines() if "through the API" in line]
+    check(len(notes) == 1 and "1 commit" in notes[0], f"#90 one stderr note counts the fallbacks: {fb.stderr!r}")
+    if fb.returncode == 0:
+        lost_event = [e for e in kinds_of(json.loads(fb.stdout), "commit") if e["sha"] == lost]
+        check(lost_event and lost_event[0]["files"][0]["path"] == "z.py", f"#90 the fallback commit keeps its API files: {lost_event}")
+    check("through the API" not in proc.stderr, f"#90 no note when every commit came from git: {proc.stderr!r}")
+    strict, strict_calls = live("strict", "git", fb_data)
+    check(strict.returncode == 2 and strict.stdout == "" and lost in strict.stderr and strict_calls == [],
+          f"#90 --diff-source git fails on a missing commit and reads nothing through the API: {strict.returncode} {strict.stderr[:300]}")
+    fx_path = os.path.join(tmp, "fx.json")
+    with open(fx_path, "w") as handle:
+        json.dump(build("github"), handle)
+    check(run(["collect", "--fixture", fx_path, "--diff-source", "nope"]).returncode == 5, "#90 an unknown --diff-source exits 5")
+
+    # 4. snapshot and watch pass --diff-source on to collect.
+    page = os.path.join(tmp, "page.html")
+    check(run(["snapshot", "--fixture", fx_path, "--diff-source", "api", "--out", page]).returncode == 0,
+          "#90 snapshot passes --diff-source api through")
+    check(run(["snapshot", "--fixture", fx_path, "--diff-source", "nope", "--out", page]).returncode == 5,
+          "#90 snapshot hands --diff-source to collect, which rejects a bad value")
+    check(run(["watch", "--fixture", fx_path, "--diff-source", "nope", "--out", page, "--interval", "1", "--max-minutes", "0.01"],
+              {"IFW_WATCH_FAST": "1"}).returncode == 5, "#90 watch hands --diff-source to collect, which rejects a bad value")
+
+    # The counting helper counts the calls of a run, and a match narrows the count.
+    counted = subprocess.run([sys.executable, os.path.join(ROOT, "scripts", "count-gh.py"), "count",
+                              os.path.join(tmp, "count-api"), "--match", "/commits/"], capture_output=True, text=True)
+    check(counted.returncode == 0 and counted.stdout == "2\n", f"#90 count-gh count prints the matching calls: {counted.stdout!r}")
+    check(len(count_gh.calls(os.path.join(tmp, "count-api"))) > len(api_calls) == 2, "#90 count-gh logs every call, not only commit reads")
+
+# A remote matches its PR repository in every URL form a forge gives.
+for url in ("https://host/O/R.git", "git@host:o/r.git", "ssh://git@host:2222/o/r", "/srv/o/r.git/", "https://host/o/r"):
+    check(timeline._url_repo(url) == "o/r", f"#90 {url} names o/r: {timeline._url_repo(url)}")
+check(timeline._url_repo("r") is None and timeline._url_repo("") is None, "#90 a URL without an owner names no repository")
+
 if failures:
     for failure in failures:
         print(f"FAIL {failure}")

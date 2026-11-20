@@ -29,7 +29,7 @@ documented in references/timeline.md.
 page is written, and prints one stderr line with the path and the event, lane and problem counts.
 `watch` runs the same code on a timer.
 
-`collect` is read-only. It reads issues, issue timelines and pull requests (paged until
+`collect` is read-only on the tracker. It reads issues, issue timelines and pull requests (paged until
 an empty page) and prints one JSON document, or writes it to --out. The schema is in
 references/timeline.md; this script is its only producer.
 
@@ -41,7 +41,17 @@ Commits, comment roles, reviews, CI runs and the links from a problem to its fix
 document too (references/timeline.md). A patch is cut at 400 lines or 32 KB per file, and the
 patches of one document share --max-diff-bytes (default 4194304). A cut patch has `truncated`
 set. --no-diffs leaves every patch out and keeps the per-file stats. A GitHub commit lists its
-first 300 files. A Gitea commit takes its stats and patches from the `.diff` route.
+first 300 files. A Gitea commit takes its stats and patches from the `.diff` route. A hunk
+header keeps its line ranges and drops the section heading, which each source finds differently.
+
+--diff-source git|api|auto (default auto) says where a commit's files and patches come from.
+`auto` reads them from the --repo-path checkout and costs no API call. First it fetches, for
+each PR repository, the heads of the PRs that hold a commit git lacks, with one `git fetch`
+through the remote whose URL ends in that `owner/name`: refs/pull/<n>/head goes to
+refs/issue-flow/pull/<owner>/<repo>/<n>, and no branch, tag, remote ref or work-tree file
+changes. A commit git still lacks is read through the API, and one stderr line counts them.
+`git` fails on such a commit (exit 2); `api` reads every commit through the API. The "API cost"
+section of references/timeline.md has the details and a measurement.
 
 Flags: --since/--until take an ISO date, an ISO timestamp, or a relative age (`7d`,
 `24h`, `2w`). --issue and --batch keep one issue or one batch (a tracking-issue number).
@@ -64,7 +74,11 @@ Endpoints were checked against https://docs.github.com/en/rest/pulls/pulls,
 https://docs.github.com/en/rest/pulls/reviews, https://docs.github.com/en/rest/pulls/comments,
 https://docs.github.com/en/rest/commits/commits, https://docs.github.com/en/rest/actions/workflow-runs,
 https://docs.github.com/en/rest/actions/workflow-jobs and the Gitea swagger file at
-https://gitea.com/swagger.v1.json (retrieved 2026-11-19).
+https://gitea.com/swagger.v1.json (retrieved 2026-11-19). The PR head refs were checked against
+https://docs.github.com/en/pull-requests/collaborating-with-pull-requests/reviewing-changes-in-pull-requests/checking-out-pull-requests-locally,
+https://github.com/go-gitea/gitea/blob/main/modules/git/ref.go (`refs/pull/` + `/head`), the
+Gitea `.diff` command at https://github.com/go-gitea/gitea/blob/main/modules/git/diff.go, and
+https://git-scm.com/docs/git-fetch (retrieved 2026-11-19).
 
 Keep a page current while a run is going (the /timeline skill starts this in the background):
 
@@ -143,6 +157,15 @@ RUN_FAILED = ("failure", "timed_out", "startup_failure")
 REVIEW_STATES = {"APPROVED": "approved", "CHANGES_REQUESTED": "changes_requested", "REQUEST_CHANGES": "changes_requested",
                  "COMMENT": "commented", "COMMENTED": "commented", "DISMISSED": "dismissed"}
 FILE_STATUS = {"deleted": "removed"}
+FULL_SHA = re.compile(r"^(?:[0-9a-f]{40}|[0-9a-f]{64})$")
+# `git diff --name-status` letters, as the GitHub commit API names them.
+GIT_STATUS = {"A": "added", "D": "removed", "M": "modified", "R": "renamed", "C": "copied", "T": "changed"}
+MAX_COMMIT_FILES = 300
+# The section heading after a hunk's `@@ … @@` comes from per-language rules. GitHub, Gitea and
+# local git apply different rules (GitHub finds `def` lines in Python, git's default finds any
+# line that starts with a letter), so the heading is dropped and a patch is the same from every source.
+HUNK_HEADING = re.compile(r"^(@@ -\d+(?:,\d+)? \+\d+(?:,\d+)? @@).*$", re.M)
+DIFF_SOURCES = ("auto", "git", "api")
 
 
 class FetchError(Exception):
@@ -412,6 +435,8 @@ def _commit_event(raw, issue, pr, batch, diffs, budget):
         patch, adds, dels = f.get("patch"), f.get("additions"), f.get("deletions")
         if path in from_diff:
             patch, adds, dels = from_diff[path]
+        if patch:
+            patch = HUNK_HEADING.sub(r"\1", patch)
         patch, truncated = _cap_patch(patch, budget, diffs)
         files.append({"path": path, "status": FILE_STATUS.get(f.get("status"), f.get("status")),
                       "additions": adds, "deletions": dels, "patch": patch, "truncated": truncated})
@@ -787,6 +812,147 @@ def _not_found(exc):
     return "Not Found" in str(exc) or "404" in str(exc)
 
 
+def _url_repo(url):
+    """Return the `owner/name` at the end of a remote URL, in lower case, or None.
+
+    The last two path parts name the repository in every URL form a forge gives:
+    `https://host/o/r.git`, `git@host:o/r.git`, `ssh://git@host:22/o/r` and a local path.
+    """
+    url = (url or "").strip().rstrip("/")
+    if url.endswith(".git"):
+        url = url[:-4]
+    parts = [p for p in re.split(r"[/:]", url) if p]
+    return "/".join(parts[-2:]).lower() if len(parts) >= 2 else None
+
+
+class GitDiffs:
+    """Reads commit files and patches from the local repository, so they cost no API call.
+
+    Commits are content-addressed: a commit git has is the commit the forge has, whichever
+    remote it came from. `fetch` puts PR heads under refs/issue-flow/ only, so it never moves a
+    branch, a tag, a remote-tracking ref or the work tree. A commit git cannot read returns
+    None, and the caller reads it through the API instead.
+    """
+
+    def __init__(self, repo_path="."):
+        self.repo_path = repo_path
+
+    def _git(self, *args, stdin=None):
+        try:
+            result = subprocess.run(["git", "-C", self.repo_path, "-c", "core.quotePath=false", *args],
+                                    input=stdin.encode() if stdin is not None else None, capture_output=True,
+                                    env={**os.environ, "GIT_TERMINAL_PROMPT": "0"})
+        except OSError:
+            return None
+        if result.returncode != 0:
+            return None
+        return result.stdout.decode("utf-8", "replace")
+
+    def known(self, shas):
+        """Return the set of `shas` that are commits in the local repository."""
+        want = [s for s in shas if s and FULL_SHA.match(s)]
+        if not want:
+            return set()
+        out = self._git("cat-file", "--batch-check=%(objectname) %(objecttype)", stdin="\n".join(want) + "\n")
+        return {line.split()[0] for line in (out or "").splitlines() if line.endswith(" commit")}
+
+    def remote_for(self, repo):
+        """Return the name of the remote whose URL ends in `repo` (`owner/name`), or None.
+
+        When several remotes match, the first name in sort order wins, so the choice is stable.
+        """
+        out = self._git("config", "--get-regexp", r"^remote\..*\.url$") or ""
+        names = []
+        for line in out.splitlines():
+            key, _, url = line.partition(" ")
+            if _url_repo(url) == repo.lower():
+                names.append(key[len("remote."):-len(".url")])
+        return min(names) if names else None
+
+    def fetch(self, repo, numbers):
+        """Fetch the head of each PR in `numbers` from `repo` into refs/issue-flow/pull/<repo>/<n>.
+
+        One `git fetch` reads every head. When it fails (a PR ref that is gone fails the whole
+        call), each head is fetched alone, so one bad ref costs only its own commits.
+        Return the PR numbers whose head could not be fetched.
+        """
+        remote = self.remote_for(repo)
+        if remote is None:
+            return list(numbers)
+        # --refmap= stops the configured refspecs from updating remote-tracking refs as a side effect.
+        base = ["fetch", "--quiet", "--no-tags", "--no-write-fetch-head", "--no-auto-maintenance",
+                "--no-recurse-submodules", "--refmap=", remote]
+        spec = lambda n: f"+refs/pull/{n}/head:refs/issue-flow/pull/{repo}/{n}"  # noqa: E731
+        if self._git(*base, *(spec(n) for n in numbers)) is not None:
+            return []
+        if len(numbers) == 1:
+            return list(numbers)
+        return [n for n in numbers if self._git(*base, spec(n)) is None]
+
+    def _range(self, sha, parents):
+        """Return the diff-tree arguments that compare `sha` with its first parent, as the forge does."""
+        if parents is None:
+            out = self._git("rev-list", "--parents", "-n", "1", sha)
+            if out is None:
+                return None
+            parents = out.split()[1:]
+        return [parents[0], sha] if parents else ["--root", sha]
+
+    def diff(self, sha, parents=None):
+        """Return the `git diff` text of one commit, the same text as Gitea's `.diff` route, or None."""
+        span = self._range(sha, parents)
+        return None if span is None else self._git("diff-tree", "-r", "-M", "-p", "--no-commit-id", *span)
+
+    def files(self, sha, parents=None):
+        """Return one commit's files in the shape of GitHub's `commits/{sha}` `files`, or None.
+
+        Each file has `filename`, `status`, `additions`, `deletions`, and `patch` when the diff
+        has a hunk. A renamed or copied file has `previous_filename`. A binary file counts 0 and
+        0, as GitHub counts it. The list stops at MAX_COMMIT_FILES, like GitHub's first page.
+        """
+        span = self._range(sha, parents)
+        if span is None:
+            return None
+        names = self._git("diff-tree", "-r", "-M", "-z", "--no-commit-id", "--name-status", *span)
+        stats = self._git("diff-tree", "-r", "-M", "-z", "--no-commit-id", "--numstat", *span)
+        # GitHub joins two hunks that one unchanged line keeps apart; git's default keeps them apart.
+        # Measured against 185 files of this repository's own commits (references/timeline.md).
+        text = self._git("diff-tree", "-r", "-M", "-p", "--inter-hunk-context=1", "--no-commit-id", *span)
+        if names is None or stats is None or text is None:
+            return None
+        entries, tokens = [], names.split("\0")
+        i = 0
+        while i < len(tokens) and tokens[i]:
+            code = tokens[i]
+            if code[0] in "RC":
+                entries.append((code[0], tokens[i + 1], tokens[i + 2]))
+                i += 3
+            else:
+                entries.append((code[0], None, tokens[i + 1]))
+                i += 2
+        counts, tokens = [], stats.split("\0")
+        i = 0
+        while i < len(tokens) and tokens[i]:
+            adds, dels, path = tokens[i].split("\t", 2)
+            i += 3 if path == "" else 1
+            counts.append((int(adds) if adds.isdigit() else 0, int(dels) if dels.isdigit() else 0))
+        # Every file of the diff has one `diff --git` header, in the same order as the lists above.
+        # A content line never starts with it: each one starts with "+", "-", " " or "\".
+        chunks = re.split(r"^diff --git ", text, flags=re.M)[1:]
+        if not len(entries) == len(counts) == len(chunks):
+            return None
+        files = []
+        for (code, old, path), (adds, dels), chunk in list(zip(entries, counts, chunks))[:MAX_COMMIT_FILES]:
+            entry = {"filename": path, "status": GIT_STATUS.get(code, "modified"), "additions": adds, "deletions": dels}
+            if old is not None:
+                entry["previous_filename"] = old
+            hunk = re.search(r"^@@", chunk, re.M)
+            if hunk:
+                entry["patch"] = chunk[hunk.start():].rstrip("\n")
+            files.append(entry)
+        return files
+
+
 def _pull_reads(api, repo, pr):
     """Return the first-wave reads of one PR, as {name: callable}. None depends on another read."""
     n = pr["number"]
@@ -813,12 +979,13 @@ def _pull_reads(api, repo, pr):
     return reads
 
 
-def _pull_followups(api, repo, pr, first):
+def _pull_followups(api, repo, pr, first, read_commit=None):
     """Return the second-wave reads of one PR, as a list of (apply, callable).
 
     These need the first wave: a commit's files or diff, a review's comments, a failed run's jobs.
     `apply(value)` stores the result into `first`, so a read's place in the document never
-    depends on when it ends.
+    depends on when it ends. `read_commit(commit, api_read)`, when given, reads a commit's files
+    or diff and calls `api_read()` only for a commit it cannot read.
     """
     n = pr["number"]
     github = api.forge_type == "github"
@@ -829,6 +996,8 @@ def _pull_followups(api, repo, pr, first):
             read = lambda c=commit: api.get(api.path(repo, f"/commits/{c['sha']}")).get("files") or []
         else:
             read = lambda c=commit: api.text(api.path(repo, f"/git/commits/{c['sha']}.diff"))
+        if read_commit is not None:
+            read = lambda c=commit, api_read=read: read_commit(c, api_read)
         reads.append((lambda value, c=commit, k=key: c.__setitem__(k, value), read))
     if not github:
         first["review_comments"] = []
@@ -851,6 +1020,39 @@ def _pull_followups(api, repo, pr, first):
     return reads
 
 
+def _git_commit_reader(git, prs, firsts, forge_type, mode, fallbacks):
+    """Fetch the PR heads that hold a commit git lacks, and return a `read_commit` for wave 3.
+
+    One `git fetch` runs per PR repository, and only for the PRs that need it. Each commit the
+    reader cannot take from git is read through the API and its sha is added to `fallbacks`.
+    With `mode` `git`, such a commit fails the collect instead.
+    """
+    shas = [c.get("sha") for first in firsts for c in first["commits"]]
+    local = git.known(shas)
+    need = {}
+    for (pr_repo_name, pr), first in zip(prs, firsts):
+        if any(c.get("sha") not in local for c in first["commits"]):
+            need.setdefault(pr_repo_name, []).append(pr["number"])
+    for pr_repo_name, numbers in need.items():
+        git.fetch(pr_repo_name, numbers)
+    if need:
+        local = git.known(shas)
+    github = forge_type == "github"
+
+    def read_commit(commit, api_read):
+        sha = commit.get("sha")
+        if sha in local:
+            parents = [p.get("sha") for p in commit["parents"]] if isinstance(commit.get("parents"), list) else None
+            value = git.files(sha, parents) if github else git.diff(sha, parents)
+            if value is not None:
+                return value
+        if mode == "git":
+            raise FetchError(f"commit {sha} is not in the local repository at {git.repo_path} (--diff-source git)")
+        fallbacks.append(sha)
+        return api_read()
+    return read_commit
+
+
 def pr_repo_list(repo, values):
     """Return the repositories to read PRs from: the issue repo first, then each --pr-repo value.
 
@@ -865,13 +1067,18 @@ def pr_repo_list(repo, values):
     return repos
 
 
-def fetch_bundle(forge_type, repo, pr_repo=None, repo_path=".", since=None, only_issue=None, jobs=DEFAULT_JOBS):
+def fetch_bundle(forge_type, repo, pr_repo=None, repo_path=".", since=None, only_issue=None, jobs=DEFAULT_JOBS,
+                 diff_source="auto"):
     """Read the issues of `repo` and the PRs of `repo` plus every `pr_repo` (a string, or a list of strings).
 
     The reads go in waves: the listings, then each issue's and PR's own reads, then the reads that
     need those results (a commit's files, a review's comments, a failed run's jobs). A wave runs
     on up to `jobs` threads. Every result goes where its place in the plan says, so `jobs` never
     changes the document.
+
+    `diff_source` says where a commit's files or diff come from: `api` reads each one through the
+    forge; `git` reads each one from the checkout at `repo_path` and fails on a commit it does
+    not have; `auto` reads from git and falls back to the API per commit.
     """
     api = Api(forge_type, repo_path, jobs)
     owner, _, name = repo.partition("/")
@@ -930,12 +1137,19 @@ def fetch_bundle(forge_type, repo, pr_repo=None, repo_path=".", since=None, only
     timelines = [next(results) for _ in issue_numbers]
     firsts = [{key: next(results) for key in keys} for keys in names]
 
+    read_commit, fallbacks = None, []
+    if diff_source != "api":
+        read_commit = _git_commit_reader(GitDiffs(repo_path), prs, firsts, forge_type, diff_source, fallbacks)
+
     # Wave 3: the reads that need wave 2.
     followups = []
     for (pr_repo_name, pr), first in zip(prs, firsts):
-        followups.extend(_pull_followups(api, pr_repo_name, pr, first))
+        followups.extend(_pull_followups(api, pr_repo_name, pr, first, read_commit))
     for (apply, _), value in zip(followups, api.pmap(lambda item: item[1](), followups)):
         apply(value)
+    if fallbacks:
+        print(f"collect: read {_plural(len(fallbacks), 'commit')} through the API: not in the local repository at "
+              f"{repo_path}", file=sys.stderr)
 
     issues = [{"issue": raws[n], "timeline": timeline} for n, timeline in zip(issue_numbers, timelines)]
     pulls = []
@@ -1055,7 +1269,8 @@ def cmd_collect(args):
             with open(args.fixture) as handle:
                 bundle = json.load(handle)
         else:
-            bundle = fetch_bundle(args.forge, args.repo, args.pr_repo, args.repo_path, since, args.issue, args.jobs)
+            bundle = fetch_bundle(args.forge, args.repo, args.pr_repo, args.repo_path, since, args.issue, args.jobs,
+                                  args.diff_source)
         doc = normalize(bundle, since, until, args.issue, args.batch, not args.no_diffs, args.max_diff_bytes)
         log = local_events_path(args)
         if log:
@@ -2408,6 +2623,9 @@ def main(argv=None):
                          help="cap on the patch text in the whole document (default 4194304)")
     collect.add_argument("--jobs", type=int, default=DEFAULT_JOBS,
                          help=f"reads to run at once, 1 to {MAX_JOBS} (default {DEFAULT_JOBS}; 1 reads one at a time)")
+    collect.add_argument("--diff-source", choices=DIFF_SOURCES, default="auto",
+                         help="where commit files and patches come from: `git` (the --repo-path checkout), `api`, "
+                              "or `auto`, git first and the API for a commit git lacks (default auto)")
     collect.add_argument("--out", help="write the document here instead of stdout")
     collect.set_defaults(func=cmd_collect)
     render = sub.add_parser("render", help="turn a timeline document into one self-contained HTML page")

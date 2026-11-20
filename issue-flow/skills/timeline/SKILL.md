@@ -1,6 +1,6 @@
 ---
 name: timeline
-description: Show what an issue-flow run did as one local HTML page - issue lanes, status changes, pull requests, checkpoints and batch merges - either as a snapshot or as a live page that refreshes while the run goes. Use when the user says "/timeline", "show the issue-flow timeline", "visualize the workflow", "show me what the run did", or "watch the run". Read-only. Writes one HTML file on this machine and publishes nothing.
+description: Show what an issue-flow run did as one local HTML page - issue lanes, status changes, pull requests, checkpoints and batch merges - either as a snapshot or as a live page that refreshes while the run goes. Use when the user says "/timeline", "show the issue-flow timeline", "visualize the workflow", "show me what the run did", or "watch the run". Read-only on the tracker. Writes one HTML file and the PR head refs under refs/issue-flow/ on this machine and publishes nothing.
 ---
 
 # Timeline — see what the run did
@@ -11,7 +11,9 @@ merges. The page filters by timeframe in the browser.
 
 The skill is **read-only**. It reads issues, issue timelines, pull requests (with their
 comments, commits, reviews and CI runs) and the local-event log. It needs
-no issue-flow run to be active, and it changes nothing on the tracker.
+no issue-flow run to be active, and it changes nothing on the tracker. To read commit diffs
+without API calls, it fetches PR heads into `refs/issue-flow/` of the local repository. It
+changes no branch, tag or work-tree file.
 
 The output is a **local file only**. Never publish it, never upload it, and never create
 an Artifact from it.

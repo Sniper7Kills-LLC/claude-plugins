@@ -169,6 +169,9 @@ patches of one document share `--max-diff-bytes` (default 4194304; a file after 
 used up gets a cut or empty patch). A cut patch has `truncated: true`. `additions` and
 `deletions` come from the forge, not from the cut patch. On Gitea they come from the commit
 `.diff` text, because the commit file list has no counts. A GitHub commit lists its first 300 files.
+A hunk header keeps only its line ranges (`@@ -1,7 +1,7 @@`). The section heading after the
+ranges is dropped, because GitHub, Gitea and local git find different headings. A commit's files
+have the same shape whether they come from git or from the API (see **API cost**).
 
 **Trailer grammar.** A trailer is a line `Key: value` in the last paragraph of the commit
 message. Keys are case-insensitive. The message needs a subject and at least one more
@@ -286,6 +289,58 @@ jobs). A wave runs on a bounded pool of threads. `--jobs <n>` sets the size: 1 t
 - **Every other error fails at once**, as it does with `--jobs 1`. One failed read fails the whole
   collect, and nothing is written.
 - `IFW_RETRY_DELAY` sets the first wait in seconds, for tests only.
+
+## API cost
+
+The REST quota is 5,000 calls per hour on GitHub, and every agent and person on the token
+shares it. This section names what each read costs and the flags that cut the cost.
+
+**Commit diffs come from local git.** A commit's files and patches cost no API call when the
+checkout has the commit. `--diff-source` chooses the source:
+
+| Value | Behavior |
+|---|---|
+| `auto` (default) | Read each commit from git. If git does not have it, read it through the API. |
+| `git` | Read each commit from git. If git does not have it, the collect fails with exit 2. |
+| `api` | Read each commit through the API (`commits/{sha}` on GitHub, `git/commits/{sha}.diff` on Gitea). |
+
+- **The fetch.** Before the commit reads, `collect` looks for the PRs that hold a commit git
+  lacks. For each PR repository, one `git fetch` reads the heads of those PRs:
+  `refs/pull/<n>/head` to `refs/issue-flow/pull/<owner>/<repo>/<n>`. The fetch takes no tags,
+  writes no `FETCH_HEAD`, and updates no remote-tracking ref (`--refmap=`). It never changes a
+  branch, a tag or the work tree. If the one fetch fails, each PR head is fetched alone.
+- **The remote.** The fetch uses the remote of the `--repo-path` checkout whose URL ends in the
+  PR repository's `owner/name`. If two remotes match, the first name in sort order wins. If no
+  remote matches, there is no fetch, and the commits git lacks are read through the API.
+- **The fallback.** A commit that git cannot read after the fetch (no matching remote, or a
+  commit that a force-push removed) is read through the API, one commit at a time. One stderr
+  line gives the count: `collect: read 3 commits through the API: not in the local repository at <path>`.
+- **The diff.** A commit is compared with its first parent, as both forges do. A root commit
+  is compared with the empty tree. Renames are found as `git diff -M` finds them. On GitHub the
+  patch uses `--inter-hunk-context=1`: GitHub joins two hunks that one unchanged line keeps
+  apart. Gitea's `.diff` route runs plain `git diff --find-renames`, so a Gitea patch uses
+  git's default.
+- **Measured.** Over a 1-day window of this repository (46 commits, 185 files, on
+  2026-11-19), the git source made 0 commit calls against 73 for `--diff-source api`. The
+  whole collect went from 221 calls to 148. The files built from git equal the API files.
+- **What differs.** Git cannot give the section heading of a hunk header as each forge finds
+  it, so both sources drop it (see **Commit fields**). GitHub documents `patch` as optional
+  and leaves it out of a binary file; git gives no patch for a binary file either. If GitHub
+  leaves out the patch of a text file, git still gives one, cut at 32 KB. The documentation
+  does not say which parent GitHub compares a merge commit with. The measured window had 2
+  merge commits, and the first parent gave the API files.
+
+**Count the calls of a run.** `scripts/count-gh.py` wraps `gh` (or `tea`) through `IFW_GH`
+(or `IFW_TEA`). The wrapper logs each call and then runs the real command:
+
+```bash
+W=$(python3 scripts/count-gh.py wrap /tmp/count)            # --target tea for Gitea
+IFW_GH="$W" python3 issue-flow/scripts/timeline.py collect --forge github --repo owner/name --since 1d
+python3 scripts/count-gh.py count /tmp/count                # every call
+python3 scripts/count-gh.py count /tmp/count --match '/commits/[0-9a-f]{40}'
+```
+
+Tests import the same file and call `wrap(dir, target)` and `calls(dir, match)`.
 
 ## Exit codes
 
