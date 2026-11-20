@@ -34,16 +34,20 @@ first 300 files. A Gitea commit takes its stats and patches from the `.diff` rou
 
 Flags: --since/--until take an ISO date, an ISO timestamp, or a relative age (`7d`,
 `24h`, `2w`). --issue and --batch keep one issue or one batch (a tracking-issue number).
---pr-repo reads pull requests from another repository on the same forge.
+--pr-repo reads pull requests from another repository on the same forge. It repeats, and it
+takes a comma list. The --repo repository is always read, and a PR found twice is kept once.
+Each PR event carries `repo`. A PR whose head branch is `batch/<n>-*` or `epic/<n>-*` is the
+batch PR of batch <n>, whichever repository holds it.
 
 The fetch is kept apart from `normalize`, which is pure: it takes a bundle of raw
 payloads and returns the document. A --fixture file is such a bundle:
 {"forge": {"type", "host", "owner", "repo"}, "issues": [{"issue", "timeline"}],
-"pulls": [{"pr", "timeline", "commits", "reviews", "review_comments", "runs"}]}, with the
+"pulls": [{"repo", "pr", "timeline", "commits", "reviews", "review_comments", "runs"}]}, with the
 payloads exactly as the forge returned them. A GitHub commit is the `commits/{sha}` payload
 (it carries `files`). A Gitea commit is the `pulls/{n}/commits` item plus a `diff` key that holds
 the `.diff` text. `runs` is a list of {"run", "jobs"}; `jobs` is filled for failed runs only.
-`commits`, `reviews`, `review_comments` and `runs` may be absent.
+`commits`, `reviews`, `review_comments` and `runs` may be absent. `repo` is `owner/name`; an
+entry with none belongs to the issue repository.
 
 Endpoints were checked against https://docs.github.com/en/rest/pulls/pulls,
 https://docs.github.com/en/rest/pulls/reviews, https://docs.github.com/en/rest/pulls/comments,
@@ -495,9 +499,9 @@ def link_problems(events):
         problems.setdefault(n, []).append(entry)
         by_url.append((entry["url"], entry))
         if source[0] == "review":
-            review_of[(event["pr"], event.get("review_id"))] = entry
+            review_of[(event.get("repo"), event["pr"], event.get("review_id"))] = entry
     for event in events:
-        target = review_of.get((event["pr"], event.get("review_id"))) if event["kind"] == "review.comment" else None
+        target = review_of.get((event.get("repo"), event["pr"], event.get("review_id"))) if event["kind"] == "review.comment" else None
         if target:
             by_url.append((event.get("url"), target))
     for event in sorted((e for e in events if e["kind"] == "commit"), key=lambda e: e["ts"]):
@@ -543,7 +547,12 @@ def normalize(bundle, since=None, until=None, only_issue=None, only_batch=None, 
         timelines[n] = items
         if {"type:batch", "type:epic"} & set(_label_names(raw)):
             tracking[n] = list(dict.fromkeys(int(m) for m in CHECKLIST_REF.findall(raw.get("body") or "")))
-    pulls = {e["pr"]["number"]: e for e in bundle.get("pulls", [])}
+    issue_repo = f"{forge.get('owner')}/{forge.get('repo')}"
+    # A PR is known by repository and number: two repositories can both have a PR 8. An entry
+    # with no `repo` belongs to the issue repository. A PR listed twice is kept once.
+    pulls = {}
+    for e in bundle.get("pulls", []):
+        pulls.setdefault((e.get("repo") or issue_repo, e["pr"]["number"]), e)
 
     # Batches: a tracking issue, plus the branch and PRs found from branch names.
     batches = {}
@@ -552,12 +561,13 @@ def normalize(bundle, since=None, until=None, only_issue=None, only_batch=None, 
         if m:
             tracking.setdefault(int(m.group(1)), [])
     for n, members in tracking.items():
-        entry = {"tracking": n, "branch": None, "members": members, "pr": None, "prs": []}
-        for num, e in sorted(pulls.items()):
+        entry = {"tracking": n, "branch": None, "members": members, "pr": None, "pr_repo": None, "prs": []}
+        # The batch PR is found by its head branch. A member PR is found by its base branch.
+        for (pr_repo, num), e in sorted(pulls.items(), key=lambda kv: (kv[0][1], kv[0][0])):
             head, base = e["pr"]["head"]["ref"], e["pr"]["base"]["ref"]
             m, bm = BATCH_BRANCH.match(head), BATCH_BRANCH.match(base)
             if m and int(m.group(1)) == n:
-                entry["branch"], entry["pr"] = head, num
+                entry["branch"], entry["pr"], entry["pr_repo"] = head, num, pr_repo
             elif bm and int(bm.group(1)) == n:
                 entry["prs"].append(num)
         batches[str(n)] = entry
@@ -596,7 +606,8 @@ def normalize(bundle, since=None, until=None, only_issue=None, only_batch=None, 
                 if found:
                     convergence = found
 
-    for num, e in sorted(pulls.items()):
+    for (pr_repo, num), e in sorted(pulls.items(), key=lambda kv: (kv[0][1], kv[0][0])):
+        first_event = len(events)
         pr, items = e["pr"], [i for i in (_timeline_item(ftype, t) for t in e.get("timeline", [])) if i]
         head, base = pr["head"]["ref"], pr["base"]["ref"]
         hm, im, bm = BATCH_BRANCH.match(head), ISSUE_BRANCH.match(head), BATCH_BRANCH.match(base)
@@ -627,8 +638,10 @@ def normalize(bundle, since=None, until=None, only_issue=None, only_batch=None, 
             run_event = _run_event(entry, issue, num, batch)
             if run_event:
                 events.append(run_event)
+        for event in events[first_event:]:
+            event["repo"] = pr_repo
 
-    events.sort(key=lambda e: (e["ts"], e["kind"], e["issue"] or 0, e["pr"] or 0))
+    events.sort(key=lambda e: (e["ts"], e["kind"], e["issue"] or 0, e["pr"] or 0, e.get("repo") or ""))
     problems = link_problems(events)
     kept = [e for e in events
             if (not since or e["ts"] >= since) and (not until or e["ts"] <= until)
@@ -648,7 +661,7 @@ def normalize(bundle, since=None, until=None, only_issue=None, only_batch=None, 
                              "problems": problems.get(n, [])}
     shown_batches = {str(e["batch"]) for e in kept if e["batch"] is not None}
     return {"version": VERSION,
-            "forge": {k: forge.get(k) for k in ("type", "host", "owner", "repo", "pr_repo") if forge.get(k)},
+            "forge": {k: forge.get(k) for k in ("type", "host", "owner", "repo", "pr_repos") if forge.get(k)},
             "range": {"since": since, "until": until},
             "issues": issue_map,
             "batches": {k: v for k, v in batches.items() if not filtered or k in shown_batches},
@@ -752,12 +765,28 @@ def _fetch_pull_detail(api, forge_type, repo, pr):
     return {"commits": commits, "reviews": reviews, "review_comments": review_comments, "runs": runs}
 
 
+def pr_repo_list(repo, values):
+    """Return the repositories to read PRs from: the issue repo first, then each --pr-repo value.
+
+    A value may be a comma list. Repeats are dropped; order is kept.
+    """
+    repos = [repo]
+    for value in values or []:
+        for item in str(value).split(","):
+            item = item.strip()
+            if item and item not in repos:
+                repos.append(item)
+    return repos
+
+
 def fetch_bundle(forge_type, repo, pr_repo=None, repo_path=".", since=None, only_issue=None):
+    """Read the issues of `repo` and the PRs of `repo` plus every `pr_repo` (a string, or a list of strings)."""
     api = Api(forge_type, repo_path)
     owner, _, name = repo.partition("/")
     forge = {"type": forge_type, "host": None, "owner": owner, "repo": name}
-    if pr_repo and pr_repo != repo:
-        forge["pr_repo"] = pr_repo
+    pr_repos = pr_repo_list(repo, [pr_repo] if isinstance(pr_repo, str) else pr_repo)
+    if len(pr_repos) > 1:
+        forge["pr_repos"] = pr_repos[1:]
     base_q = "?state=all" + ("" if forge_type == "github" else "&type=issues")
 
     raws = {}
@@ -782,14 +811,16 @@ def fetch_bundle(forge_type, repo, pr_repo=None, repo_path=".", since=None, only
         return since is None or any((p.get("updated_at") or "") >= since for p in page)
 
     pr_query = "?state=all" + ("&sort=updated&direction=desc" if forge_type == "github" else "")
-    prs = api.paged(api.path(pr_repo or repo, "/pulls" + pr_query), keep_going=recent if forge_type == "github" else None)
     pulls = []
-    for pr in prs:
-        if since and to_utc(pr.get("updated_at")) and to_utc(pr["updated_at"]) < since:
-            continue
-        entry = {"pr": pr, "timeline": api.paged(api.path(pr_repo or repo, f"/issues/{pr['number']}/timeline"))}
-        entry.update(_fetch_pull_detail(api, forge_type, pr_repo or repo, pr))
-        pulls.append(entry)
+    for pr_repo_name in pr_repos:
+        prs = api.paged(api.path(pr_repo_name, "/pulls" + pr_query), keep_going=recent if forge_type == "github" else None)
+        for pr in prs:
+            if since and to_utc(pr.get("updated_at")) and to_utc(pr["updated_at"]) < since:
+                continue
+            entry = {"repo": pr_repo_name, "pr": pr,
+                     "timeline": api.paged(api.path(pr_repo_name, f"/issues/{pr['number']}/timeline"))}
+            entry.update(_fetch_pull_detail(api, forge_type, pr_repo_name, pr))
+            pulls.append(entry)
     return {"forge": forge, "issues": issues, "pulls": pulls}
 
 
@@ -854,7 +885,7 @@ def merge_local(doc, rows, since=None, until=None, only_issue=None, only_batch=N
         event = _event(row["ts"], row["kind"], issue=issue, batch=batch)
         event.update({key: row.get(key) for key in LOCAL_KEYS})
         doc["events"].append(event)
-    doc["events"].sort(key=lambda e: (e["ts"], e["kind"], e["issue"] or 0, e["pr"] or 0))
+    doc["events"].sort(key=lambda e: (e["ts"], e["kind"], e["issue"] or 0, e["pr"] or 0, e.get("repo") or ""))
     return doc
 
 
@@ -1439,7 +1470,7 @@ PAGE_JS = r"""
     if (lane.title) { lines.push(lane.title); }
     if (e.from || e.to) { lines.push((e.from || "none") + " -> " + (e.to || "none")); }
     if (e.detail) { lines.push(e.detail); }
-    if (e.pr) { lines.push("PR #" + e.pr); }
+    if (e.pr) { lines.push("PR " + (e.repo && e.repo !== D.issueRepo ? e.repo : "") + "#" + e.pr); }
     if (e.actor) { lines.push("by " + e.actor); }
     return lines.join("\n");
   }
@@ -2000,7 +2031,7 @@ def render_html(doc, refresh=None, now=None):
     for index, event in enumerate(events):
         if event.get("kind") == "comment" and event.get("role") in NOTE_ROLES and event.get("batch") is not None:
             notes.setdefault(str(event["batch"]), []).append(index)
-    data = {"states": states, "markers": markers, "events": events, "issues": doc.get("issues") or {}, "batches": doc.get("batches") or {},
+    data = {"issueRepo": "/".join(str(forge[k]) for k in ("owner", "repo") if forge.get(k)) or None, "states": states, "markers": markers, "events": events, "issues": doc.get("issues") or {}, "batches": doc.get("batches") or {},
             "range": rng, "groups": groups, "kinds": kinds, "marks": [marker_for(e) for e in events],
             "logs": [log_group_of(e) for e in events], "logGroups": [{"key": k, "label": label} for k, label, _ in LOG_GROUPS],
             "summaries": summaries, "notes": notes, "problemRows": problems, "problemMarks": list(PROBLEM_MARKS),
@@ -2179,7 +2210,9 @@ def main(argv=None):
     collect = sub.add_parser("collect", help="read the tracker and print the timeline document")
     collect.add_argument("--forge", choices=["github", "gitea"])
     collect.add_argument("--repo", help="owner/name of the repository that holds the issues")
-    collect.add_argument("--pr-repo", help="owner/name of the repository that holds the pull requests (default: --repo)")
+    collect.add_argument("--pr-repo", action="append", metavar="OWNER/NAME[,OWNER/NAME]",
+                         help="another repository that holds pull requests; repeat the flag or give a comma list "
+                              "(the --repo repository is always read)")
     collect.add_argument("--repo-path", default=".", help="checkout that `tea api` resolves its login from")
     collect.add_argument("--fixture", help="read a recorded bundle instead of the tracker")
     collect.add_argument("--since")

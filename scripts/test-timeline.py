@@ -135,7 +135,7 @@ check(len(bm) == 1 and bm[0]["pr"] == 61 and bm[0]["batch"] == 50, f"batch.merge
 check(all(e["batch"] == 50 for e in events if e["issue"] == 51), "member events carry the batch number")
 
 check(gh_doc["batches"]["50"] == {"tracking": 50, "branch": "batch/50-bar", "members": [51, 52], "pr": 61,
-                                  "prs": [60]}, f"batches: {gh_doc['batches']}")
+                                  "prs": [60], "pr_repo": "o/r"}, f"batches: {gh_doc['batches']}")
 check(gh_doc["convergence"] == [{"gate": 12, "filed": 3, "closed": 5}, {"gate": 13, "filed": 2, "closed": None}],
       f"convergence: {gh_doc['convergence']}")
 check(gh_doc["issues"]["51"]["title"] == "Collector" and "status:in-review" in gh_doc["issues"]["51"]["labels"],
@@ -1230,6 +1230,167 @@ marked_bundle = {
 marked = kinds_of(timeline.normalize(marked_bundle), "checkpoint")
 check(len(marked) == 1 and marked[0]["k"] == 2 and marked[0]["detail"] == "tests green",
       f"a checkpoint comment with a marker gives a checkpoint event: {marked}")
+
+# ---------------------------------------------------------------- several PR repositories (#86)
+# Member PRs live on the fork (o/fork). The batch PR lives on the issue repo (o/r). Both use number 8.
+def multi_bundle(forge_type):
+    gh = forge_type == "github"
+    ts = lambda hms: f"2026-07-01T{hms}Z" if gh else f"2026-07-01T{hms}+00:00"  # noqa: E731
+    note = lambda t, who, body, cid: ({"event": "commented", "id": cid, "html_url": f"https://x/c/{cid}", "created_at": ts(t),  # noqa: E731
+                                       "actor": {"login": who}, "body": body} if gh else
+                                      {"type": "comment", "id": cid, "html_url": f"https://x/c/{cid}", "created_at": ts(t),
+                                       "user": {"login": who}, "body": body})
+    commit = gh_commit("f100", "issue-flow: fix the review findings", [{"filename": "src/a.py"}], ts=ts("12:00:00"))
+    if not gh:
+        commit["diff"] = "diff --git a/src/a.py b/src/a.py\n--- a/src/a.py\n+++ b/src/a.py\n@@ -1 +1 @@\n-old\n+new\n"
+        commit["files"] = [{"filename": "src/a.py", "status": "modified"}]
+    member = dict(pr_raw(8, "Member", "issue/51-flag", "batch/50-bar", ts("09:00:00"), merged=ts("10:00:00")), html_url="https://x/fork/pull/8")
+    batch = dict(pr_raw(8, "Batch", "batch/50-bar", "dev", ts("11:00:00"), merged=ts("13:00:00"), merged_by="op"), html_url="https://x/r/pull/8")
+    rework = "<!-- issue-flow:event role=gate.rework issue=50 problem=batch-r1 -->\nBatch review: rework requested."
+    return {"forge": {"type": forge_type, "host": "h", "owner": "o", "repo": "r"},
+            "issues": [{"issue": issue_raw(50, "Batch", ["type:batch"], ts("08:00:00"), "- [ ] #51\n"), "timeline": []},
+                       {"issue": issue_raw(51, "Flag", ["status:merged"], ts("08:00:00")), "timeline": []}],
+            "pulls": [{"repo": "o/fork", "pr": member, "timeline": [note("09:30:00", "pm", "Sub-merged into batch.", 1)]},
+                      {"repo": "o/r", "pr": batch, "timeline": [note("11:30:00", "pm", rework, 2)], "commits": [commit]}]}
+
+
+for forge_type in ("github", "gitea"):
+    mdoc = timeline.normalize(multi_bundle(forge_type))
+    opened = [(e["repo"], e["pr"], e["issue"], e["batch"]) for e in mdoc["events"] if e["kind"] == "pr.opened"]
+    check(opened == [("o/fork", 8, 51, 50), ("o/r", 8, 50, 50)], f"{forge_type}: PRs of two repos stay apart, each with its repo: {opened}")
+    pr_events = [e for e in mdoc["events"] if e["pr"] is not None]
+    check(pr_events and all(e.get("repo") in ("o/fork", "o/r") for e in pr_events), f"{forge_type}: every PR event carries its repo")
+    check(mdoc["batches"]["50"]["pr"] == 8 and mdoc["batches"]["50"]["pr_repo"] == "o/r"
+          and mdoc["batches"]["50"]["branch"] == "batch/50-bar" and mdoc["batches"]["50"]["prs"] == [8],
+          f"{forge_type}: the batch PR is found by its head branch: {mdoc['batches']['50']}")
+    merged = [e for e in mdoc["events"] if e["kind"] == "batch.merged"]
+    check(len(merged) == 1 and merged[0]["repo"] == "o/r" and merged[0]["actor"] == "op", f"{forge_type}: batch.merged: {merged}")
+    check([e["repo"] for e in mdoc["events"] if e["kind"] == "pr.merged"] == ["o/fork", "o/r"], f"{forge_type}: pr.merged repos")
+    rework_events = [e for e in mdoc["events"] if e["kind"] == "comment" and e["role"] == "gate.rework"]
+    check(len(rework_events) == 1 and rework_events[0]["repo"] == "o/r" and rework_events[0]["issue"] == 50
+          and rework_events[0]["batch"] == 50, f"{forge_type}: the rework comment sits on the batch lane: {rework_events}")
+    problems = mdoc["issues"]["50"]["problems"]
+    check([(p["id"], p["resolved"], p["resolved_by"]) for p in problems] == [("50:batch-r1", True, ["f100"])],
+          f"{forge_type}: the batch rework is a problem on the tracking issue, fixed by the commit: {problems}")
+    check(mdoc["issues"]["51"]["problems"] == [], f"{forge_type}: the member issue has no problem")
+    # The same PR listed twice (one repo named twice) is one PR.
+    twice = multi_bundle(forge_type)
+    twice["pulls"].append(copy.deepcopy(twice["pulls"][0]))
+    check(project(timeline.normalize(twice)) == project(mdoc), f"{forge_type}: a repeated PR is de-duplicated")
+
+check(project(timeline.normalize(multi_bundle("github"))) == project(timeline.normalize(multi_bundle("gitea"))),
+      "two-repo events match across the forges")
+# A PR entry with no repo belongs to the issue repo.
+plain = timeline.normalize(build("github"))
+check(all(e.get("repo") == "o/r" for e in plain["events"] if e["pr"] is not None), "a PR with no repo key belongs to the issue repo")
+
+# --pr-repo repeats, takes a comma list, and always keeps the issue repo.
+check(timeline.pr_repo_list("o/r", None) == ["o/r"], "no --pr-repo reads the issue repo only")
+check(timeline.pr_repo_list("o/r", ["o/fork"]) == ["o/r", "o/fork"], "the issue repo comes first")
+check(timeline.pr_repo_list("o/r", ["o/fork,o/other", "o/fork", "o/r", " o/x "]) == ["o/r", "o/fork", "o/other", "o/x"],
+      "a comma list and repeats are split and de-duplicated")
+
+# Live: a fake forge serves each repository's own pull requests.
+FAKE_MULTI = r"""
+import json, os, re, sys
+path = sys.argv[-1]
+data = json.load(open(os.environ["FAKE_DATA"]))
+page = re.search(r"[?&]page=(\d+)", path)
+if page and int(page.group(1)) > 1:
+    print('{"workflow_runs": []}' if "/actions/runs?" in path else "[]"); sys.exit(0)
+repo = re.search(r"repos/([^/]+/[^/]+)/", path).group(1)
+mine = [e for e in data["pulls"] if e["repo"] == repo]
+if "/actions/runs" in path:
+    print('{"workflow_runs": []}'); sys.exit(0)
+m = re.search(r"/pulls/(\d+)/(commits|reviews)\?", path)
+if m:
+    entry = next(e for e in mine if e["pr"]["number"] == int(m.group(1)))
+    rows = entry.get("commits", []) if m.group(2) == "commits" else []
+    print(json.dumps([{k: v for k, v in c.items() if k != "diff"} for c in rows])); sys.exit(0)
+if re.search(r"/pulls/\d+/comments\?", path):
+    print("[]"); sys.exit(0)
+m = re.search(r"/(?:git/)?commits/([0-9a-f]+)(\.diff)?$", path)
+if m:
+    for e in mine:
+        for c in e.get("commits", []):
+            if c["sha"] == m.group(1):
+                print(c.get("diff", "") if m.group(2) else json.dumps(c)); sys.exit(0)
+m = re.search(r"/issues/(\d+)$", path)
+if m:
+    print(json.dumps(next(e["issue"] for e in data["issues"] if e["issue"]["number"] == int(m.group(1))))); sys.exit(0)
+m = re.search(r"/issues/(\d+)/timeline", path)
+if m:
+    n = int(m.group(1))
+    rows = [e for e in data["issues"] if e["issue"]["number"] == n] if repo == data["issue_repo"] else []
+    rows += [e for e in mine if e["pr"]["number"] == n]
+    print(json.dumps(rows[0]["timeline"] if rows else [])); sys.exit(0)
+if "/pulls" in path:
+    print(json.dumps([e["pr"] for e in mine])); sys.exit(0)
+if "/issues" in path:
+    label = re.search(r"labels=([^&]+)", path)
+    rows = [e["issue"] for e in data["issues"]] if repo == data["issue_repo"] else []
+    if label:
+        from urllib.parse import unquote
+        rows = [r for r in rows if unquote(label.group(1)) in [l["name"] for l in r["labels"]]]
+    print(json.dumps(rows)); sys.exit(0)
+print(json.dumps({"message": "Not Found"}))
+"""
+with tempfile.TemporaryDirectory() as tmp:
+    fake = os.path.join(tmp, "fake.py")
+    with open(fake, "w") as handle:
+        handle.write(FAKE_MULTI)
+    for forge_type, env_name in (("github", "IFW_GH"), ("gitea", "IFW_TEA")):
+        wrapper = os.path.join(tmp, f"fake-{forge_type}")
+        with open(wrapper, "w") as handle:
+            handle.write(f'#!/bin/sh\nexec "{sys.executable}" "{fake}" "$@"\n')
+        os.chmod(wrapper, 0o755)
+        data = os.path.join(tmp, f"multi-{forge_type}.json")
+        with open(data, "w") as handle:
+            json.dump(dict(multi_bundle(forge_type), issue_repo="o/r"), handle)
+        env = {env_name: wrapper, "FAKE_DATA": data}
+        expect = project(timeline.normalize(multi_bundle(forge_type)))
+        for flags, label in ((["--pr-repo", "o/fork"], "one --pr-repo"),
+                             (["--pr-repo", "o/fork", "--pr-repo", "o/r"], "a repeated --pr-repo"),
+                             (["--pr-repo", "o/fork,o/r"], "a comma list")):
+            proc = run(["collect", "--forge", forge_type, "--repo", "o/r", "--local-events", "off", *flags], env)
+            check(proc.returncode == 0, f"live {forge_type} with {label} exits 0: {proc.stderr}")
+            if proc.returncode == 0:
+                live = json.loads(proc.stdout)
+                check(project(live) == expect, f"live {forge_type} with {label} has both repos' events")
+                check(live["forge"].get("pr_repos") == ["o/fork"], f"live {forge_type} with {label} records the extra repos: {live['forge']}")
+        proc = run(["collect", "--forge", forge_type, "--repo", "o/r", "--local-events", "off", "--pr-repo", "o/fork", "--issue", "50"], env)
+        check(proc.returncode == 0 and any(e["kind"] == "batch.merged" for e in json.loads(proc.stdout)["events"]),
+              f"live {forge_type} --issue 50 keeps the batch PR events: {proc.stderr}")
+        proc = run(["collect", "--forge", forge_type, "--repo", "o/r", "--local-events", "off"], env)
+        check(proc.returncode == 0 and [e["repo"] for e in json.loads(proc.stdout)["events"] if e["kind"] == "pr.opened"] == ["o/r"],
+              f"live {forge_type} with no --pr-repo reads the issue repo only")
+
+# watch passes every --pr-repo to collect.
+seen_args = []
+real_main = timeline.main
+
+
+def fake_main(argv=None):
+    if argv and argv[0] == "collect":
+        seen_args.append(list(argv))
+        with open(argv[-1], "w") as handle:
+            json.dump({"version": 1, "forge": {}, "issues": {}, "batches": {}, "events": []}, handle)
+        return 0
+    return real_main(argv)
+
+
+timeline.main = fake_main
+with tempfile.TemporaryDirectory() as tmp:
+    timeline._watch_once(["--forge", "github", "--repo", "o/r", "--pr-repo", "o/fork", "--pr-repo", "o/other"], os.path.join(tmp, "t.html"), 60, tmp)
+timeline.main = real_main
+check(seen_args and seen_args[0][:9] == ["collect", "--forge", "github", "--repo", "o/r", "--pr-repo", "o/fork", "--pr-repo", "o/other"],
+      f"watch passes every --pr-repo to collect: {seen_args}")
+
+# The page names the repo on a PR from another repo only.
+multi_page = payload(timeline.render_html(timeline.normalize(multi_bundle("github"))))
+check(multi_page["issueRepo"] == "o/r", f"the page data names the issue repo: {multi_page.get('issueRepo')}")
+check(multi_page["batches"]["50"]["pr_repo"] == "o/r", "the batch entry reaches the page")
+check("issueRepo" in timeline.PAGE_JS and "e.repo" in timeline.PAGE_JS, "the detail text labels a PR from another repo")
 
 if failures:
     for failure in failures:

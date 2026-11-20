@@ -38,9 +38,16 @@ Detect the forge as `references/forge.md` `## Detection` describes: a `forge` bl
 
 - `--forge github` or `--forge gitea`
 - `--repo <owner>/<repo>`: the repository that holds the **issues**.
-- `--pr-repo <owner>/<repo>`: only when the pull requests live in a different repository.
-  The `notes` field of `.issue-flow.json` or the user names it. A fork workflow is the
-  usual case.
+- `--pr-repo <owner>/<repo>`: one flag for each other repository that holds pull requests.
+  Repeat the flag. A fork workflow is the usual case: the member PRs are on the fork and the
+  batch PR is on the issue repository. `collect` always reads the `--repo` repository too, so
+  never repeat it. Find the other repositories from these, and drop repeats:
+  1. The `prRepos` array of `.issue-flow.json`.
+  2. The remotes of the checkout (`git remote -v`) that point at the same forge host, when the
+     repository they name is not `--repo`. A remote with no PRs for this project gives an empty
+     read, which costs nothing.
+  3. The user's words, and the `notes` field of `.issue-flow.json`.
+  Tell the user which repositories you read.
 
 `collect` does not detect the forge by itself. It stops with exit 5 when `--forge` and
 `--repo` are both missing.
@@ -53,7 +60,7 @@ Resolve the default page path, then collect and render in one pipe:
 OUT="$(python3 "${CLAUDE_PLUGIN_ROOT}/scripts/timeline.py" path)"
 mkdir -p "$(dirname "$OUT")"
 python3 "${CLAUDE_PLUGIN_ROOT}/scripts/timeline.py" collect --forge <forge> --repo <owner/repo> \
-    [--pr-repo <owner/repo>] [--since <age>] \
+    [--pr-repo <owner/repo> ...] [--since <age>] \
   | python3 "${CLAUDE_PLUGIN_ROOT}/scripts/timeline.py" render --out "$OUT"
 ```
 
@@ -70,7 +77,7 @@ Start `watch` as a **background shell**, with `run_in_background: true`:
 
 ```bash
 python3 "${CLAUDE_PLUGIN_ROOT}/scripts/timeline.py" watch --forge <forge> --repo <owner/repo> \
-    [--pr-repo <owner/repo>] [--since <age>] [--interval 300] [--max-minutes 240] [--out <path>]
+    [--pr-repo <owner/repo> ...] [--since <age>] [--interval 300] [--max-minutes 240] [--out <path>]
 ```
 
 - `watch` collects, renders with `--refresh <interval>`, sleeps, and repeats. It is a

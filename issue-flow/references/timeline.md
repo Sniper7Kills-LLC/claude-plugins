@@ -13,11 +13,11 @@ label, a comment, a PR state. The local-event log adds what the tracker does not
 ```json
 {
   "version": 1,
-  "forge":   {"type": "github", "host": null, "owner": "o", "repo": "r", "pr_repo": "o/other"},
+  "forge":   {"type": "github", "host": null, "owner": "o", "repo": "r", "pr_repos": ["o/other"]},
   "range":   {"since": "2026-05-01T00:00:00Z", "until": null},
   "issues":  {"51": {"title": "…", "url": "…", "state": "open", "labels": ["status:in-review"],
                       "status_at_start": "in-progress", "problems": []}},
-  "batches": {"50": {"tracking": 50, "branch": "batch/50-bar", "members": [51, 52], "pr": 61, "prs": [60]}},
+  "batches": {"50": {"tracking": 50, "branch": "batch/50-bar", "members": [51, 52], "pr": 61, "pr_repo": "o/r", "prs": [60]}},
   "convergence": [{"gate": 12, "filed": 3, "closed": 5}, {"gate": 13, "filed": 2, "closed": null}],
   "events":  [{"ts": "2026-05-01T11:00:00Z", "kind": "status", "issue": 51, "pr": null, "batch": 50,
                "actor": "alice", "from": "ready", "to": "in-progress", "detail": null}]
@@ -26,8 +26,8 @@ label, a comment, a PR state. The local-event log adds what the tracker does not
 
 - **Timestamps** are ISO-8601 UTC with a `Z` suffix, at one-second precision. The collector
   converts every forge offset.
-- **`forge.pr_repo`** is present only when the PRs come from another repository
-  (`--pr-repo`).
+- **`forge.pr_repos`** lists the repositories read for PRs besides the issue repository. It is
+  present only when `--pr-repo` named one. See **Several PR repositories**.
 - **`range`** repeats `--since` and `--until` after they are resolved to UTC. `null` means
   unbounded.
 - **`issues`** is keyed by issue number (a string). It holds the issues that have an event in
@@ -38,7 +38,8 @@ label, a comment, a PR state. The local-event log adds what the tracker does not
   event, so a filter does not shorten it.
 - **`batches`** is keyed by the tracking-issue number. `tracking` is that number.
   `members` are the issue numbers in its checklist. `branch` is the integration branch,
-  found from a PR whose head is `batch/<n>-…` or `epic/<n>-…`. `pr` is that PR (the batch PR).
+  found from a PR whose head is `batch/<n>-…` or `epic/<n>-…`. `pr` is that PR (the batch PR) and
+  `pr_repo` is the repository that holds it (`null` when none is found).
   `prs` are the member PRs, whose base is the integration branch. A tracking issue has the
   label `type:batch` or `type:epic`.
 - **`convergence`** is the last `<!-- issue-flow:convergence --> gates: 12→3f/5c, 13→2f/–`
@@ -56,6 +57,7 @@ Every event has these nine keys. A key that does not apply is `null`.
 | `kind` | What happened. An open string set — see the table below. |
 | `issue` | The issue number. For a PR, the issue it implements (from the `issue/<n>-…` head branch), or the tracking issue for a batch PR. |
 | `pr` | The PR number, when the event concerns a PR. |
+| `repo` | `owner/name` of the repository that holds the PR. Every event that has a `pr` also has `repo`. Other events have no `repo` key. |
 | `batch` | The tracking-issue number of the batch the event belongs to. |
 | `actor` | The tracker login that caused it. `null` when the forge does not report one. |
 | `from`, `to` | The old and new value, for a transition. |
@@ -235,6 +237,31 @@ apply to local events too.
 `WIP:` title prefix, so `pr.ready` comes from a title change that removes it. A Gitea label
 entry is an add when its `body` is `"1"`. Both forges give the same events for the same
 history.
+
+## Several PR repositories
+
+In a fork workflow the issues and the batch PR live in one repository, and the member PRs live
+in another. `--pr-repo` names the other repositories. It repeats, and it takes a comma list:
+`--pr-repo owner/fork --pr-repo owner/other` and `--pr-repo owner/fork,owner/other` are the same.
+`collect` always reads the issue repository (`--repo`) too, and reads each repository once.
+
+- A PR is known by `owner/name#number`. Two repositories may both have a PR 8, and a PR that
+  two reads find is one PR. A fixture entry with no `repo` belongs to the issue repository.
+- **The batch PR is found by its head branch.** A PR whose head is `batch/<n>-…` or `epic/<n>-…`
+  is the batch PR of batch `n`, in whichever repository it is. It sets `batches[<n>].pr`,
+  `.pr_repo` and `.branch`. It gives `batch.merged` when it is merged. Its comments, commits,
+  reviews and CI runs have `issue` = the tracking issue and `batch` = `n`, so they sit on the
+  batch lane. A member PR is found by its base branch instead.
+- **Problems from the batch PR belong to the tracking issue.** A `gate.rework` comment, a
+  changes-requested review or a failed CI run on the batch PR is in
+  `issues[<n>].problems`. A later commit on that PR resolves it (see **Problems**).
+- The same rules hold on Gitea, through `tea api`.
+- The renderer writes the repository on a PR in the detail text only when it is not the issue
+  repository.
+
+Where the PR repositories come from. `collect` does not guess them. The `/timeline` skill
+passes the issue repository, each remote of the checkout that holds PRs for this repository,
+and the `prRepos` array of `.issue-flow.json` (see `session-config.md`).
 
 ## Filters
 
