@@ -93,7 +93,12 @@ only). `--no-cache` reads everything and keeps nothing.
 for more than 30 days when it ends. When the user asks to clean up or to remove what the skill
 left on the machine, run `timeline.py gc` (the same clean-up) or `timeline.py gc --all` (the
 whole cache and every `refs/issue-flow/` ref). Pass `--dry-run` first to show what goes, and
-run `gc --all` only with the user's consent. `references/timeline.md` has the rules.
+run `gc --all` only with the user's consent. Tell the user that the next run after `gc --all` is
+cold and costs the full quota: measured, a cold snapshot made 176 API calls, and a warm one 14.
+`gc` prints one `ref <name>` line for each ref first, and the summary names up to 3 refs.
+`--dry-run` lists each file too, and `--verbose` lists them in a real run. `gc` cuts no list;
+a `...` cut comes from the display, so send stdout to a file and read it.
+`references/timeline.md` has the rules.
 
 `collect` does not detect the forge by itself. It stops with exit 5 when `--forge` and
 `--repo` are both missing.
@@ -114,7 +119,9 @@ repository shares it. The user can ask for another path.
 The exit code is the result. Do not pipe the tool, and do not read `PIPESTATUS`: it is empty
 in zsh. Exit 0 means the page is written, and `snapshot` prints one line on stderr
 (`wrote <path>: <n> events, <n> lanes, <n> problems; <n> API calls (<n> cached, <n> not modified), <n> remaining`).
-The last count is the quota left after the run; Gitea leaves it out. A problem is a rework request, a
+"Cached" counts the reads that the cache served in this run. A cold run can show cached
+reads: a read that the run wrote to the cache earlier is served from it again. The last count is
+the quota left after the run; Gitea leaves it out. A problem is a rework request, a
 changes-requested review or a failed CI run. The page lists them in its Problems view. Any other exit code means no new page:
 2 is a failed fetch or a failed render, 3 is the quota guard (see section 2), 5 is a bad flag.
 Say so with the error text. Do not write an empty page.
@@ -132,12 +139,18 @@ python3 "${CLAUDE_PLUGIN_ROOT}/scripts/timeline.py" watch --forge <forge> --repo
   sleep loop, not a busy loop. Do not add `/loop` or a cron job.
 - To wait for `watch`, wait for the background shell to complete: the harness tells you when it
   exits. Do not run `sleep` in the foreground, and do not poll its output file in a loop.
+- `watch` prints one start line on stderr:
+  `watch: started; a refresh every <interval> s until <time>; page <path>`.
 - Each good cycle prints one line:
   `wrote <path> at <time>; <n> API calls (<n> cached, <n> not modified), <n> remaining`. When
   nothing changed, the not-modified count equals the listing pages, and the calls are those
   pages plus the CI runs of open PRs.
 - `--interval` is 60 seconds or more. The default is 300. Take a shorter interval as 60.
-- `--max-minutes` is the lifetime. The default is 240. The loop ends itself at that time.
+- `--max-minutes` is the lifetime. The default is 240. A sleep ends at that time at the
+  latest. `watch` then writes one last cycle and stops.
+- When the loop ends, it prints one end line: `watch: stopped after <n> cycles: <reason>`. The
+  reason is `--max-minutes reached`, `SIGTERM`, `SIGINT`, `3 failed refreshes in a row (exit 2)`
+  or `a bad flag (exit 5)`. A stop with no end line is a crash.
 - A failed fetch keeps the last good page. Three failures in a row end the loop with
   exit 2.
 - When the quota guard stops a cycle, `watch` skips it, keeps the last page and prints

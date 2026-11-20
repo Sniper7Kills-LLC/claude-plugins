@@ -440,13 +440,16 @@ no body, and `collect` uses the kept page.
 
 **The counts.** The summary line of `snapshot` ends with the cost of the collect:
 `wrote <path>: <E> events, <L> lanes, <P> problems; <C> API calls (<M> cached, <K> not modified), <Q> remaining`.
-Each `watch` refresh line ends with the same counts. A forge with no quota to read leaves out
+Each `watch` refresh line ends with the same counts. `watch` also prints one start line
+(`watch: started; a refresh every <interval> s until <time>; page <path>`) and one end line
+(`watch: stopped after <n> cycles: <reason>`). A sleep ends at the `--max-minutes` deadline at the
+latest, and `watch` then runs one last cycle. A forge with no quota to read leaves out
 `, <Q> remaining`.
 
 | Count | Meaning |
 |---|---|
 | `C` | The HTTP requests that `collect` sent. A retry is one more request. A request answered with 304 counts. |
-| `M` | The reads that the cache served, with no request sent. One read is one row of the key table: a PR's reviews are one read, and its commits are another. |
+| `M` | The reads that the cache served in this run, with no request sent. One read is one row of the key table: a PR's reviews are one read, and its commits are another. A cold run can show `M` above 0: a read that this run wrote to the cache earlier is served from it. |
 | `K` | The sent requests answered with 304. `K` is part of `C`. These requests do not count against the primary quota. |
 | `Q` | `core.remaining` of the rate limit, read after the run. |
 
@@ -529,12 +532,17 @@ objects of a force-pushed head. `timeline.py gc` removes:
   under the PR key plus `/state`. `gc` reads these records before it removes any file, so the
   ref of a PR goes no later than its last record. A ref with no record stays.
 - **`gc --all`** removes every cache file, every temporary file and every `refs/issue-flow/` ref.
-  The next collect is cold.
-- **`--dry-run`** prints one line for each file (`cache <path>`) and each ref (`ref <name>`) that
-  `gc` would remove, and removes nothing.
+  The next collect is cold, and costs as much quota as a first run: measured on 2026-11-20, a
+  cold snapshot of this repository made 176 calls, and a warm `watch` cycle made 14.
+- **The output.** `gc` prints one `ref <name>` line on stdout for each ref it removes, before
+  any other line. `--dry-run` also prints one `cache <path>` line for each file that `gc` would
+  remove, and removes nothing. `--verbose` prints the same `cache` lines in a real run. The
+  stderr summary gives the counts and names up to 3 refs; the `ref` lines name them all. `gc`
+  prints every line. When a display shows a list cut with `...`, the cut comes from the display:
+  send stdout to a file and read the file.
 - **Flags.** `--repo-path` (default `.`) names the checkout whose refs `gc` cleans and whose
   default cache it uses. `--cache-dir` names another cache directory. `gc` touches only files
-  in the cache layout, so another file in that directory stays. One stderr line gives the counts.
+  in the cache layout, so another file in that directory stays.
   Outside a git repository with no `--cache-dir`, `gc` exits 2.
 - **Automatic.** `snapshot` runs the same gc (never `--all`) after it writes the page, against
   the cache of its collect. A gc failure never fails the snapshot. `--no-cache` and `--fixture`
