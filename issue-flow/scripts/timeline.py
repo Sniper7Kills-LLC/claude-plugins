@@ -74,8 +74,11 @@ and writes every read. The document is the same with and without the cache.
 
 `gc` removes the cache files that no collect touched for 30 days, the temporary files older than
 1 hour, and the refs/issue-flow/pull/ refs of PRs that the cache shows closed for more than 30
-days. `gc --all` removes the whole cache and every refs/issue-flow/ ref; `--dry-run` lists and
-removes nothing. `snapshot` runs the same gc (never --all) after it writes the page.
+days. `gc --all` removes the whole cache and every refs/issue-flow/ ref, so the next collect is
+cold. gc prints one `ref <name>` line on stdout for each ref, first. `--dry-run` also prints one
+`cache <path>` line for each file and removes nothing; `--verbose` prints the same lines in a
+real run. The stderr summary names up to 3 refs. `snapshot` runs the same gc (never --all) after
+it writes the page.
 
 Flags: --since/--until take an ISO date, an ISO timestamp, or a relative age (`7d`,
 `24h`, `2w`). --issue and --batch keep one issue or one batch (a tracking-issue number).
@@ -112,7 +115,9 @@ Keep a page current while a run is going (the /timeline skill starts this in the
     python3 "${CLAUDE_PLUGIN_ROOT}/scripts/timeline.py" watch --forge github --repo owner/name --interval 300 --max-minutes 240
 
 `watch` runs `collect`, then `render --refresh <interval>`, then sleeps, until --max-minutes
-passes or it gets SIGINT or SIGTERM (both exit 0). It takes every `collect` flag, and it
+passes or it gets SIGINT or SIGTERM (both exit 0). A sleep ends at the deadline at the latest,
+and watch then runs one last cycle. It prints one start line on stderr (the interval, the stop
+time and the page path) and one end line (`watch: stopped after <n> cycles: <reason>`). It takes every `collect` flag, and it
 owns --out: the default is <git common dir>/issue-flow/timeline.html, which no commit
 carries and every worktree shares. It replaces the page in one step, so a browser never
 reads half a page. --interval is 60 seconds or more (default 300). --max-minutes defaults
@@ -3177,21 +3182,35 @@ def cmd_watch(args):
         print(json.dumps({"error": f"watch failed: {exc}"}), file=sys.stderr)
         return 2
 
+    caught = {"signal": "SIGINT"}
+
     def stop(signum, frame):
+        caught["signal"] = signal.Signals(signum).name
         raise KeyboardInterrupt
 
     signal.signal(signal.SIGTERM, stop)
     deadline = time.monotonic() + args.max_minutes * 60
+    stop_at = datetime.now(timezone.utc) + timedelta(minutes=args.max_minutes)
+    # A clean stop and a crash both end the process. The end line tells them apart.
+    print(f"watch: started; a refresh every {args.interval:g} s until "
+          f"{stop_at.isoformat(timespec='seconds').replace('+00:00', 'Z')}; page {out_path}", file=sys.stderr, flush=True)
+    cycles = 0
+
+    def ended(reason, code):
+        print(f"watch: stopped after {_plural(cycles, 'cycle')}: {reason}", file=sys.stderr, flush=True)
+        return code
+
     failures_in_a_row = 0
     collect_args = args.collect_args
     try:
         with tempfile.TemporaryDirectory() as scratch:
             while True:
                 code = _watch_once(collect_args, out_path, args.interval, scratch)
+                cycles += 1
                 # --refresh-cache renews the cache once. Later cycles read it, or each cycle reads everything.
                 collect_args = [a for a in collect_args if a != "--refresh-cache"]
                 if code == 5:
-                    return 5
+                    return ended("a bad flag (exit 5)", 5)
                 remaining = deadline - time.monotonic()
                 if code == 3:
                     # The quota guard refused: skip this cycle. It is not a failure, so watch never exits on it.
@@ -3201,24 +3220,24 @@ def cmd_watch(args):
                     print(f"watch: skipped this refresh to save the API quota; the last page stays; {nxt}",
                           file=sys.stderr, flush=True)
                     if remaining <= 0:
-                        return 0
+                        return ended("--max-minutes reached", 0)
                     time.sleep(min(args.interval, remaining))
                     continue
                 failures_in_a_row = failures_in_a_row + 1 if code else 0
                 if code:
                     print(f"watch: refresh failed (exit {code}); the last page stays", file=sys.stderr, flush=True)
                     if failures_in_a_row >= WATCH_FAILURE_LIMIT:
-                        return 2
+                        return ended(f"{WATCH_FAILURE_LIMIT} failed refreshes in a row (exit 2)", 2)
                 else:
                     print(f"wrote {out_path} at {datetime.now(timezone.utc).isoformat(timespec='seconds')}; "
                           f"{calls_summary()}", file=sys.stderr, flush=True)
                 remaining = deadline - time.monotonic()
                 if remaining <= 0:
-                    return 0
+                    return ended("--max-minutes reached", 0)
+                # The sleep ends at the deadline at the latest, and the loop then writes one last cycle.
                 time.sleep(min(args.interval, remaining))
     except KeyboardInterrupt:
-        print("watch: stopped", file=sys.stderr, flush=True)
-        return 0
+        return ended(caught["signal"], 0)
 
 
 # ------------------------------------------------------------------ gc
@@ -3311,6 +3330,20 @@ def run_gc(root, repo_path, everything=False, dry_run=False):
     return files, tmps, refs
 
 
+GC_REFS_NAMED = 3
+
+
+def _gc_refs_text(refs):
+    """Return the ref count of the gc summary, with the first GC_REFS_NAMED refs named."""
+    text = _plural(len(refs), "ref")
+    if not refs:
+        return text
+    named = ", ".join(refs[:GC_REFS_NAMED])
+    if len(refs) > GC_REFS_NAMED:
+        return f"{text} ({named} and {len(refs) - GC_REFS_NAMED} more: the `ref` lines on stdout name them all)"
+    return f"{text} ({named})"
+
+
 def cmd_gc(args):
     root = args.cache_dir
     if not root:
@@ -3320,14 +3353,17 @@ def cmd_gc(args):
             print(json.dumps({"error": f"gc failed: {exc}; give --cache-dir"}), file=sys.stderr)
             return 2
     files, tmps, refs = run_gc(root, args.repo_path, args.all, args.dry_run)
-    if args.dry_run:
+    # The refs come first: they are few, and a display that cuts a long list keeps its head.
+    for ref in refs:
+        print(f"ref {ref}")
+    listed = args.dry_run or args.verbose
+    if listed:
         for path in files + tmps:
             print(f"cache {path}")
-        for ref in refs:
-            print(f"ref {ref}")
     verb = "would remove" if args.dry_run else "removed"
+    hint = "; --verbose lists each file" if (files or tmps) and not listed else ""
     print(f"gc: {verb} {_plural(len(files), 'cache file')}, {_plural(len(tmps), 'temporary file')} and "
-          f"{_plural(len(refs), 'ref')} ({root})", file=sys.stderr)
+          f"{_gc_refs_text(refs)} ({root}){hint}", file=sys.stderr)
     return 0
 
 
@@ -3398,6 +3434,8 @@ def main(argv=None):
     gc.add_argument("--all", action="store_true", help="remove the whole cache and every refs/issue-flow/ ref")
     gc.add_argument("--dry-run", action="store_true", help="print what gc would remove (one `cache` or `ref` line each) "
                                                             "and remove nothing")
+    gc.add_argument("--verbose", action="store_true", help="also print one `cache` line for each file removed "
+                                                            "(a `ref` line for each ref is always printed)")
     gc.set_defaults(func=cmd_gc)
     args, extra = parser.parse_known_args(argv)
     if args.command in ("watch", "snapshot"):

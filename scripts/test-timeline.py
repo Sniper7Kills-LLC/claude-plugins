@@ -562,6 +562,19 @@ with tempfile.TemporaryDirectory() as tmp:
     proc = run(["watch", "--fixture", fx, "--interval", "0.3", "--max-minutes", "0.02", "--out", out], env=FAST)
     check(proc.returncode == 0, f"watch exits 0 at the maximum: {proc.stderr}")
     check(proc.stderr.count("wrote ") >= 2, f"watch writes the page more than once: {proc.stderr!r}")
+    # Dogfood round 2, item 1: one start line and one end line on stderr.
+    lines = proc.stderr.strip().splitlines()
+    check(lines and re.fullmatch(r"watch: started; a refresh every 0\.3 s until \d{4}-\d\d-\d\dT\d\d:\d\d:\d\dZ; "
+                                 r"page " + re.escape(out), lines[0]) is not None,
+          f"#94-r2-1 watch prints a start line with the interval, the stop time and the page: {lines[:1]!r}")
+    cycles = proc.stderr.count("wrote ")
+    check(lines and lines[-1] == f"watch: stopped after {cycles} cycles: --max-minutes reached",
+          f"#94-r2-1 watch prints an end line with the reason and the cycles at the maximum: {lines[-1:]!r}")
+    # The deadline falls in a sleep: watch writes one last cycle at the deadline, then stops.
+    edge = run(["watch", "--fixture", fx, "--interval", "30", "--max-minutes", "0.02", "--out", out], env=FAST)
+    check(edge.returncode == 0 and edge.stderr.count("wrote ") == 2
+          and edge.stderr.strip().splitlines()[-1] == "watch: stopped after 2 cycles: --max-minutes reached",
+          f"#94-r2-3 watch writes one last cycle at the deadline: {edge.stderr!r}")
     if os.path.exists(out):
         with open(out) as handle:
             page = handle.read()
@@ -590,6 +603,9 @@ with tempfile.TemporaryDirectory() as tmp:
         child.kill()
         code = None
     check(code == 0, f"SIGTERM stops watch with exit 0 (got {code})")
+    tail = child.stderr.read().strip().splitlines() if code is not None else []
+    check(tail and re.fullmatch(r"watch: stopped after \d+ cycles?: SIGTERM", tail[-1]) is not None,
+          f"#94-r2-1 watch prints an end line that names the signal: {tail[-1:]!r}")
 
 # Guard: a log planted in the scratch repo's common dir changes no fixture or live-fake result.
 with tempfile.TemporaryDirectory() as tmp:
@@ -2713,13 +2729,28 @@ with tempfile.TemporaryDirectory() as tmp:
           f"#94-5 gc removes the ref of a PR closed more than 30 days ago: {refs}")
     check(os.path.exists(keep), "#94-5 gc leaves a file that is not a cache file")
     check("gc:" in proc.stderr, f"#94-5 gc prints one summary line: {proc.stderr!r}")
+    # Dogfood round 2, item 2: gc names each ref it removes, and lists the files with --verbose only.
+    check(proc.stdout.splitlines() == ["ref refs/issue-flow/pull/o/r/1"],
+          f"#94-r2-2 gc prints one `ref` line for each ref it removes, and no file line: {proc.stdout!r}")
+    check("1 ref (refs/issue-flow/pull/o/r/1)" in proc.stderr and "--verbose" in proc.stderr,
+          f"#94-r2-2 the gc summary names the ref and tells how to list the files: {proc.stderr!r}")
+    check(timeline._gc_refs_text([f"refs/issue-flow/pull/o/r/{n}" for n in range(5)])
+          == "5 refs (refs/issue-flow/pull/o/r/0, refs/issue-flow/pull/o/r/1, refs/issue-flow/pull/o/r/2 "
+             "and 2 more: the `ref` lines on stdout name them all)",
+          f"#94-r2-2 the gc summary names 3 refs and counts the rest: {timeline._gc_refs_text(['a'] * 5)!r}")
 
     dry = run(["gc", "--all", "--dry-run", "--cache-dir", root, "--repo-path", repo])
     check(dry.returncode == 0 and store.has("fresh") and len(git(repo, "for-each-ref", "refs/issue-flow/").split("\n")) == 3,
           f"#94-5 gc --all --dry-run removes nothing: {dry.stderr[:300]}")
     check("refs/issue-flow/pull/o/r/2" in dry.stdout and store.path_of("fresh") in dry.stdout,
           f"#94-5 gc --all --dry-run lists the refs and the cache files: {dry.stdout[:300]!r}")
-    gone = run(["gc", "--all", "--cache-dir", root, "--repo-path", repo])
+    kinds = [line.split(" ", 1)[0] for line in dry.stdout.splitlines()]
+    check(kinds == sorted(kinds, key=lambda k: k != "ref") and kinds.count("ref") == 2,
+          f"#94-r2-2 gc --dry-run prints the `ref` lines first: {kinds}")
+    expected = dry.stdout.splitlines()
+    gone = run(["gc", "--all", "--verbose", "--cache-dir", root, "--repo-path", repo])
+    check(gone.stdout.splitlines() == expected,
+          f"#94-r2-2 gc --verbose prints the same full list as --dry-run: {gone.stdout[:300]!r}")
     left = [n for _, _, names in os.walk(root) for n in names]
     check(gone.returncode == 0 and left == ["not-a-cache-file.txt"], f"#94-5 gc --all removes the whole cache: {left}")
     check(git(repo, "for-each-ref", "refs/issue-flow/") == "", "#94-5 gc --all removes every refs/issue-flow/ ref")
