@@ -123,6 +123,10 @@ equivalent:
   launch and returns `blocked` without it. Passing the integration branch as `base` here
   would reset the issue branch and orphan the PR's commits.
 
+A rework message names each problem on its own numbered line. The PM also posts it as a
+`gate.rework` comment ([event-markers.md](event-markers.md)), and the worker cites that
+comment's URL in the `Fixes:` trailer of each commit that answers a problem.
+
 Either way the PM tears the worktree down only once the issue is `status:batched` or
 terminally parked — not between rework rounds.
 
