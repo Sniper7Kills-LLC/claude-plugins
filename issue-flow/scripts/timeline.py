@@ -956,14 +956,18 @@ def cmd_collect(args):
 # ------------------------------------------------------------------ render
 
 # Lane kinds are data. A row here sets how a lane looks; another producer adds a lane type
-# by adding a row. `bar` lanes draw a coloured status bar. `marks` lanes draw one marker per
+# by adding a row. `bar` lanes draw a coloured status bar. `span` lanes draw one bar from the first event to the last stop. `marks` lanes draw one marker per
 # event. A kind that has no row still renders, as a generic `marks` lane.
 LANE_KINDS = {
     "issue": {"label": "Issue", "style": "bar"},
     "batch": {"label": "Batch", "style": "marks"},
     "worktree": {"label": "Worktree", "style": "marks"},
-    "agent": {"label": "Agent", "style": "marks"},
+    "agent": {"label": "Agent", "style": "span"},
 }
+# A `span` lane colours its bar by the last `outcome` of its events, through a state colour.
+# An outcome that is null or not listed here uses the neutral `ready` grey.
+AGENT_OUTCOME_STATES = {"ready-to-merge": "merged", "checkpoint": "in-progress", "needs-feedback": "needs-feedback",
+                        "blocked": "blocked"}
 # Event kinds from `collect` that belong on an issue lane. `batch.*` belongs on the batch lane.
 ISSUE_PREFIXES = {"status", "issue", "pr", "checkpoint", "comment", "commit", "review", "ci"}
 # The detail kinds fill the drill-down log. On a tracking issue they belong to the batch lane,
@@ -1310,6 +1314,7 @@ button[aria-pressed="true"] { border-color:var(--accent); color:var(--accent); f
 .lane-open { padding:0 .45rem; font-size:.75rem; }
 .track { position:relative; min-height:1.5rem; }
 .seg { position:absolute; top:.55rem; height:.5rem; border-radius:3px; background:var(--st-none); opacity:.9; }
+.seg-span { top:.6rem; height:.4rem; min-width:6px; }
 .seg-batched { background:transparent; border:2px dashed var(--st-batched); opacity:1; }
 .mk { position:absolute; top:.3rem; width:.95rem; height:.95rem; transform:translateX(-50%); border-radius:50%;
   border:2px solid var(--mk-dot); background:var(--bg); color:var(--fg); padding:0; display:inline-flex; align-items:center;
@@ -1537,7 +1542,7 @@ PAGE_JS = r"""
   function pos(ms, b) { return (100 * (ms - b.lo) / (b.hi - b.lo)).toFixed(3) + "%"; }
 
   // Markers closer than the gap move to the next row down, so none hides another.
-  var MARK = {gap: 16, base: 5, step: 9, rows: 4, track: 24};
+  var MARK = {gap: 16, base: 5, step: 17, rows: 4, track: 26};
   function spread(board) {
     Array.prototype.forEach.call(board.querySelectorAll(".track"), function (track) {
       var marks = Array.prototype.map.call(track.querySelectorAll(".mk"), function (n) { return {n: n, x: n.offsetLeft}; });
@@ -1594,9 +1599,23 @@ PAGE_JS = r"""
         track.appendChild(seg);
       });
     }
+    if (kind.style === "span" && visible.length) {
+      var first = visible[0].t, last = first, outcome = null, stopped = false;
+      visible.forEach(function (x) {
+        var stop = x.e.kind === "agent.stopped";
+        if (stop) { outcome = x.e.outcome || null; }
+        if (stop || (!stopped && x.t > last)) { last = x.t; stopped = stopped || stop; }
+      });
+      var tone = (D.outcomeStates || {})[outcome] || "ready";
+      var bar = el("div", "seg seg-span");
+      bar.style.left = pos(first, b); bar.style.width = (100 * (last - first) / (b.hi - b.lo)).toFixed(3) + "%";
+      bar.style.background = "var(--st-" + cls(tone) + ", var(--st-none))";
+      bar.setAttribute("data-tip", (outcome || "no outcome recorded") + "\nfrom " + stamp(first) + " to " + stamp(last));
+      track.appendChild(bar);
+    }
     visible.forEach(function (x) {
       var mark = D.marks[x.i];
-      if (!mark || (kind.style === "bar" && mark === "dot")) { return; }
+      if (!mark || (kind.style === "bar" && mark === "dot") || (kind.style === "span" && x.e.kind === "agent.spawned")) { return; }
       var text = describe(x.e, lane);
       var node = el("button", "mk mk-" + mark);
       node.type = "button";
@@ -2047,7 +2066,7 @@ def render_html(doc, refresh=None, now=None):
             "range": rng, "groups": groups, "kinds": kinds, "marks": [marker_for(e) for e in events],
             "logs": [log_group_of(e) for e in events], "logGroups": [{"key": k, "label": label} for k, label, _ in LOG_GROUPS],
             "summaries": summaries, "notes": notes, "problemRows": problems, "problemMarks": list(PROBLEM_MARKS),
-            "statusTime": time_in_status(doc, now)}
+            "statusTime": time_in_status(doc, now), "outcomeStates": AGENT_OUTCOME_STATES}
     filters = "".join(f'<button type="button" data-log="{html.escape(k)}" aria-pressed="true">{html.escape(label)}</button>'
                       for k, label, _ in LOG_GROUPS)
     pv_open, pv_hidden = (" open", " hidden") if problems else ("", "")

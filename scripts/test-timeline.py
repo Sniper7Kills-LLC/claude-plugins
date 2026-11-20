@@ -697,6 +697,13 @@ timeline.merge_local(dog_filtered, timeline.read_local_events(DOGFOOD), only_iss
 check(len([e for e in dog_filtered["events"] if e["kind"].startswith("agent.")]) == len(dog_agents),
       "--issue keeps the later events of a spawned agent")
 
+# An agent lane draws one bar, from its spawn to its last stop, coloured by the last outcome.
+check(timeline.LANE_KINDS["agent"]["style"] == "span", f"the agent lane is a span lane: {timeline.LANE_KINDS['agent']}")
+check(set(timeline.AGENT_OUTCOME_STATES) >= {"ready-to-merge", "checkpoint", "needs-feedback", "blocked"}
+      and all(v in timeline.STATE_COLORS for v in timeline.AGENT_OUTCOME_STATES.values()),
+      f"every agent outcome maps to a state colour: {timeline.AGENT_OUTCOME_STATES}")
+check(payload(timeline.render_html(dog_doc))["outcomeStates"] == timeline.AGENT_OUTCOME_STATES, "the page embeds the outcome colour map")
+
 # ---------------------------------------------------------------- granular data (#80)
 # Commits with capped diffs, classified comments, reviews, CI runs and the why-links.
 FIXTURE = os.path.join(ROOT, "scripts", "fixtures", "batch-78.json")
