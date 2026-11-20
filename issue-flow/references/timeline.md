@@ -316,13 +316,21 @@ checkout has the commit. `--diff-source` chooses the source:
   lacks. For each PR repository, one `git fetch` reads the heads of those PRs:
   `refs/pull/<n>/head` to `refs/issue-flow/pull/<owner>/<repo>/<n>`. The fetch takes no tags,
   writes no `FETCH_HEAD`, and updates no remote-tracking ref (`--refmap=`). It never changes a
-  branch, a tag or the work tree. If the one fetch fails, each PR head is fetched alone.
+  branch, a tag or the work tree. If the one fetch fails because a PR ref is gone (`couldn't
+  find remote ref`), each PR head is fetched alone. Any other failure (no access, no network, a
+  timeout) stops the fetch at once, because each retry would fail the same way.
+- **The fetch never waits.** It reads no stdin, sets `GIT_TERMINAL_PROMPT=0`, and adds
+  `-o BatchMode=yes` to the SSH command: after `GIT_SSH_COMMAND`, else after `core.sshCommand`,
+  else after `ssh`. A `GIT_SSH` program with no `GIT_SSH_COMMAND` is left as it is. Each fetch
+  stops after 60 s (`GIT_FETCH_TIMEOUT`). A failed fetch is not an error: its commits are read
+  through the API.
 - **The remote.** The fetch uses the remote of the `--repo-path` checkout whose URL ends in the
   PR repository's `owner/name`. If two remotes match, the first name in sort order wins. If no
   remote matches, there is no fetch, and the commits git lacks are read through the API.
 - **The fallback.** A commit that git cannot read after the fetch (no matching remote, or a
   commit that a force-push removed) is read through the API, one commit at a time. One stderr
-  line gives the count: `collect: read 3 commits through the API: not in the local repository at <path>`.
+  line gives the count, and the first line of git's error when a fetch failed:
+  `collect: read 3 commits through the API: not in the local repository at <path> (git fetch: fatal: Authentication failed for '<url>')`.
 - **The diff.** A commit is compared with its first parent, as both forges do. A root commit
   is compared with the empty tree. Renames are found as `git diff -M` finds them. On GitHub the
   patch uses `--inter-hunk-context=1`: GitHub joins two hunks that one unchanged line keeps
@@ -353,6 +361,7 @@ knows each item's `updated_at`. An item whose key has an entry in the cache cost
   | A review's comments (Gitea) | the PR key, then `/review/<id>/comments` | as the PR key |
   | A commit's files (GitHub) or `.diff` text (Gitea) | `<forge>/commit/<sha>` | always: a commit never changes |
   | A failed run's jobs | `<forge>/<repo>/run/<id>/<updated_at>/jobs` (Gitea: `completed_at`) | until the run changes |
+  | A PR's state record, for `gc` (no read) | the PR key, then `/state` | as the PR key |
 
   An item that has no `updated_at`, a PR that has no head sha, and a run with no time are read
   every time. The listings are not served from the cache. On GitHub each listing page is a
@@ -360,7 +369,9 @@ knows each item's `updated_at`. An item whose key has an entry in the cache cost
 - **CI runs of an open PR.** A run starts and ends with no change to the PR's `updated_at`. So
   `collect` reads the runs again for each PR that is open, and for each PR updated in the last
   hour (`RUNS_STALE_AFTER`). The new runs replace the entry. The PR's other reads, and the jobs
-  of a run that did not change, still come from the cache.
+  of a run that did not change, still come from the cache. A runs list that holds a run whose
+  `status` is not `completed` (queued or in progress) is not stored: when that run ends, the
+  PR's `updated_at` does not change, so a stored list would show the run as going forever.
 - **Commits come before git.** `collect` looks in the cache first. The `git fetch` of
   `--diff-source auto` runs only for the PRs that hold an uncached commit. A commit has the same
   value whether git or the API gave it.
@@ -374,7 +385,8 @@ knows each item's `updated_at`. An item whose key has an entry in the cache cost
 - **The document does not depend on the cache.** A warm collect gives a document byte-identical
   to `--no-cache` for the same tracker state.
 - **The API.** `Cache(root, read=True, write=True)` in `timeline.py` has `get(key)` (the value,
-  or None for a miss), `put(key, value)` and `has(key)` (no hit is counted). The key functions are
+  or None for a miss), `put(key, value)`, `peek(key)` (the value, with no hit counted) and
+  `has(key)` (no hit is counted). A read sets the entry's file time, for `gc`. The key functions are
   `issue_key`, `pull_key`, `commit_key` and `jobs_key`. Another kind of entry uses its own key
   prefix: ETag entries use `etag/`.
 
@@ -412,8 +424,14 @@ no body, and `collect` uses the kept page.
   `{"pages": [{"etag", "body"}, …]}`, in page order, up to the page that ended the walk. A
   listing with a page that has no `ETag` is not kept. A kept `ETag` is not a cached read: the
   request is still sent, so it counts in `C` and not in `M`. A 304 counts in `K`.
+- **A relative `--since`.** `1d` gives a new timestamp every second, so the query of the issue
+  listing, and its key, would change on every collect. `collect` sends `since` rounded down to
+  the start of its UTC hour (`api_since`), so collects in the same hour send the same query and
+  get 304. Then it drops the rows updated before the exact `--since`, and the document filters
+  by the exact `--since`. The key changes once an hour.
 - **The flags.** `--no-cache` sends no `If-None-Match` and keeps nothing. `--refresh-cache` sends
-  no `If-None-Match` and keeps the new pages.
+  no `If-None-Match` and keeps the new pages. `watch --refresh-cache` refreshes on its first
+  cycle only; later cycles read the new cache.
 - **Gitea.** The Gitea API documents no `ETag` and no `If-None-Match` for any route (the
   [swagger template](https://github.com/go-gitea/gitea/blob/main/templates/swagger/v1_json.tmpl)
   names neither), and its issue listing handlers set no `ETag`
@@ -464,18 +482,22 @@ each of the three waves, `collect` estimates the calls of the wave's uncached re
 |---|---|
 | The listings | 2 calls for each listing (a page with rows and the empty page that ends it), 1 for `--issue` |
 | Each issue's and PR's own reads | 2 calls for each read with no cache entry: an issue's timeline, and a PR's timeline, reviews, commits, review comments and CI runs. The CI runs of an open PR, or of a PR updated in the last hour, always count. |
-| The follow-up reads | 1 call for each uncached commit with `--diff-source api` (`auto` and `git` read commits from git), 1 for the jobs of each uncached failed run, 2 for the comments of each uncached Gitea review |
+| The follow-up reads | 1 call for each uncached commit with `--diff-source api`, and with `auto` for each uncached commit that git still lacks after the fetch (`git` fails on such a commit instead), 1 for the jobs of each uncached failed run, 2 for the comments of each uncached Gitea review |
 
-If the calls already sent plus the wave's estimate are more than `--budget` percent of the
-quota at the start, `collect` stops with exit 3 and writes nothing. A paged read with more rows
-than one page costs more than its estimate. The next wave's check counts the calls actually
-sent, so the error is not carried on.
+With `--diff-source auto` or `git`, the `git fetch` runs before the follow-up check, so the
+estimate knows which commits git has. If the calls already sent plus the wave's estimate are
+more than `--budget` percent of the quota at the start, `collect` stops with exit 3 and writes
+nothing. The estimate covers the next wave only, not the whole run: a later wave is checked when
+it comes. A paged read with more rows than one page costs more than its estimate. The next
+wave's check counts the calls actually sent, so the error is not carried on.
 
 - **`--budget <percent>`**, more than 0 and at most 100. The default is 50: one collect never
   takes more than half of the quota that remained when it started. `snapshot` and `watch` pass
   it to `collect`.
 - **The refusal** is one stderr line, for example:
-  `collect: stopped before the next reads: they need about 140 API calls, and --budget 50 allows 61 of the 122 that remain. The quota resets at 2026-11-20T10:15:00Z (in 23 min). Use a shorter --since, a higher --budget, or wait for the reset.`
+  `collect: stopped before the next stage of reads: that stage needs about 140 API calls, and --budget 50 allows 61 of the 122 that remain. The estimate covers the next stage only; later stages are checked as they come. The quota resets at 2026-11-20T10:15:00Z (in 23 min). Use a shorter --since, a higher --budget, or wait for the reset.`
+  The first stage is the listings, so a refusal there names about 12 calls even when the whole
+  run would need 190.
 - **What to do when it stops.** Read the window down with a shorter `--since`, or pass `--batch`
   or `--issue`. Or wait for the reset time in the line. Raise `--budget` only when nothing else
   needs the quota until the reset: the issue-flow PM and its workers share it.
@@ -487,7 +509,36 @@ sent, so the error is not carried on.
   `https://gitea.com/swagger.v1.json`, 2026-11-19). A GitHub server with rate limits off answers
   `rate_limit` with 404. In both cases the guard is off, and the summary line has no `Q`.
 - **The summary line** of `snapshot` and `watch` adds `Q` after the counts:
-  `<C> API calls (<M> cached, <K> not modified), <Q> remaining`. `Q` is read after the run.
+  `<C> API calls (<M> cached, <K> not modified), <Q> remaining`. `Q` is read after the run. If
+  that read fails, the line has no `Q` and the collect still succeeds.
+- **`--budget` is measured against the quota at the start.** The limit is `--budget` percent of
+  `core.remaining` read before the first call, less the calls this collect sent. The quota is
+  shared with every other `gh` user of the token, so `Q` can fall faster than this run's calls.
+
+**`gc` removes what the cache and the fetch leave behind.** Each `updated_at` change writes a
+new cache file, each fetched PR adds a ref under `refs/issue-flow/pull/`, and a ref keeps the
+objects of a force-pushed head. `timeline.py gc` removes:
+
+| What | When |
+|---|---|
+| A cache file (`<2 hex>/<64 hex>.json`) | No collect read or wrote it for 30 days. Each read sets the file time. |
+| A temporary file (`<2 hex>/.<name>.tmp`) | It is older than 1 hour: a write that a killed collect left. |
+| A `refs/issue-flow/pull/<owner>/<repo>/<n>` ref | The newest state record of that PR in the cache shows it closed more than 30 days ago. |
+
+- **State records.** A collect stores `{"state", "closed_at", "updated_at"}` of each PR it reads,
+  under the PR key plus `/state`. `gc` reads these records before it removes any file, so the
+  ref of a PR goes no later than its last record. A ref with no record stays.
+- **`gc --all`** removes every cache file, every temporary file and every `refs/issue-flow/` ref.
+  The next collect is cold.
+- **`--dry-run`** prints one line for each file (`cache <path>`) and each ref (`ref <name>`) that
+  `gc` would remove, and removes nothing.
+- **Flags.** `--repo-path` (default `.`) names the checkout whose refs `gc` cleans and whose
+  default cache it uses. `--cache-dir` names another cache directory. `gc` touches only files
+  in the cache layout, so another file in that directory stays. One stderr line gives the counts.
+  Outside a git repository with no `--cache-dir`, `gc` exits 2.
+- **Automatic.** `snapshot` runs the same gc (never `--all`) after it writes the page, against
+  the cache of its collect. A gc failure never fails the snapshot. `--no-cache` and `--fixture`
+  write no cache, so they run no gc. `watch` runs none: run `gc` or a `snapshot` from time to time.
 
 ## Exit codes
 
@@ -495,7 +546,8 @@ sent, so the error is not carried on.
 exits 0 on an API error, so `collect` checks the body). Nothing goes to stdout. `3` the quota
 guard stopped the collect, or the quota is used up until a reset more than 60 s away (see **API
 cost**). Nothing goes to stdout, and `snapshot` writes no page. `5` the invocation is malformed. `render` uses the same codes: `2` for unreadable or malformed
-input.
+input. `gc` exits 0, or 2 when it finds no cache directory (outside a git repository with no
+`--cache-dir`).
 
 ## Lane kinds (the renderer)
 
