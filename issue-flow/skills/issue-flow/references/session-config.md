@@ -30,7 +30,7 @@ this decision has its input.)
 ```json
 {
   "version": 1,
-  "pluginVersion": "0.17.0",
+  "pluginVersion": "0.18.0",
   "forge": {
     "type": "gitea",
     "host": "http://gitea.example:3000",
@@ -65,6 +65,7 @@ this decision has its input.)
     "commitStyle": "conventional",
     "docs": "public-api"
   },
+  "prRepos": ["<owner>/<fork>"],
   "notes": "<anything the user said that doesn't fit a field>"
 }
 ```
@@ -110,6 +111,17 @@ keeps working untouched.
 It is **not** one of the startup questions. Phase 0 detects it, states what it found in
 the first digest, and asks only when detection is ambiguous. The mechanics are in
 [../../../references/forge.md](../../../references/forge.md).
+
+## prRepos — other repositories that hold pull requests
+
+`prRepos` is an optional array of `owner/name` strings. It lists the repositories, besides
+the `forge` repository, that hold this project's pull requests. A fork workflow needs it:
+the issues and the batch PR are in one repository and the member PRs are in the fork.
+
+Only `/issue-flow:timeline` reads it. The skill passes each entry as a `--pr-repo` flag to
+`timeline.py`. The field is not a startup question, and no run changes it. When it is
+absent, the skill reads the checkout's remotes instead. Keep it a plain list; a value
+with a comma is read as a list of repositories.
 
 ## The startup prompt (Phase 0)
 

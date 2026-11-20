@@ -418,6 +418,28 @@ costs one turn and is always the cheaper error.
    project's tests/linters as you go. Commit in logical units referencing `#<number>`;
    when `ci: skip`, end **every** commit message you push with `[skip ci]`.
 
+   **Every commit message carries trailers.** The timeline reads them to show why a change
+   happened. Put them in the last paragraph of the message, one per line:
+
+   - `Change: feature|fix|test|docs|refactor` — always.
+   - `Why: <one line>` — always. State the reason, not the diff.
+   - `Fixes: <url>` — when the commit answers a rework comment, a review comment or a CI run.
+     Use the URL of that comment or run. Repeat the line for several URLs.
+
+   ```
+   issue-flow: reject a reset link older than 60 minutes (#75)
+
+   Change: fix
+   Why: The gate found that an old link still reset the password.
+   Fixes: https://github.com/o/r/pull/9#issuecomment-1234567
+   [skip ci]
+   ```
+
+   With `ci: skip`, the `[skip ci]` token stays the last line of the message. Put it after the
+   trailers. In a rework round, name in each commit the rework comment it answers through `Fixes:`.
+   The timeline counts one problem per rework comment, not one per numbered line. A commit with no
+   `Fixes:` is read as answering every open problem on the issue.
+
    **Build vertically, not horizontally.** When the issue crosses layers (data → service
    → API → UI), build one thin end-to-end slice first — a stubbed endpoint, the minimal
    consumer, the wiring between them — and then deepen it: the migration, the real logic,

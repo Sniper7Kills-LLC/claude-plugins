@@ -1,0 +1,10 @@
+{"ts": "2026-11-20T00:29:01Z", "kind": "agent.spawned", "session": "af7df1b7-ae29-4ac7-aa6a-7166aa350a26", "agent": "a1b68295e9d2cdb45", "issue": 86, "worktree": null, "branch": null, "outcome": null}
+{"ts": "2026-11-20T00:29:05Z", "kind": "agent.messaged", "session": "af7df1b7-ae29-4ac7-aa6a-7166aa350a26", "agent": "a1b68295e9d2cdb45", "issue": null, "worktree": null, "branch": null, "outcome": null}
+{"ts": "2026-11-20T00:29:07Z", "kind": "worktree.added", "session": "af7df1b7-ae29-4ac7-aa6a-7166aa350a26", "agent": null, "issue": null, "worktree": "/scratch/dogfood-wt", "branch": null, "outcome": null}
+{"ts": "2026-11-20T00:29:08Z", "kind": "worktree.removed", "session": "af7df1b7-ae29-4ac7-aa6a-7166aa350a26", "agent": null, "issue": null, "worktree": "/scratch/dogfood-wt", "branch": null, "outcome": null}
+{"ts": "2026-11-20T00:31:12Z", "kind": "agent.spawned", "session": "7e224bcf-be9a-49b9-a8fe-a60f3a80adf2", "agent": "ae15132e90fb86c64", "issue": 86, "worktree": null, "branch": null, "outcome": null}
+{"ts": "2026-11-20T00:31:12Z", "kind": "agent.stopped", "session": "7e224bcf-be9a-49b9-a8fe-a60f3a80adf2", "agent": "ae15132e90fb86c64", "issue": 86, "worktree": "/tmp/probe", "branch": "issue/86-probe", "outcome": "ready-to-merge"}
+{"ts": "2026-11-20T00:41:11Z", "kind": "agent.spawned", "session": "1d0ef5ae-3509-4bbb-8ecf-f1f14fc123e9", "agent": "a59ea138930d6d607", "issue": 86, "worktree": null, "branch": null, "outcome": null}
+{"ts": "2026-11-20T00:41:13Z", "kind": "agent.stopped", "session": "1d0ef5ae-3509-4bbb-8ecf-f1f14fc123e9", "agent": "a59ea138930d6d607", "issue": null, "worktree": "/repo/.claude/worktrees/agent-a59ea138930d6d607", "branch": null, "outcome": null}
+{"ts": "2026-11-20T00:41:14Z", "kind": "agent.messaged", "session": "1d0ef5ae-3509-4bbb-8ecf-f1f14fc123e9", "agent": "a59ea138930d6d607", "issue": null, "worktree": null, "branch": null, "outcome": null}
+{"ts": "2026-11-20T00:41:15Z", "kind": "agent.stopped", "session": "1d0ef5ae-3509-4bbb-8ecf-f1f14fc123e9", "agent": "a59ea138930d6d607", "issue": null, "worktree": "/repo/.claude/worktrees/dogfood", "branch": null, "outcome": null}
