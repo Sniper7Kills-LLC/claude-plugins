@@ -552,6 +552,46 @@ with tempfile.TemporaryDirectory() as tmp:
         code = None
     check(code == 0, f"SIGTERM stops watch with exit 0 (got {code})")
 
+# `snapshot` collects and renders in one process. Its exit code is the only failure signal the skill reads.
+with tempfile.TemporaryDirectory() as tmp:
+    fx = os.path.join(tmp, "gh.json")
+    with open(fx, "w") as handle:
+        json.dump(build("github"), handle)
+    out = os.path.join(tmp, "page.html")
+    proc = run(["snapshot", "--fixture", fx, "--out", out])
+    check(proc.returncode == 0, f"snapshot exits 0: {proc.stderr}")
+    check(os.path.exists(out) and "tl-data" in open(out).read(), "snapshot writes the page")
+    check(proc.stdout == "", f"snapshot prints nothing on stdout: {proc.stdout[:80]!r}")
+    lines = [line for line in proc.stderr.splitlines() if line.strip()]
+    check(len(lines) == 1, f"snapshot prints one stderr line: {proc.stderr!r}")
+    n_events = len(build_doc_events := timeline.normalize(build("github"))["events"])
+    check(lines and out in lines[0] and f"{n_events} events" in lines[0] and "lanes" in lines[0]
+          and "problems" in lines[0], f"the summary names path, events, lanes and problems: {lines}")
+    check('http-equiv="refresh"' not in open(out).read(), "snapshot adds no reload tag")
+    check(payload(open(out).read())["events"] == build_doc_events, "snapshot page carries the events")
+    # Collect flags pass through: --issue narrows the document.
+    one = run(["snapshot", "--fixture", fx, "--issue", "51", "--out", out])
+    check(one.returncode == 0 and payload(open(out).read())["events"] != build_doc_events,
+          f"snapshot forwards collect flags: {one.stderr}")
+    # A failed collect exits non-zero and leaves no page.
+    gone = os.path.join(tmp, "gone.html")
+    for label, argv, want in (("an unreadable fixture", ["--fixture", os.path.join(tmp, "none.json")], 2),
+                              ("a bad --since", ["--fixture", fx, "--since", "soon"], 5),
+                              ("no forge and no fixture", [], 5)):
+        bad = run(["snapshot", *argv, "--out", gone])
+        check(bad.returncode == want, f"snapshot with {label} exits {want}, got {bad.returncode}: {bad.stderr}")
+        check(not os.path.exists(gone), f"snapshot with {label} writes no page")
+    # An unwritable output path is a failure too.
+    bad = run(["snapshot", "--fixture", fx, "--out", os.path.join(tmp, "no-dir", "p.html")])
+    check(bad.returncode == 2, f"snapshot with an unwritable --out exits 2, got {bad.returncode}")
+    # The default page path is the common dir, as for watch.
+    repo = os.path.join(tmp, "repo")
+    os.makedirs(repo)
+    subprocess.run(["git", "init", "-q"], cwd=repo, check=True)
+    dflt = subprocess.run([sys.executable, SCRIPT, "snapshot", "--fixture", fx], cwd=repo, capture_output=True, text=True)
+    check(dflt.returncode == 0 and os.path.exists(os.path.join(repo, ".git", "issue-flow", "timeline.html")),
+          f"snapshot defaults --out to the common dir: {dflt.stderr}")
+
 # The default page path is the common dir of the repository, seen from a linked worktree.
 with tempfile.TemporaryDirectory() as tmp:
     git = lambda *a, cwd=tmp: subprocess.run(["git", *a], cwd=cwd, capture_output=True, text=True)  # noqa: E731

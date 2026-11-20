@@ -1,7 +1,7 @@
 # The workflow timeline — document schema
 
 `scripts/timeline.py collect` rebuilds what an issue-flow run did, from the tracker and the local-event log.
-It prints one JSON document. The renderer and the `watch` command read this schema. The local-event hook writes its
+It prints one JSON document. The renderer and the `snapshot` and `watch` commands read this schema. The local-event hook writes its
 own kinds into it, and `timeline.py` is its only producer. The tracker reads it uses are
 in [forge.md](forge.md) (`forge.issue.timeline`, `forge.issue.list.all`, `forge.pr.list.all`).
 
@@ -223,7 +223,7 @@ the tracker-only document. Each event has the nine standard keys plus `session`,
 | Kind | When | Fields |
 |---|---|---|
 | `agent.spawned` | A worker was spawned for an issue. | `issue`, `agent`, `session`. |
-| `agent.stopped` | A worker ended. | `agent`, `session`; `issue`, `outcome`, `branch` and `worktree` from its verdict. |
+| `agent.stopped` | A worker ended. | `agent`, `session`; `issue`, `outcome`, `branch` and `worktree` from its verdict. With no verdict, `outcome` and `issue` are null and `worktree` is the agent's own worktree (the `cwd` of the stop event). |
 | `worktree.added` | `git worktree add` ran. | `worktree` = the path; `branch` when `-b` or `-B` names one. |
 | `worktree.removed` | `git worktree remove` ran. | `worktree` = the path. |
 | `agent.messaged` | The PM sent a message to an agent (`SendMessage`), for example a worker sent back for rework. | `agent` = the recipient exactly as the call named it, `session`. The line never holds the message text, the summary or the reply. |

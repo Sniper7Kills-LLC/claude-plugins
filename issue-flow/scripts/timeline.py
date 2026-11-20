@@ -10,6 +10,7 @@
 Render the document as one HTML page (no server, no external requests):
 
     python3 "${CLAUDE_PLUGIN_ROOT}/scripts/timeline.py" render --in timeline.json --out timeline.html
+    python3 "${CLAUDE_PLUGIN_ROOT}/scripts/timeline.py" snapshot --forge github --repo owner/name --out timeline.html
     python3 "${CLAUDE_PLUGIN_ROOT}/scripts/timeline.py" collect --fixture bundle.json | python3 "${CLAUDE_PLUGIN_ROOT}/scripts/timeline.py" render --out timeline.html --refresh 30
 
 `render` reads --in (default stdin) and writes --out (default stdout). --refresh <seconds>
@@ -17,6 +18,11 @@ adds a meta refresh, for a page that something rewrites while it is open. The pa
 by timeframe in the browser (24h, 7d, 30d, all, or a date range). Exit codes: 0 = page
 written, 2 = unreadable or malformed input, 5 = malformed invocation. Lane kinds are
 documented in references/timeline.md.
+
+`snapshot` runs `collect` and `render` in one process and takes every `collect` flag plus --out
+(the page path; default `<git common dir>/issue-flow/timeline.html`). It exits 0 only when the
+page is written, and prints one stderr line with the path and the event, lane and problem counts.
+`watch` runs the same code on a timer.
 
 `collect` is read-only. It reads issues, issue timelines and pull requests (paged until
 an empty page) and prints one JSON document, or writes it to --out. The schema is in
@@ -2138,25 +2144,56 @@ def cmd_path(args):
     return 0
 
 
-def _watch_once(collect_args, out_path, interval, scratch):
-    """Collect and render one page. Return 0, or the exit code of the failed step."""
+def write_snapshot(collect_args, out_path, refresh, scratch):
+    """Collect and render one page at `out_path`. Return (exit code, document or None).
+
+    `watch` and `snapshot` share this function. It leaves any page already at `out_path` alone
+    when a step fails, and replaces the page in one rename when both steps succeed.
+    """
     doc_path = os.path.join(scratch, "timeline.json")
     try:
         code = main(["collect", *collect_args, "--out", doc_path])
     except SystemExit as exc:
         code = exc.code if isinstance(exc.code, int) else 5
     if code != 0:
-        return code
+        return code, None
+    tmp_path = os.path.join(os.path.dirname(out_path), f".{os.path.basename(out_path)}.tmp")
     try:
         with open(doc_path) as handle:
-            page = render_html(json.load(handle), refresh=max(1, int(-(-interval // 1))))
-        tmp_path = os.path.join(os.path.dirname(out_path), f".{os.path.basename(out_path)}.tmp")
+            doc = json.load(handle)
+        page = render_html(doc, refresh=refresh)
         with open(tmp_path, "w") as handle:
             handle.write(page)
         os.replace(tmp_path, out_path)
     except (OSError, ValueError) as exc:
-        print(json.dumps({"error": f"watch render failed: {exc}"}), file=sys.stderr)
+        print(json.dumps({"error": f"render failed: {exc}"}), file=sys.stderr)
+        if os.path.exists(tmp_path):
+            os.unlink(tmp_path)
+        return 2, None
+    return 0, doc
+
+
+def _watch_once(collect_args, out_path, interval, scratch):
+    """Collect and render one page. Return 0, or the exit code of the failed step."""
+    return write_snapshot(collect_args, out_path, max(1, int(-(-interval // 1))), scratch)[0]
+
+
+def cmd_snapshot(args):
+    try:
+        out_path = os.path.abspath(args.out) if args.out else common_dir_path("timeline.html")
+        if not args.out:
+            os.makedirs(os.path.dirname(out_path), exist_ok=True)
+    except (RuntimeError, OSError) as exc:
+        print(json.dumps({"error": f"snapshot failed: {exc}"}), file=sys.stderr)
         return 2
+    with tempfile.TemporaryDirectory() as scratch:
+        code, doc = write_snapshot(args.collect_args, out_path, None, scratch)
+    if code != 0:
+        return code
+    groups, _ = build_model(doc)
+    lanes = sum(len(group["lanes"]) for group in groups)
+    print(f"wrote {out_path}: {len(doc['events'])} events, {lanes} lanes, {len(problem_rows(doc))} problems",
+          file=sys.stderr)
     return 0
 
 
@@ -2238,10 +2275,15 @@ def main(argv=None):
     watch.add_argument("--max-minutes", type=float, default=240, help="stop after this long (default 240)")
     watch.add_argument("--out", help="page path (default: <git common dir>/issue-flow/timeline.html)")
     watch.set_defaults(func=cmd_watch)
+    snapshot = sub.add_parser("snapshot", help="collect and render one page in one process",
+                              description="Every other flag goes to `collect`. Exit 0 only when the page is written; "
+                                          "any other exit code means no new page. One summary line goes to stderr.")
+    snapshot.add_argument("--out", help="page path (default: <git common dir>/issue-flow/timeline.html)")
+    snapshot.set_defaults(func=cmd_snapshot)
     path = sub.add_parser("path", help="print the default page path")
     path.set_defaults(func=cmd_path)
     args, extra = parser.parse_known_args(argv)
-    if args.command == "watch":
+    if args.command in ("watch", "snapshot"):
         args.collect_args = extra
     elif extra:
         parser.error(f"unrecognized arguments: {' '.join(extra)}")

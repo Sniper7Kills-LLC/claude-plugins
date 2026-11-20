@@ -223,7 +223,7 @@ Draws what a run did as one local HTML page. The page has a lane per issue and p
 batch, with markers for status changes, pull requests, checkpoints and batch merges.
 It filters by timeframe in the browser (24 hours, 7 days, 30 days, all, or a date range).
 
-- **Snapshot** — writes the page once.
+- **Snapshot** — `scripts/timeline.py snapshot` writes the page once. It exits non-zero when the collect or the render fails.
 - **Live** — `scripts/timeline.py watch` rewrites the page every 5 minutes (60 seconds or
   more) for up to 4 hours, and the open page reloads itself. Stop it with `SIGTERM`; the
   last page stays.
@@ -247,7 +247,7 @@ remembers the choice in the browser. Every lane and marker works from the keyboa
 The skill is read-only and needs only the tracker, so it works outside a run. It writes
 to `<git common dir>/issue-flow/timeline.html` (no commit carries it, and every worktree
 shares it) or to the `--out` path you give. It publishes nothing. The script is
-`scripts/timeline.py` (`collect`, `render`, `watch`, `path`); the schema is in
+`scripts/timeline.py` (`collect`, `render`, `snapshot`, `watch`, `path`); the schema is in
 [references/timeline.md](references/timeline.md).
 
 ## What earns an issue
@@ -448,7 +448,7 @@ machine: nothing publishes it.
 | Kind | Logged when |
 |---|---|
 | `agent.spawned` | An `Agent` call whose brief has an `issue: #<n>` line. |
-| `agent.stopped` | A subagent ends with a verdict JSON, or an issue-worker ends. The line carries `outcome`, `branch` and `worktree` from the verdict. |
+| `agent.stopped` | A subagent ends with a verdict JSON, an issue-worker ends, or an agent that has an `agent.spawned` line ends. The line carries `outcome`, `branch` and `worktree` from the verdict. With no verdict, `outcome` is null and `worktree` is the agent's own worktree. |
 | `agent.messaged` | The PM sends a message to an agent with `SendMessage`, for example to send a worker back for rework. The line holds the recipient and the time. It never holds the message text. |
 | `worktree.added`, `worktree.removed` | A Bash command runs `git worktree add` or `git worktree remove`. |
 

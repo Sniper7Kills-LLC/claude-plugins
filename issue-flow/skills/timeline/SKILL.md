@@ -27,8 +27,9 @@ Ask the user with `AskUserQuestion` when the request does not say.
 - **Live.** Rewrite the page on a timer, and the open page reloads itself. Right for
   "watch the run".
 
-Timeframe: pass the user's words through as `--since` (`24h`, `7d`, `2w`, or a date). No
-timeframe means the whole history. The page also filters in the browser, so a wide
+Timeframe: pass the user's words through as `--since`. The forms are a count and a unit
+(`<n>h`, `<n>d` or `<n>w`, for example `24h`, `1d`, `7d`, `2w`), an ISO date (`2026-05-01`),
+or an ISO timestamp (`2026-05-01T10:00:00Z`). No timeframe means the whole history. The page also filters in the browser, so a wide
 collection is safe. To show one batch or one issue, pass `--batch <n>` or `--issue <n>`.
 
 ## 2. Find the forge and the repositories
@@ -54,22 +55,22 @@ Detect the forge as `references/forge.md` `## Detection` describes: a `forge` bl
 
 ## 3. Snapshot
 
-Resolve the default page path, then collect and render in one pipe:
+Run `snapshot`. It collects and renders in one process:
 
 ```bash
-OUT="$(python3 "${CLAUDE_PLUGIN_ROOT}/scripts/timeline.py" path)"
-mkdir -p "$(dirname "$OUT")"
-python3 "${CLAUDE_PLUGIN_ROOT}/scripts/timeline.py" collect --forge <forge> --repo <owner/repo> \
-    [--pr-repo <owner/repo> ...] [--since <age>] \
-  | python3 "${CLAUDE_PLUGIN_ROOT}/scripts/timeline.py" render --out "$OUT"
+python3 "${CLAUDE_PLUGIN_ROOT}/scripts/timeline.py" snapshot --forge <forge> --repo <owner/repo> \
+    [--pr-repo <owner/repo> ...] [--since <age>] [--out <path>]
 ```
 
-The default path is `<git common dir>/issue-flow/timeline.html`. No commit carries it,
-and every worktree of the repository shares it. The user can ask for another path. Pass
-that path to `--out` instead.
+`snapshot` takes every `collect` flag and `--out`. `--out` is the page path. The default is
+`<git common dir>/issue-flow/timeline.html`. No commit carries it, and every worktree of the
+repository shares it. The user can ask for another path.
 
-If `collect` exits with 2, the fetch failed. Say so with the error text. Do not write an
-empty page.
+The exit code is the result. Do not pipe the tool, and do not read `PIPESTATUS`: it is empty
+in zsh. Exit 0 means the page is written, and `snapshot` prints one line on stderr
+(`wrote <path>: <n> events, <n> lanes, <n> problems`). Any other exit code means no new page:
+2 is a failed fetch or a failed render, 5 is a bad flag. Say so with the error text. Do not
+write an empty page.
 
 ## 4. Live
 
@@ -90,9 +91,9 @@ python3 "${CLAUDE_PLUGIN_ROOT}/scripts/timeline.py" watch --forge <forge> --repo
 ## 5. Show the result
 
 1. Print the **absolute path** of the page.
-2. Open it when a desktop is present: `open <path>` on macOS, `xdg-open <path>` on Linux.
-   If neither command exists, or the shell has no display, print the path only and say
-   the user can open it in a browser.
+2. Open it only when the session is interactive: run `open <path>` on macOS or
+   `xdg-open <path>` on Linux. In a headless session (`claude -p`), do not open it. Print the
+   path only, and say the user can open it in a browser.
 3. Live mode: tell the user the page reloads every `<interval>` seconds, that the loop
    ends after `<max-minutes>` minutes, and how to stop it. When the user asks you to
    stop it, end the background shell (`TaskStop`, or `kill <pid>`). `SIGTERM` ends the
