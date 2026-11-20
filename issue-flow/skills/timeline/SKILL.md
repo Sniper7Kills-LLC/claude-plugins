@@ -54,9 +54,27 @@ Detect the forge as `references/forge.md` `## Detection` describes: a `forge` bl
   3. The user's words, and the `notes` field of `.issue-flow.json`.
   Tell the user which repositories you read.
 
-`collect` reads the tracker on 8 threads by default. `--jobs <n>` (1 to 16) changes that, and
-the document is the same for every value. A tracker rate limit is retried 3 times, then the
-run fails with exit 2. Pass `--jobs 1` only to debug one read at a time.
+`collect` reads the tracker on 4 threads by default. `--jobs <n>` (1 to 16) changes that, and
+the document is the same for every value. Do not raise `--jobs` above 4: more reads at once
+risk GitHub's secondary limits. A tracker rate limit is retried 3 times, then the run fails
+with exit 2. Pass `--jobs 1` only to debug one read at a time.
+
+**The quota guard.** The REST quota is shared: the issue-flow PM, its workers, the user's own
+`gh` use and this skill all draw from it. On GitHub, `collect` reads the quota first, at no
+cost. Before each group of reads, it estimates the calls that the cache cannot serve. If they
+need more than `--budget` percent (default 50) of the quota that remains, `collect` stops with
+exit 3. It writes no page, and it prints one line with the estimate, what remains and the reset
+time. A quota that is used up until a reset more than 60 seconds away also gives exit 3. Gitea
+has no quota to read, so the guard is off there.
+
+If the guard stops a snapshot, tell the user the line, and offer these choices:
+
+1. A shorter `--since`, or `--batch <n>` or `--issue <n>`, to read less.
+2. Wait for the reset time in the line, then run again.
+3. A higher `--budget`. Offer it only when nothing else needs the quota until the reset. A
+   running issue-flow PM stops when the quota reaches 0.
+
+Do not raise `--budget` without the user's consent.
 
 `collect` keeps a read cache. Pass `--refresh-cache` when the user says the page shows old
 data: it reads everything again and replaces the cache. `--no-cache` reads everything and keeps
@@ -80,10 +98,11 @@ repository shares it. The user can ask for another path.
 
 The exit code is the result. Do not pipe the tool, and do not read `PIPESTATUS`: it is empty
 in zsh. Exit 0 means the page is written, and `snapshot` prints one line on stderr
-(`wrote <path>: <n> events, <n> lanes, <n> problems; <n> API calls (<n> cached, <n> not modified)`). A problem is a rework request, a
+(`wrote <path>: <n> events, <n> lanes, <n> problems; <n> API calls (<n> cached, <n> not modified), <n> remaining`).
+The last count is the quota left after the run; Gitea leaves it out. A problem is a rework request, a
 changes-requested review or a failed CI run. The page lists them in its Problems view. Any other exit code means no new page:
-2 is a failed fetch or a failed render, 5 is a bad flag. Say so with the error text. Do not
-write an empty page.
+2 is a failed fetch or a failed render, 3 is the quota guard (see section 2), 5 is a bad flag.
+Say so with the error text. Do not write an empty page.
 
 ## 4. Live
 
@@ -100,6 +119,9 @@ python3 "${CLAUDE_PLUGIN_ROOT}/scripts/timeline.py" watch --forge <forge> --repo
 - `--max-minutes` is the lifetime. The default is 240. The loop ends itself at that time.
 - A failed fetch keeps the last good page. Three failures in a row end the loop with
   exit 2.
+- When the quota guard stops a cycle, `watch` skips it, keeps the last page and prints
+  `watch: skipped this refresh to save the API quota; ... next attempt at <time>`. The loop
+  goes on. A skip is not a failure. If the user sees skip lines, offer a shorter `--since`.
 
 ## 5. Show the result
 

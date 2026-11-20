@@ -7,10 +7,17 @@
         --pr-repo owner/pr-repo --batch 78
     python3 "${CLAUDE_PLUGIN_ROOT}/scripts/timeline.py" collect --fixture bundle.json   # test/dry-run
 
-`collect` reads the tracker on `--jobs` threads (1 to 16, default 8; `snapshot` and `watch` pass it
+`collect` reads the tracker on `--jobs` threads (1 to 16, default 4; `snapshot` and `watch` pass it
 on). The document is the same for every value. A rate-limit reply (GitHub secondary rate limit,
-HTTP 429) is retried until 3 attempts have run, after `Retry-After` seconds or 2 s, 4 s. Any other
-failed read fails the whole collect.
+HTTP 429) is retried until 3 attempts have run, after `Retry-After` seconds or 2 s, 4 s. A
+primary-limit reply (the quota is used up) waits for the quota's reset when it comes in 60 s or
+less, else it stops the collect with exit 3. Any other failed read fails the whole collect.
+
+The quota guard (GitHub): `collect` reads the quota with `gh api rate_limit`, which costs no
+quota. Before each wave of reads it estimates the calls of the uncached reads. If the calls sent
+plus the estimate are more than --budget percent (default 50) of the quota at the start, it
+stops with exit 3 and one stderr line: the estimate, what remains, the reset time and the
+options. Gitea has no rate-limit route, so the guard is off there.
 
 Render the document as one HTML page (no server, no external requests):
 
@@ -27,7 +34,8 @@ documented in references/timeline.md.
 `snapshot` runs `collect` and `render` in one process and takes every `collect` flag plus --out
 (the page path; default `<git common dir>/issue-flow/timeline.html`). It exits 0 only when the
 page is written, and prints one stderr line with the path, the event, lane and problem counts, and
-`<n> API calls (<m> cached, <k> not modified)`. `watch` runs the same code on a timer.
+`<n> API calls (<m> cached, <k> not modified), <q> remaining`. `<q>` is the quota read after the
+run, and a forge with no quota to read leaves it out. `watch` runs the same code on a timer.
 
 `collect` is read-only on the tracker. It reads issues, issue timelines and pull requests (paged until
 an empty page) and prints one JSON document, or writes it to --out. The schema is in
@@ -85,7 +93,10 @@ https://gitea.com/swagger.v1.json (retrieved 2026-11-19). The PR head refs were 
 https://docs.github.com/en/pull-requests/collaborating-with-pull-requests/reviewing-changes-in-pull-requests/checking-out-pull-requests-locally,
 https://github.com/go-gitea/gitea/blob/main/modules/git/ref.go (`refs/pull/` + `/head`), the
 Gitea `.diff` command at https://github.com/go-gitea/gitea/blob/main/modules/git/diff.go, and
-https://git-scm.com/docs/git-fetch (retrieved 2026-11-19).
+https://git-scm.com/docs/git-fetch (retrieved 2026-11-19). The quota read and the primary-limit
+reply were checked against https://docs.github.com/en/rest/rate-limit/rate-limit and
+https://docs.github.com/en/rest/using-the-rest-api/rate-limits-for-the-rest-api, and the absence
+of a Gitea rate-limit route against https://gitea.com/swagger.v1.json (retrieved 2026-11-19).
 
 Keep a page current while a run is going (the /timeline skill starts this in the background):
 
@@ -96,7 +107,9 @@ passes or it gets SIGINT or SIGTERM (both exit 0). It takes every `collect` flag
 owns --out: the default is <git common dir>/issue-flow/timeline.html, which no commit
 carries and every worktree shares. It replaces the page in one step, so a browser never
 reads half a page. --interval is 60 seconds or more (default 300). --max-minutes defaults
-to 240. A failed fetch keeps the last good page; three failed fetches in a row exit 2.
+to 240. A failed fetch keeps the last good page; three failed fetches in a row exit 2. When the
+quota guard stops a collect, `watch` skips the cycle, keeps the last page, prints one line that
+names the next attempt, and goes on. The guard never ends a watch.
 IFW_WATCH_FAST=1 lifts the 60-second floor, for tests only. `path` prints the default page
 path (exit 2 outside a git repository).
 
@@ -104,7 +117,9 @@ Environment: IFW_GH and IFW_TEA replace the `gh` and `tea` commands (for tests).
 `tea api` exits 0 on an API error and prints an error object, so every body is checked.
 
 Exit codes: 0 = document written, 2 = a fetch failed or the forge returned an error
-body (nothing is printed to stdout), 5 = the invocation is malformed.
+body (nothing is printed to stdout), 3 = the quota guard stopped the collect, or the quota is
+used up until a reset more than 60 s away (nothing is printed to stdout), 5 = the invocation is
+malformed.
 """
 
 import argparse
@@ -156,12 +171,22 @@ EXCERPT_CHARS = 300
 MAX_PATCH_LINES = 400
 MAX_PATCH_BYTES = 32 * 1024
 DEFAULT_MAX_DIFF_BYTES = 4 * 1024 * 1024
-DEFAULT_JOBS = 8
+# Four reads at once keep a collect well under GitHub's secondary (burst and concurrency) limits.
+DEFAULT_JOBS = 4
 MAX_JOBS = 16
 RETRY_ATTEMPTS = 3
 RETRY_AFTER_CAP = 60
 RATE_LIMITED = re.compile(r"secondary rate limit|rate limit exceeded|abuse detection|\b429\b|too many requests", re.I)
 RETRY_AFTER = re.compile(r"retry-after:?\s*(\d+)", re.I)
+# GitHub's primary-limit reply is a 403 or 429 with x-ratelimit-remaining 0. `gh api` prints the
+# message, not the headers, so the reset time comes from the reply only when it carries the header.
+PRIMARY_LIMIT = re.compile(r"API rate limit exceeded|x-ratelimit-remaining:?\s*0\b", re.I)
+RATELIMIT_RESET = re.compile(r"x-ratelimit-reset:?\s*(\d+)", re.I)
+# GET /rate_limit costs no quota: https://docs.github.com/en/rest/rate-limit/rate-limit
+RATE_LIMIT_PATH = "rate_limit"
+DEFAULT_BUDGET = 50
+# A paged read sends at least two requests: the page with the rows and the empty page that ends it.
+PAGED_READ_CALLS = 2
 RUN_FAILED = ("failure", "timed_out", "startup_failure")
 REVIEW_STATES = {"APPROVED": "approved", "CHANGES_REQUESTED": "changes_requested", "REQUEST_CHANGES": "changes_requested",
                  "COMMENT": "commented", "COMMENTED": "commented", "DISMISSED": "dismissed"}
@@ -182,6 +207,10 @@ RUNS_STALE_AFTER = timedelta(hours=1)
 
 class FetchError(Exception):
     pass
+
+
+class QuotaRefused(FetchError):
+    """The quota guard stopped the collect. The message is the one line to print; the exit code is 3."""
 
 
 # ------------------------------------------------------------------ small helpers
@@ -764,17 +793,23 @@ class Api:
         finally:
             pool.shutdown(wait=True, cancel_futures=True)
 
-    def _run(self, path):
+    def _run(self, path, count=True):
         """Run one `api` call and return its stdout. A failed call raises FetchError.
 
         A rate-limit reply is retried until RETRY_ATTEMPTS attempts have run. The wait is the
         `Retry-After` value when the reply has one, else 2, 4, then 8 seconds, and never
         more than RETRY_AFTER_CAP. Any other failure is raised at once.
+
+        A primary-limit reply (the quota is used up) waits for the quota's reset only when the
+        reset comes in RETRY_AFTER_CAP seconds or less. Otherwise it raises QuotaRefused at once,
+        because a retry before the reset fails too. `count=False` keeps the call out of `sent`,
+        for the quota reads, which cost no quota.
         """
         base = float(os.environ.get("IFW_RETRY_DELAY", "2"))
         for attempt in range(1, RETRY_ATTEMPTS + 1):
-            with self._sent_lock:
-                self.sent += 1
+            if count:
+                with self._sent_lock:
+                    self.sent += 1
             try:
                 result = subprocess.run([self.cmd, "api", path], cwd=self.repo_path, capture_output=True, text=True)
             except OSError as exc:
@@ -782,12 +817,54 @@ class Api:
             if result.returncode == 0:
                 return result.stdout
             reason = (result.stderr or result.stdout).strip()
+            if PRIMARY_LIMIT.search(reason) and path != RATE_LIMIT_PATH:
+                reset = self._reset_of(reason)
+                wait = None if reset is None else max(0.0, reset - time.time() + 1)
+                if wait is None or wait > RETRY_AFTER_CAP or attempt == RETRY_ATTEMPTS:
+                    raise QuotaRefused(f"collect: the API quota is used up. {reset_text(reset)} "
+                                       "Use a shorter --since, or wait for the reset.")
+                time.sleep(wait)
+                continue
             limited = RATE_LIMITED.search(reason)
             if not limited or attempt == RETRY_ATTEMPTS:
                 suffix = f" (rate limit; gave up after {attempt} attempts)" if limited else ""
                 raise FetchError(f"{self.cmd} api {path} failed: {reason}{suffix}")
             wait = RETRY_AFTER.search(reason)
             time.sleep(min(float(wait.group(1)) if wait else base * 2 ** (attempt - 1), RETRY_AFTER_CAP))
+
+    def _reset_of(self, reason):
+        """Return the quota's reset as a Unix time: the reply's x-ratelimit-reset, else the quota read."""
+        header = RATELIMIT_RESET.search(reason)
+        if header:
+            return int(header.group(1))
+        quota = self.quota()
+        return quota["reset"] if quota else None
+
+    def quota(self):
+        """Return the core REST quota as {"limit", "remaining", "reset"}, or None when there is none.
+
+        The read is GET /rate_limit, which costs no quota, so it is not in `sent`. Gitea has no
+        rate-limit route, and a GitHub server with rate limits off answers 404: both give None.
+        """
+        if self.forge_type != "github":
+            return None
+        try:
+            out = self._run(RATE_LIMIT_PATH, count=False)
+            body = json.loads(out)
+        except FetchError as exc:
+            if _not_found(exc):
+                return None
+            raise
+        except ValueError:
+            raise FetchError(f"{self.cmd} api {RATE_LIMIT_PATH} returned a body that is not JSON: {out[:200]!r}")
+        core = ((body.get("resources") or {}).get("core") or {}) if isinstance(body, dict) else {}
+        if isinstance(body, dict) and "message" in body and not core:
+            if _not_found(FetchError(body["message"])):
+                return None
+            raise FetchError(f"{self.cmd} api {RATE_LIMIT_PATH} returned an error: {body['message']}")
+        if not all(isinstance(core.get(k), int) for k in ("limit", "remaining", "reset")):
+            raise FetchError(f"{self.cmd} api {RATE_LIMIT_PATH} has no resources.core quota: {out[:200]!r}")
+        return {k: core[k] for k in ("limit", "remaining", "reset")}
 
     def get(self, path):
         out = self._run(path)
@@ -1314,8 +1391,88 @@ def pr_repo_list(repo, values):
     return repos
 
 
+def reset_text(reset):
+    """Return the sentence that names the quota's reset time, from a Unix time or None."""
+    if reset is None:
+        return "The reset time is unknown."
+    at = datetime.fromtimestamp(reset, timezone.utc).isoformat(timespec="seconds").replace("+00:00", "Z")
+    return f"The quota resets at {at} (in {max(0, int(-(-(reset - time.time()) // 60)))} min)."
+
+
+class QuotaGuard:
+    """Stops a collect before its reads take more than `budget` percent of the API quota.
+
+    The quota is read once before the first read. Before each wave, `check(estimate)` adds the
+    calls already sent to the wave's estimate, and raises QuotaRefused when the sum is more than
+    the budget allows. A listing call counts in full even when the forge answers it with 304,
+    because the answer is not known in advance. With no quota to read (Gitea, or a GitHub server
+    with rate limits off) or no budget, the guard is off.
+    """
+
+    def __init__(self, api, budget):
+        self.api = api
+        self.budget = budget
+        self.start = api.quota() if budget is not None else None
+        self.sent_before = api.sent
+
+    def check(self, estimate):
+        if self.start is None:
+            return
+        spent = self.api.sent - self.sent_before
+        allowed = int(self.start["remaining"] * self.budget / 100) - spent
+        if estimate > allowed:
+            raise QuotaRefused(
+                f"collect: stopped before the next reads: they need about {_plural(estimate, 'API call')}, and "
+                f"--budget {self.budget:g} allows {max(0, allowed)} of the {max(0, self.start['remaining'] - spent)} "
+                f"that remain. {reset_text(self.start['reset'])} Use a shorter --since, a higher --budget, "
+                "or wait for the reset.")
+
+    def remaining(self):
+        """Return the quota left after the run (Q), or None when the guard is off."""
+        if self.start is None:
+            return None
+        quota = self.api.quota()
+        return quota["remaining"] if quota else None
+
+
+def pull_read_estimate(api, forge_type, repo, issue_numbers, raws, prs, cache, now):
+    """Return the calls that wave 2 sends: two per uncached paged read of an issue or a PR."""
+    calls = sum(PAGED_READ_CALLS for n in issue_numbers
+                if not cache.has(issue_key(forge_type, repo, n, raws[n].get("updated_at"))))
+    for pr_repo_name, pr in prs:
+        base = pull_key(forge_type, pr_repo_name, pr)
+        for name in _pull_reads(api, pr_repo_name, pr):
+            fresh = name == "runs" and runs_may_change(pr, now)
+            if base is None or fresh or not cache.has(f"{base}/{name}"):
+                calls += PAGED_READ_CALLS
+    return calls
+
+
+def followup_estimate(forge_type, prs, firsts, cache, diff_source):
+    """Return the calls that wave 3 sends for the uncached reads.
+
+    A commit costs one call only with `diff_source` `api`: `auto` and `git` read it from the
+    checkout. A Gitea review's comments cost a paged read. A failed run's jobs cost one call.
+    `firsts` holds the wave-2 results, with `runs` still the raw run list.
+    """
+    calls = 0
+    for (pr_repo_name, pr), first in zip(prs, firsts):
+        if diff_source == "api":
+            calls += sum(1 for c in first.get("commits") or [] if not cache.has(commit_key(forge_type, c.get("sha"))))
+        base = pull_key(forge_type, pr_repo_name, pr)
+        if forge_type != "github":
+            for review in first.get("reviews") or []:
+                key = f"{base}/review/{review.get('id')}/comments" if base else None
+                if review.get("comments_count") and not cache.has(key):
+                    calls += PAGED_READ_CALLS
+        for run in first.get("runs") or []:
+            if run.get("conclusion") in RUN_FAILED and not cache.has(jobs_key(forge_type, pr_repo_name, run)):
+                calls += 1
+    return calls
+
+
 def fetch_bundle(forge_type, repo, pr_repo=None, repo_path=".", since=None, only_issue=None, jobs=DEFAULT_JOBS,
-                 diff_source="auto", cache=None, stats=None):
+                 diff_source="auto", cache=None, stats=None, budget=None):
     """Read the issues of `repo` and the PRs of `repo` plus every `pr_repo` (a string, or a list of strings).
 
     The reads go in waves: the listings, then each issue's and PR's own reads, then the reads that
@@ -1332,8 +1489,14 @@ def fetch_bundle(forge_type, repo, pr_repo=None, repo_path=".", since=None, only
     listing page is a conditional request (`read_listing`) when a cache is on. `stats`, a dict, gets
     `calls` (requests sent), `cached` (reads served by the cache) and `not_modified` (requests that
     got a 304).
+
+    `budget`, a percent, turns the quota guard on (`QuotaGuard`): before each wave it estimates
+    the uncached calls the wave sends and raises QuotaRefused when they do not fit. A listing page
+    counts as one call even when it may get a 304. `stats` then also gets `remaining`, the quota
+    read after the run.
     """
     api = Api(forge_type, repo_path, jobs)
+    guard = QuotaGuard(api, budget)
     cache = cache or Cache(None)
     now = datetime.now(timezone.utc)
     owner, _, name = repo.partition("/")
@@ -1368,6 +1531,7 @@ def fetch_bundle(forge_type, repo, pr_repo=None, repo_path=".", since=None, only
             listings.append(lambda label=label: listing(api.path(repo, "/issues" + base_q + f"&labels={quote(label)}")))
     for pr_repo_name in pr_repos:
         listings.append(lambda r=pr_repo_name: listing(api.path(r, "/pulls" + pr_query), keep_going=keep_going))
+    guard.check(PAGED_READ_CALLS * len(listings) - (PAGED_READ_CALLS - 1 if only_issue is not None else 0))
     results = api.pmap(lambda read: read(), listings)
     raws = {}
     if only_issue is not None:
@@ -1388,6 +1552,7 @@ def fetch_bundle(forge_type, repo, pr_repo=None, repo_path=".", since=None, only
             prs.append((pr_repo_name, pr))
 
     # Wave 2: each issue's timeline and each PR's own reads.
+    guard.check(pull_read_estimate(api, forge_type, repo, issue_numbers, raws, prs, cache, now))
     tasks = [cache.cached(issue_key(forge_type, repo, n, raws[n].get("updated_at")),
                           lambda n=n: api.paged(api.path(repo, f"/issues/{n}/timeline"))) for n in issue_numbers]
     names = []
@@ -1401,6 +1566,7 @@ def fetch_bundle(forge_type, repo, pr_repo=None, repo_path=".", since=None, only
     results = iter(api.pmap(lambda read: read(), tasks))
     timelines = [next(results) for _ in issue_numbers]
     firsts = [{key: next(results) for key in keys} for keys in names]
+    guard.check(followup_estimate(forge_type, prs, firsts, cache, diff_source))
 
     read_commit, fallbacks = None, []
     if diff_source != "api":
@@ -1421,6 +1587,7 @@ def fetch_bundle(forge_type, repo, pr_repo=None, repo_path=".", since=None, only
 
     if stats is not None:
         stats.update(calls=api.sent, cached=cache.hits, not_modified=api.not_modified)
+        stats["remaining"] = guard.remaining()
     issues = [{"issue": raws[n], "timeline": timeline} for n, timeline in zip(issue_numbers, timelines)]
     pulls = []
     for (pr_repo_name, pr), first in zip(prs, firsts):
@@ -1516,7 +1683,7 @@ def local_events_path(args):
 
 
 # The counts of the last collect in this process, for the summary line of `snapshot` and `watch`.
-LAST_COLLECT = {"calls": 0, "cached": 0, "not_modified": 0}
+LAST_COLLECT = {"calls": 0, "cached": 0, "not_modified": 0, "remaining": None}
 
 
 def open_cache(args):
@@ -1537,12 +1704,16 @@ def open_cache(args):
 
 
 def calls_summary():
-    return (f"{_plural(LAST_COLLECT['calls'], 'API call')} ({LAST_COLLECT['cached']} cached, "
+    text = (f"{_plural(LAST_COLLECT['calls'], 'API call')} ({LAST_COLLECT['cached']} cached, "
             f"{LAST_COLLECT['not_modified']} not modified)")
+    # Q, the quota left after the run (#93). A forge with no quota to read has none.
+    if LAST_COLLECT.get("remaining") is not None:
+        text += f", {LAST_COLLECT['remaining']} remaining"
+    return text
 
 
 def cmd_collect(args):
-    LAST_COLLECT.update(calls=0, cached=0, not_modified=0)
+    LAST_COLLECT.update(calls=0, cached=0, not_modified=0, remaining=None)
     try:
         since = parse_when(args.since) if args.since else None
         until = parse_when(args.until) if args.until else None
@@ -1554,6 +1725,9 @@ def cmd_collect(args):
         return 5
     if not 1 <= args.jobs <= MAX_JOBS:
         print(f"error: --jobs takes a number from 1 to {MAX_JOBS}", file=sys.stderr)
+        return 5
+    if not 0 < args.budget <= 100:
+        print("error: --budget takes a percent more than 0 and at most 100", file=sys.stderr)
         return 5
     if not args.fixture and not args.forge:
         print("error: specify --forge (with --repo) or --fixture", file=sys.stderr)
@@ -1567,11 +1741,14 @@ def cmd_collect(args):
                 bundle = json.load(handle)
         else:
             bundle = fetch_bundle(args.forge, args.repo, args.pr_repo, args.repo_path, since, args.issue, args.jobs,
-                                  args.diff_source, open_cache(args), LAST_COLLECT)
+                                  args.diff_source, open_cache(args), LAST_COLLECT, args.budget)
         doc = normalize(bundle, since, until, args.issue, args.batch, not args.no_diffs, args.max_diff_bytes)
         log = local_events_path(args)
         if log:
             merge_local(doc, read_local_events(log), since, until, args.issue, args.batch)
+    except QuotaRefused as exc:
+        print(exc, file=sys.stderr)
+        return 3
     except (FetchError, OSError, ValueError, KeyError) as exc:
         print(json.dumps({"error": f"collect failed: {exc}"}), file=sys.stderr)
         return 2
@@ -2880,6 +3057,18 @@ def cmd_watch(args):
                 code = _watch_once(args.collect_args, out_path, args.interval, scratch)
                 if code == 5:
                     return 5
+                remaining = deadline - time.monotonic()
+                if code == 3:
+                    # The quota guard refused: skip this cycle. It is not a failure, so watch never exits on it.
+                    attempt = datetime.now(timezone.utc) + timedelta(seconds=min(args.interval, max(0, remaining)))
+                    nxt = (f"next attempt at {attempt.isoformat(timespec='seconds').replace('+00:00', 'Z')}"
+                           if remaining > 0 else "no next attempt: --max-minutes ends the watch")
+                    print(f"watch: skipped this refresh to save the API quota; the last page stays; {nxt}",
+                          file=sys.stderr, flush=True)
+                    if remaining <= 0:
+                        return 0
+                    time.sleep(min(args.interval, remaining))
+                    continue
                 failures_in_a_row = failures_in_a_row + 1 if code else 0
                 if code:
                     print(f"watch: refresh failed (exit {code}); the last page stays", file=sys.stderr, flush=True)
@@ -2920,6 +3109,9 @@ def main(argv=None):
                          help="cap on the patch text in the whole document (default 4194304)")
     collect.add_argument("--jobs", type=int, default=DEFAULT_JOBS,
                          help=f"reads to run at once, 1 to {MAX_JOBS} (default {DEFAULT_JOBS}; 1 reads one at a time)")
+    collect.add_argument("--budget", type=float, default=DEFAULT_BUDGET, metavar="PERCENT",
+                         help="stop with exit 3 when the reads need more than this percent of the API quota that "
+                              f"remains (default {DEFAULT_BUDGET}; GitHub only, Gitea has no quota to read)")
     collect.add_argument("--diff-source", choices=DIFF_SOURCES, default="auto",
                          help="where commit files and patches come from: `git` (the --repo-path checkout), `api`, "
                               "or `auto`, git first and the API for a commit git lacks (default auto)")

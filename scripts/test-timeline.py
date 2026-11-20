@@ -218,6 +218,9 @@ with tempfile.TemporaryDirectory() as tmp:
         handle.write(r'''
 import hashlib, json, os, re, subprocess, sys
 path = sys.argv[-1]
+# A server with rate limits off answers the quota read (#93) with 404, so the quota guard is off.
+if path == "rate_limit":
+    print(json.dumps({"message": "Not Found"})); sys.exit(1)
 # `gh api --include [-H "If-None-Match: <etag>"] <path>` (#92): the ETag is a hash of the body.
 # A match gets a 304 with no body, a "gh: HTTP 304" line and exit 1, as the real gh 2.88 does.
 if "--include" in sys.argv:
@@ -1426,6 +1429,9 @@ check(timeline.pr_repo_list("o/r", ["o/fork,o/other", "o/fork", "o/r", " o/x "])
 FAKE_MULTI = r"""
 import json, os, re, sys
 path = sys.argv[-1]
+# A server with rate limits off answers the quota read (#93) with 404, so the quota guard is off.
+if path == "rate_limit":
+    print(json.dumps({"message": "Not Found"})); sys.exit(1)
 data = json.load(open(os.environ["FAKE_DATA"]))
 page = re.search(r"[?&]page=(\d+)", path)
 if page and int(page.group(1)) > 1:
@@ -1636,6 +1642,9 @@ def repo_state(path):
 GIT_FAKE = r'''
 import json, os, re, sys
 path = sys.argv[-1]
+# A server with rate limits off answers the quota read (#93) with 404, so the quota guard is off.
+if path == "rate_limit":
+    print(json.dumps({"message": "Not Found"})); sys.exit(1)
 data = json.load(open(os.environ["FAKE_DATA"]))
 if re.search(r"[?&]page=([2-9]|\d\d)", path):
     print("[]"); sys.exit(0)
@@ -1900,7 +1909,8 @@ with tempfile.TemporaryDirectory() as tmp:
         else:
             proc = subprocess.run([sys.executable, SCRIPT, *args, "--local-events", "off"], capture_output=True,
                                   text=True, cwd=cwd, env={**os.environ, **env})
-        return proc, count_gh.calls(counter)
+        # The quota reads (#93) cost no quota and are not in the summary's count.
+        return proc, [c for c in count_gh.calls(counter) if not c.endswith(" rate_limit")]
 
     def others(calls):
         return [c for c in calls if not re.search(LISTING, c)]
@@ -2089,6 +2099,159 @@ with tempfile.TemporaryDirectory() as tmp:
     leftovers = [n for _, _, names in os.walk(tmp) for n in names if not n.endswith(".json")]
     check(leftovers == [], f"#91 no temporary file is left: {leftovers}")
 
+# ---------------------------------------------------------------- quota guard (#93)
+# A wrapper in front of the canned fake answers `gh api rate_limit` with FAKE_REMAINING, less the
+# calls already made, so Q after the run is FAKE_REMAINING - C. FAKE_PRIMARY makes the other calls
+# fail with GitHub's primary-limit reply: `short` fails the first call only and the quota resets in
+# FAKE_RESET_IN seconds; `long` fails every call; `header` fails the first call and puts a near
+# `x-ratelimit-reset` in the reply while rate_limit names a far reset.
+QUOTA_WRAPPER = r"""
+import json, os, subprocess, sys, time
+state, path = os.environ["FAKE_STATE"], sys.argv[-1]
+spent = os.path.join(state, "spent")
+reset = int(time.time()) + int(os.environ.get("FAKE_RESET_IN", "1800"))
+if path == "rate_limit" and os.environ.get("FAKE_REMAINING"):
+    used = len(open(spent).read().split()) if os.path.exists(spent) else 0
+    left = max(0, int(os.environ["FAKE_REMAINING"]) - used)
+    core = {"limit": 5000, "remaining": left, "reset": reset, "used": 5000 - left}
+    print(json.dumps({"resources": {"core": core}, "rate": core})); sys.exit(0)
+if path != "rate_limit":
+    with open(spent, "a") as handle:
+        handle.write("x\n")
+    mode = os.environ.get("FAKE_PRIMARY", "")
+    first = False
+    if mode in ("short", "header"):
+        try:
+            os.close(os.open(os.path.join(state, "limited"), os.O_CREAT | os.O_EXCL))
+            first = True
+        except FileExistsError:
+            pass
+    if mode == "long" or first:
+        print(json.dumps({"message": "API rate limit exceeded for user ID 1."}))
+        sys.stderr.write("gh: API rate limit exceeded for user ID 1. (HTTP 403)\n")
+        if mode == "header":
+            sys.stderr.write(f"x-ratelimit-remaining: 0\nx-ratelimit-reset: {int(time.time()) + 1}\n")
+        sys.exit(1)
+sys.exit(subprocess.call([sys.executable, os.environ["FAKE_INNER"], *sys.argv[1:]]))
+"""
+SUMMARY = re.compile(r"; (\d+) API calls? \((\d+) cached[^)]*\)(?:, (\d+) remaining)?$")
+with tempfile.TemporaryDirectory() as tmp:
+    inner = os.path.join(tmp, "inner.py")
+    with open(inner, "w") as handle:
+        handle.write(FAKE_SRC)
+    outer = os.path.join(tmp, "quota.py")
+    with open(outer, "w") as handle:
+        handle.write(QUOTA_WRAPPER)
+    target = os.path.join(tmp, "quota")
+    with open(target, "w") as handle:
+        handle.write(f'#!/bin/sh\nexec "{sys.executable}" "{outer}" "$@"\n')
+    os.chmod(target, 0o755)
+    serial = iter(range(10 ** 6))
+
+    def quota_run(*flags, command="snapshot", forge_type="github", story=None, **fake):
+        """Run one command against the quota fake. Return (process, the API calls, the rate_limit calls)."""
+        n = next(serial)
+        data = os.path.join(tmp, f"data-{n}.json")
+        with open(data, "w") as handle:
+            json.dump(story or cache_story(forge_type), handle)
+        state, counter = os.path.join(tmp, f"state-{n}"), os.path.join(tmp, f"count-{n}")
+        os.makedirs(state)
+        env = {"IFW_GH" if forge_type == "github" else "IFW_TEA": count_gh.wrap(counter, target), "FAKE_DATA": data,
+               "FAKE_STATE": state, "FAKE_INNER": inner, "IFW_WATCH_FAST": "1",
+               **{f"FAKE_{k.upper()}": str(v) for k, v in fake.items()}}
+        proc = run([command, "--forge", forge_type, "--repo", "o/r", "--diff-source", "api", *flags], env)
+        logged = count_gh.calls(counter)
+        return proc, [c for c in logged if not c.endswith(" rate_limit")], [c for c in logged if c.endswith(" rate_limit")]
+
+    def last_line(proc):
+        lines = proc.stderr.strip().splitlines()
+        return lines[-1] if lines else ""
+
+    # 1. A full quota: the summary line ends with Q, read after the run. The rate_limit reads are not in C.
+    page = os.path.join(tmp, "page.html")
+    ok, ok_calls, ok_quota = quota_run("--out", page, remaining=5000)
+    found = SUMMARY.search(last_line(ok))
+    check(ok.returncode == 0 and found and found.group(3) is not None, f"#93 the snapshot summary names the remaining quota: {last_line(ok)!r}")
+    if found and found.group(3) is not None:
+        check(int(found.group(1)) == len(ok_calls) and int(found.group(3)) == 5000 - len(ok_calls),
+              f"#93 C counts the API calls only, and Q is read after the run: {last_line(ok)!r}, {len(ok_calls)} calls")
+    check(len(ok_quota) == 2, f"#93 a collect reads the quota twice, before and after: {ok_quota}")
+
+    # 2. A low quota: snapshot exits 3 with one clear line, sends no API call and writes no page.
+    low_page = os.path.join(tmp, "low.html")
+    low, low_calls, _ = quota_run("--out", low_page, remaining=10)
+    line = low.stderr.strip()
+    check(low.returncode == 3 and not os.path.exists(low_page), f"#93 a low quota exits 3 with no page: {low.returncode} {low.stderr[:300]}")
+    check(len(line.splitlines()) == 1 and all(w in line for w in ("10 that remain", "--budget 50", "resets at", "--since")),
+          f"#93 the refusal is one line with the estimate, what remains, the reset and the options: {line!r}")
+    check(low_calls == [], f"#93 the guard stops before the listings when they do not fit: {low_calls}")
+    check(quota_run("--out", low_page, "--budget", "0")[0].returncode == 5, "#93 --budget 0 exits 5")
+    check(quota_run("--out", low_page, "--budget", "101")[0].returncode == 5, "#93 --budget 101 exits 5")
+
+    # 3. The estimate counts only the uncached reads. A quota that the listings fit, and the cold
+    # reads do not, refuses a cold collect and lets a warm one run.
+    cache = os.path.join(tmp, "cache")
+    listings = [c for c in ok_calls if re.search(LISTING, c)]
+    tight = len(listings) + 4
+    cold, cold_calls, _ = quota_run("--cache-dir", cache, "--budget", "100", command="collect", remaining=tight)
+    check(cold.returncode == 3 and len(cold_calls) == len(listings), f"#93 a cold collect over the budget stops after the listings: {cold.returncode} {len(cold_calls)} calls")
+    filled, _, _ = quota_run("--cache-dir", cache, command="collect", remaining=5000)
+    warm, warm_calls, _ = quota_run("--cache-dir", cache, "--budget", "100", command="collect", remaining=tight)
+    check(filled.returncode == 0 and warm.returncode == 0 and warm.stdout == filled.stdout,
+          f"#93 a warm cache brings the same collect under the budget: {warm.returncode} {warm.stderr[:300]}")
+    check(len(warm_calls) == len(listings), f"#93 the warm collect reads only the listings: {len(warm_calls)}")
+
+    # The wave-3 estimate: an uncached commit costs one call with --diff-source api and none from
+    # git; a cached one costs none; a failed run's jobs cost one call.
+    story = story2("github")
+    first = {"commits": [{"sha": "c100"}, {"sha": "c200"}], "reviews": [],
+             "runs": [{"id": 1, "conclusion": "failure", "updated_at": OLD}, {"id": 2, "conclusion": "success", "updated_at": OLD}]}
+    est_cache = timeline.Cache(os.path.join(tmp, "est"))
+    est_cache.put(timeline.commit_key("github", "c200"), [])
+    pr = story["pulls"][0]["pr"]
+    check(timeline.followup_estimate("github", [("o/r", pr)], [first], est_cache, "api") == 2,
+          "#93 the wave-3 estimate counts the uncached commit and the failed run's jobs")
+    check(timeline.followup_estimate("github", [("o/r", pr)], [first], est_cache, "auto") == 1,
+          "#93 a commit read from git costs no call in the estimate")
+    est_cache.put(timeline.jobs_key("github", "o/r", first["runs"][0]), [])
+    check(timeline.followup_estimate("github", [("o/r", pr)], [first], est_cache, "auto") == 0,
+          "#93 cached jobs cost no call in the estimate")
+
+    # 4. watch: the guard skips the cycle, the last page stays, and watch keeps running. A tiny
+    # --budget against a full quota also proves that watch passes --budget to collect.
+    kept = os.path.join(tmp, "kept.html")
+    with open(kept, "w") as handle:
+        handle.write("the last page")
+    w, w_calls, _ = quota_run("--out", kept, "--budget", "0.01", "--interval", "1", "--max-minutes", "0.05",
+                              command="watch", remaining=5000)
+    skips = [s for s in w.stderr.splitlines() if s.startswith("watch: skipped")]
+    check(w.returncode == 0 and len(skips) >= 2 and open(kept).read() == "the last page",
+          f"#93 watch skips each refused cycle, keeps the page and runs on: {w.returncode} {w.stderr[-400:]!r}")
+    check(skips and "next attempt at" in skips[0] and w_calls == [], f"#93 the skip line names the next attempt: {skips[:1]}")
+
+    # 5. The primary limit: a reset within 60 seconds is waited for, a later one fails with the clear line.
+    plain, _, _ = quota_run(command="collect", remaining=5000)
+    short, short_calls, _ = quota_run(command="collect", remaining=5000, primary="short", reset_in=1)
+    check(short.returncode == 0 and short.stdout == plain.stdout, f"#93 a primary limit that resets in 1 s is retried: {short.stderr[:300]}")
+    header, _, _ = quota_run(command="collect", remaining=5000, primary="header", reset_in=3600)
+    check(header.returncode == 0 and header.stdout == plain.stdout, f"#93 the retry waits for x-ratelimit-reset when the reply has it: {header.stderr[:300]}")
+    long_page = os.path.join(tmp, "long.html")
+    started = time.monotonic()
+    far, far_calls, _ = quota_run("--out", long_page, remaining=5000, primary="long", reset_in=3600)
+    check(far.returncode == 3 and not os.path.exists(long_page) and "resets at" in far.stderr and time.monotonic() - started < 30,
+          f"#93 a primary limit that resets in an hour fails at once with exit 3: {far.returncode} {far.stderr[:300]}")
+    check(len(far_calls) <= 5, f"#93 a far reset sends no retry: {len(far_calls)} calls")
+
+    # 6. No quota to read: Gitea has no rate-limit route, and a GitHub server with rate limits off
+    # answers 404. The guard is off and the summary has no remaining count.
+    for forge_type, fake in (("gitea", {"remaining": 10}), ("github", {})):
+        none, _, none_quota = quota_run("--out", page, forge_type=forge_type, **fake)
+        check(none.returncode == 0 and SUMMARY.search(last_line(none)) and "remaining" not in last_line(none),
+              f"#93 {forge_type} with no quota route runs without the guard: {last_line(none)!r}")
+        check(len(none_quota) == (0 if forge_type == "gitea" else 1), f"#93 {forge_type} quota reads: {none_quota}")
+
+check(timeline.DEFAULT_JOBS == 4 and "default 4" in run(["collect", "--help"]).stdout, "#93 --jobs defaults to 4")
+
 # ---------------------------------------------------------------- conditional listings (#92)
 # GitHub answers `If-None-Match` with 304 when the listing page is unchanged, and a 304 does not
 # count against the primary quota. The fake gh of section 3 sends an ETag with `--include`.
@@ -2235,7 +2398,8 @@ with tempfile.TemporaryDirectory() as tmp:
                "FAKE_STATUS_LOG": statuses, "IFW_WATCH_FAST": "1"}
         proc = run([command, "--forge", forge_type, "--repo", "o/r", "--diff-source", "api", *flags], env)
         got = open(statuses).read().split() if os.path.exists(statuses) else []
-        return proc, count_gh.calls(counter), got
+        # The quota reads (#93) cost no quota and are not in the summary's count.
+        return proc, [c for c in count_gh.calls(counter) if not c.endswith(" rate_limit")], got
 
     story = cache_story("github")
     cache = os.path.join(tmp, "cache-github")

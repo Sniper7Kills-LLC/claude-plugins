@@ -277,7 +277,8 @@ that `issue`. `--batch <n>` keeps the events with that `batch`.
 
 `collect` reads the tracker in three waves: the listings, then each issue's and PR's own reads,
 then the reads that need those (a commit's files or diff, a review's comments, a failed run's
-jobs). A wave runs on a bounded pool of threads. `--jobs <n>` sets the size: 1 to 16, default 8.
+jobs). A wave runs on a bounded pool of threads. `--jobs <n>` sets the size: 1 to 16, default 4.
+Four reads at once keep a collect well under GitHub's secondary (burst and concurrency) limits.
 `--jobs 1` reads one at a time. `snapshot` and `watch` pass `--jobs` to `collect`.
 
 - **The document does not depend on `--jobs`.** Each result goes where the plan puts it, never
@@ -286,6 +287,13 @@ jobs). A wave runs on a bounded pool of threads. `--jobs <n>` sets the size: 1 t
   429, or a "too many requests" reply makes the read run again, for 3 attempts in all. The wait
   is the `Retry-After` value when the reply has one, else 2 s, then 4 s, and never more than
   60 s. A read that is still limited after the third attempt fails with exit 2.
+- **A primary limit waits for the reset, or stops.** GitHub answers a read with 403 or 429 when
+  the quota is used up (`x-ratelimit-remaining` is `0`), and a retry before the reset fails too.
+  The reset time is the reply's `x-ratelimit-reset` header when the reply has it. `gh api` prints
+  only the message, so in practice `collect` reads the reset from `gh api rate_limit`. If the
+  reset comes in 60 s or less, the read waits for it and runs again. Else the collect stops with
+  exit 3 and one stderr line: `collect: the API quota is used up. The quota resets at <time> (in
+  <n> min). Use a shorter --since, or wait for the reset.`
 - **Every other error fails at once**, as it does with `--jobs 1`. One failed read fails the whole
   collect, and nothing is written.
 - `IFW_RETRY_DELAY` sets the first wait in seconds, for tests only.
@@ -413,8 +421,9 @@ no body, and `collect` uses the kept page.
   So on Gitea the listings are read in full on every collect, and `K` is 0.
 
 **The counts.** The summary line of `snapshot` ends with the cost of the collect:
-`wrote <path>: <E> events, <L> lanes, <P> problems; <C> API calls (<M> cached, <K> not modified)`.
-Each `watch` refresh line ends with the same `<C> API calls (<M> cached, <K> not modified)`.
+`wrote <path>: <E> events, <L> lanes, <P> problems; <C> API calls (<M> cached, <K> not modified), <Q> remaining`.
+Each `watch` refresh line ends with the same counts. A forge with no quota to read leaves out
+`, <Q> remaining`.
 
 | Count | Meaning |
 |---|---|
@@ -446,11 +455,46 @@ python3 scripts/count-gh.py count /tmp/count --match '/commits/[0-9a-f]{40}'
 
 Tests import the same file and call `wrap(dir, target)` and `calls(dir, match)`.
 
+**The quota guard stops a collect that would take too much of the quota.** On GitHub, `collect`
+reads the quota with `gh api rate_limit` before the first read. That read costs no quota
+([docs](https://docs.github.com/en/rest/rate-limit/rate-limit)), and it is not in `C`. Before
+each of the three waves, `collect` estimates the calls of the wave's uncached reads:
+
+| Wave | Estimate |
+|---|---|
+| The listings | 2 calls for each listing (a page with rows and the empty page that ends it), 1 for `--issue` |
+| Each issue's and PR's own reads | 2 calls for each read with no cache entry: an issue's timeline, and a PR's timeline, reviews, commits, review comments and CI runs. The CI runs of an open PR, or of a PR updated in the last hour, always count. |
+| The follow-up reads | 1 call for each uncached commit with `--diff-source api` (`auto` and `git` read commits from git), 1 for the jobs of each uncached failed run, 2 for the comments of each uncached Gitea review |
+
+If the calls already sent plus the wave's estimate are more than `--budget` percent of the
+quota at the start, `collect` stops with exit 3 and writes nothing. A paged read with more rows
+than one page costs more than its estimate. The next wave's check counts the calls actually
+sent, so the error is not carried on.
+
+- **`--budget <percent>`**, more than 0 and at most 100. The default is 50: one collect never
+  takes more than half of the quota that remained when it started. `snapshot` and `watch` pass
+  it to `collect`.
+- **The refusal** is one stderr line, for example:
+  `collect: stopped before the next reads: they need about 140 API calls, and --budget 50 allows 61 of the 122 that remain. The quota resets at 2026-11-20T10:15:00Z (in 23 min). Use a shorter --since, a higher --budget, or wait for the reset.`
+- **What to do when it stops.** Read the window down with a shorter `--since`, or pass `--batch`
+  or `--issue`. Or wait for the reset time in the line. Raise `--budget` only when nothing else
+  needs the quota until the reset: the issue-flow PM and its workers share it.
+- **`watch` skips the cycle.** It keeps the last page and prints one line:
+  `watch: skipped this refresh to save the API quota; the last page stays; next attempt at <time>`.
+  A skip is not a failure, so it never counts toward the three failures that end a watch. The
+  interval stays the same.
+- **No quota to read.** Gitea has no rate-limit route (checked against
+  `https://gitea.com/swagger.v1.json`, 2026-11-19). A GitHub server with rate limits off answers
+  `rate_limit` with 404. In both cases the guard is off, and the summary line has no `Q`.
+- **The summary line** of `snapshot` and `watch` adds `Q` after the counts:
+  `<C> API calls (<M> cached, <K> not modified), <Q> remaining`. `Q` is read after the run.
+
 ## Exit codes
 
 `0` document written. `2` a fetch failed, or the forge returned an error body (`tea api`
-exits 0 on an API error, so `collect` checks the body). Nothing goes to stdout. `5` the
-invocation is malformed. `render` uses the same codes: `2` for unreadable or malformed
+exits 0 on an API error, so `collect` checks the body). Nothing goes to stdout. `3` the quota
+guard stopped the collect, or the quota is used up until a reset more than 60 s away (see **API
+cost**). Nothing goes to stdout, and `snapshot` writes no page. `5` the invocation is malformed. `render` uses the same codes: `2` for unreadable or malformed
 input.
 
 ## Lane kinds (the renderer)
