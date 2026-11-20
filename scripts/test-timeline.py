@@ -2734,10 +2734,11 @@ with tempfile.TemporaryDirectory() as tmp:
           f"#94-r2-2 gc prints one `ref` line for each ref it removes, and no file line: {proc.stdout!r}")
     check("1 ref (refs/issue-flow/pull/o/r/1)" in proc.stderr and "--verbose" in proc.stderr,
           f"#94-r2-2 the gc summary names the ref and tells how to list the files: {proc.stderr!r}")
-    check(timeline._gc_refs_text([f"refs/issue-flow/pull/o/r/{n}" for n in range(5)])
+    refs_text = getattr(timeline, "_gc_refs_text", lambda refs: None)  # a missing helper fails the check, not the run
+    check(refs_text([f"refs/issue-flow/pull/o/r/{n}" for n in range(5)])
           == "5 refs (refs/issue-flow/pull/o/r/0, refs/issue-flow/pull/o/r/1, refs/issue-flow/pull/o/r/2 "
              "and 2 more: the `ref` lines on stdout name them all)",
-          f"#94-r2-2 the gc summary names 3 refs and counts the rest: {timeline._gc_refs_text(['a'] * 5)!r}")
+          f"#94-r2-2 the gc summary names 3 refs and counts the rest: {refs_text(['a'] * 5)!r}")
 
     dry = run(["gc", "--all", "--dry-run", "--cache-dir", root, "--repo-path", repo])
     check(dry.returncode == 0 and store.has("fresh") and len(git(repo, "for-each-ref", "refs/issue-flow/").split("\n")) == 3,
