@@ -347,7 +347,8 @@ knows each item's `updated_at`. An item whose key has an entry in the cache cost
   | A failed run's jobs | `<forge>/<repo>/run/<id>/<updated_at>/jobs` (Gitea: `completed_at`) | until the run changes |
 
   An item that has no `updated_at`, a PR that has no head sha, and a run with no time are read
-  every time. The listings are never cached.
+  every time. The listings are not served from the cache. On GitHub each listing page is a
+  conditional request (see **Conditional listing reads**).
 - **CI runs of an open PR.** A run starts and ends with no change to the PR's `updated_at`. So
   `collect` reads the runs again for each PR that is open, and for each PR updated in the last
   hour (`RUNS_STALE_AFTER`). The new runs replace the entry. The PR's other reads, and the jobs
@@ -378,9 +379,42 @@ knows each item's `updated_at`. An item whose key has an entry in the cache cost
 `--no-cache` and `--refresh-cache` together exit 5. `snapshot` and `watch` pass all three
 flags to `collect`.
 
+**Conditional listing reads.** A listing is the issue listing of the range, the three label
+listings (`type:batch`, `type:epic`, `flow:status`) and the PR listing of each PR repository.
+On GitHub, `collect` keeps each listing page with its `ETag` and sends the `ETag` as
+`If-None-Match` on the next read of that page. An unchanged page gets `304 Not Modified` with
+no body, and `collect` uses the kept page.
+
+- **The quota.** GitHub: "Making a conditional request does not count against your primary
+  rate limit if a `304` response is returned and the request was made while correctly authorized
+  with an `Authorization` header" ([Best practices for using the REST API](https://docs.github.com/en/rest/using-the-rest-api/best-practices-for-using-the-rest-api#use-conditional-requests-if-appropriate)).
+  `gh` sends the `Authorization` header. Measured on 2026-11-20: a 304 left `core.used` unchanged.
+- **How `gh api` reports a 304.** `gh api --include` prints the status line
+  `HTTP/2.0 304 Not Modified` and the headers on stdout, prints `gh: HTTP 304` on stderr, and
+  exits 1 (gh 2.88: any status above 299 is an error, see
+  [`pkg/cmd/api/api.go`](https://github.com/cli/cli/blob/v2.88.1/pkg/cmd/api/api.go)). So
+  `collect` reads the status line, not the exit code. A 304 is never an error and is never
+  retried. Any other failure of a conditional read goes to the plain read, which retries a
+  rate-limit reply.
+- **One snapshot.** The kept pages of one listing are one snapshot. When page 1 changed,
+  `collect` reads the rest of the listing with no `If-None-Match`. When a later page changed,
+  `collect` reads the whole listing again from page 1, with no `If-None-Match`. The new pages
+  replace the entry.
+- **The entry.** The key is `etag/github/<path with its query, without the page>`. The value is
+  `{"pages": [{"etag", "body"}, …]}`, in page order, up to the page that ended the walk. A
+  listing with a page that has no `ETag` is not kept. A kept `ETag` is not a cached read: the
+  request is still sent, so it counts in `C` and not in `M`. A 304 counts in `K`.
+- **The flags.** `--no-cache` sends no `If-None-Match` and keeps nothing. `--refresh-cache` sends
+  no `If-None-Match` and keeps the new pages.
+- **Gitea.** The Gitea API documents no `ETag` and no `If-None-Match` for any route (the
+  [swagger template](https://github.com/go-gitea/gitea/blob/main/templates/swagger/v1_json.tmpl)
+  names neither), and its issue listing handlers set no `ETag`
+  ([`routers/api/v1/repo/issue.go`](https://github.com/go-gitea/gitea/blob/main/routers/api/v1/repo/issue.go)).
+  So on Gitea the listings are read in full on every collect, and `K` is 0.
+
 **The counts.** The summary line of `snapshot` ends with the cost of the collect:
-`wrote <path>: <E> events, <L> lanes, <P> problems; <C> API calls (<M> cached)`. Each `watch`
-refresh line ends with the same `<C> API calls (<M> cached)`.
+`wrote <path>: <E> events, <L> lanes, <P> problems; <C> API calls (<M> cached, <K> not modified)`.
+Each `watch` refresh line ends with the same `<C> API calls (<M> cached, <K> not modified)`.
 
 | Count | Meaning |
 |---|---|
@@ -395,7 +429,10 @@ each listing page as one possible call, because a 304 is not known before the re
 **Measured.** Two back-to-back collects of this repository, on the 1-day window
 `--since 2026-11-19T00:00:00Z --until 2026-11-20T00:00:00Z`, with `--pr-repo` for the fork, on
 2026-11-20: the first made 155 calls and the second made 12. The 12 are 11 listing pages and the
-CI runs of the one open PR. The two documents are equal.
+CI runs of the one open PR. The two documents are equal. With conditional listing reads, the
+same check on 2026-11-20 made 162 calls cold and 13 warm: `13 API calls (174 cached, 11 not
+modified)`. The 11 listing pages got 304, and `core.used` went up by 2, for the CI runs of the
+two open PRs.
 
 **Count the calls of a run.** `scripts/count-gh.py` wraps `gh` (or `tea`) through `IFW_GH`
 (or `IFW_TEA`). The wrapper logs each call and then runs the real command:

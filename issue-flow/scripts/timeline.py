@@ -27,7 +27,7 @@ documented in references/timeline.md.
 `snapshot` runs `collect` and `render` in one process and takes every `collect` flag plus --out
 (the page path; default `<git common dir>/issue-flow/timeline.html`). It exits 0 only when the
 page is written, and prints one stderr line with the path, the event, lane and problem counts, and
-`<n> API calls (<m> cached)`. `watch` runs the same code on a timer.
+`<n> API calls (<m> cached, <k> not modified)`. `watch` runs the same code on a timer.
 
 `collect` is read-only on the tracker. It reads issues, issue timelines and pull requests (paged until
 an empty page) and prints one JSON document, or writes it to --out. The schema is in
@@ -731,7 +731,8 @@ class Api:
 
     Calls are safe to make from many threads: an `Api` holds only its settings and a call count.
     `pmap` runs reads on a bounded pool and returns the results in the order of the inputs.
-    `sent` counts the requests sent, and a retry is one more request.
+    `sent` counts the requests sent, and a retry is one more request. `not_modified` counts the
+    sent requests that got a 304 (see `conditional`).
     """
 
     def __init__(self, forge_type, repo_path=".", jobs=DEFAULT_JOBS):
@@ -741,6 +742,7 @@ class Api:
         self.cmd = os.environ.get("IFW_GH", "gh") if forge_type == "github" else os.environ.get("IFW_TEA", "tea")
         self.limit = "per_page=100" if forge_type == "github" else "limit=50"
         self.sent = 0
+        self.not_modified = 0
         self._sent_lock = threading.Lock()
 
     def path(self, repo, suffix):
@@ -823,6 +825,105 @@ class Api:
             if keep_going and not keep_going(body):
                 break
         return rows
+
+    def conditional(self, path, etag=None):
+        """Read one GitHub page with `--include`, and send `If-None-Match: <etag>` when `etag` is set.
+
+        Returns (304, etag, None) when the page did not change, else (200, etag or None, body).
+        gh reports a 304 with exit 1 and `gh: HTTP 304`, so the status line decides, not the exit
+        code. A 304 is never an error and is never retried. Any other failure gives the read to
+        `get`, which retries it as `_run` does; that costs one more request, on a failure only.
+        """
+        args = [self.cmd, "api", "--include"] + (["-H", f"If-None-Match: {etag}"] if etag else []) + [path]
+        with self._sent_lock:
+            self.sent += 1
+        try:
+            result = subprocess.run(args, cwd=self.repo_path, capture_output=True, text=True)
+        except OSError as exc:
+            raise FetchError(f"cannot run {self.cmd}: {exc}")
+        status, headers, out = parse_include(result.stdout)
+        if status == 304:
+            with self._sent_lock:
+                self.not_modified += 1
+            return 304, headers.get("etag") or etag, None
+        if result.returncode != 0 or status is None or not 200 <= status < 300:
+            return 200, None, self.get(path)
+        try:
+            body = json.loads(out)
+        except ValueError:
+            raise FetchError(f"{self.cmd} api {path} returned a body that is not JSON: {out[:200]!r}")
+        if isinstance(body, dict) and "message" in body and "number" not in body:
+            raise FetchError(f"{self.cmd} api {path} returned an error: {body['message']}")
+        return 200, headers.get("etag"), body
+
+
+def parse_include(text):
+    """Split `gh api --include` output into (status, headers, body). No status line gives (None, {}, text).
+
+    gh writes `HTTP/2.0 200 OK`, then one `Name: value` line per header, then an empty line.
+    Header names are made lower case.
+    """
+    match = re.match(r"HTTP/\S+ (\d{3})[^\n]*\n", text)
+    if not match:
+        return None, {}, text
+    parts = re.split(r"\r?\n\r?\n", text[match.end():], maxsplit=1)
+    head, body = parts[0], parts[1] if len(parts) > 1 else ""
+    headers = {}
+    for line in head.splitlines():
+        name, sep, value = line.partition(":")
+        if sep:
+            headers[name.strip().lower()] = value.strip()
+    return int(match.group(1)), headers, body
+
+
+def listing_key(forge_type, path):
+    """Return the cache key of a listing's ETags and pages. `path` holds the query, not the page."""
+    return f"etag/{forge_type}/{path}"
+
+
+def read_listing(api, cache, path, keep_going=None):
+    """Read every page of a GitHub listing, and send each page's stored ETag as `If-None-Match`.
+
+    A 304 reuses the stored page. The stored pages are one snapshot, so when a page after the
+    first changed, the walk starts again at page 1 with no ETags. A change on page 1 needs no
+    restart, because no stored page was used yet. The new pages and ETags are stored under
+    `listing_key` when every page has an ETag. The walk ends as `Api.paged` ends.
+
+    A stored ETag is not a cached read: a request is still sent. So the entry is read without
+    counting a hit, and `api.not_modified` counts the 304s.
+    """
+    key = listing_key(api.forge_type, path)
+    entry = cache._load(key)
+    stored = entry.get("pages") if isinstance(entry, dict) else None
+    if not isinstance(stored, list) or not all(isinstance(p, dict) and p.get("etag") and isinstance(p.get("body"), list)
+                                               for p in stored):
+        stored = []
+    sep = "&" if "?" in path else "?"
+    while True:
+        pages, rows, restart = [], [], False
+        for page in range(1, 1000):
+            old = stored[page - 1] if page <= len(stored) else None
+            status, etag, body = api.conditional(f"{path}{sep}{api.limit}&page={page}", old and old["etag"])
+            if status == 304 and old is not None:
+                etag, body = old["etag"], old["body"]
+            elif old is not None:
+                stored = []
+                if page > 1:
+                    restart = True
+                    break
+            if not isinstance(body, list):
+                raise FetchError(f"api {path} page {page} is not a list: {str(body)[:200]}")
+            pages.append({"etag": etag, "body": body})
+            if not body:
+                break
+            rows.extend(body)
+            if keep_going and not keep_going(body):
+                break
+        if not restart:
+            break
+    if all(p["etag"] for p in pages):
+        cache.put(key, {"pages": pages})
+    return rows
 
 
 def _not_found(exc):
@@ -1227,8 +1328,10 @@ def fetch_bundle(forge_type, repo, pr_repo=None, repo_path=".", since=None, only
     not have; `auto` reads from git and falls back to the API per commit.
 
     `cache` (a `Cache`) serves every read but the listings when its key matches. The commit cache
-    comes before git, so the fetch runs only for PRs that hold an uncached commit. `stats`, a dict,
-    gets `calls` (requests sent) and `cached` (reads served by the cache).
+    comes before git, so the fetch runs only for PRs that hold an uncached commit. On GitHub each
+    listing page is a conditional request (`read_listing`) when a cache is on. `stats`, a dict, gets
+    `calls` (requests sent), `cached` (reads served by the cache) and `not_modified` (requests that
+    got a 304).
     """
     api = Api(forge_type, repo_path, jobs)
     cache = cache or Cache(None)
@@ -1246,19 +1349,25 @@ def fetch_bundle(forge_type, repo, pr_repo=None, repo_path=".", since=None, only
     pr_query = "?state=all" + ("&sort=updated&direction=desc" if forge_type == "github" else "")
     keep_going = recent if forge_type == "github" else None
 
+    def listing(path, keep_going=None):
+        # Gitea's API sends no ETag, so its listings are read plain. With no cache, no If-None-Match.
+        if forge_type != "github" or not (cache.read or cache.write):
+            return api.paged(path, keep_going=keep_going)
+        return read_listing(api, cache, path, keep_going)
+
     # Wave 1: every listing.
     listings = []
     if only_issue is not None:
         listings.append(lambda: api.get(api.path(repo, f"/issues/{only_issue}")))
     else:
         query = base_q + (f"&since={quote(since)}" if since else "")
-        listings.append(lambda: api.paged(api.path(repo, "/issues" + query)))
+        listings.append(lambda: listing(api.path(repo, "/issues" + query)))
         # Tracking and status issues carry batch membership and convergence data even
         # when they were not updated in the range.
         for label in ("type:batch", "type:epic", "flow:status"):
-            listings.append(lambda label=label: api.paged(api.path(repo, "/issues" + base_q + f"&labels={quote(label)}")))
+            listings.append(lambda label=label: listing(api.path(repo, "/issues" + base_q + f"&labels={quote(label)}")))
     for pr_repo_name in pr_repos:
-        listings.append(lambda r=pr_repo_name: api.paged(api.path(r, "/pulls" + pr_query), keep_going=keep_going))
+        listings.append(lambda r=pr_repo_name: listing(api.path(r, "/pulls" + pr_query), keep_going=keep_going))
     results = api.pmap(lambda read: read(), listings)
     raws = {}
     if only_issue is not None:
@@ -1311,7 +1420,7 @@ def fetch_bundle(forge_type, repo, pr_repo=None, repo_path=".", since=None, only
               f"{repo_path}", file=sys.stderr)
 
     if stats is not None:
-        stats.update(calls=api.sent, cached=cache.hits)
+        stats.update(calls=api.sent, cached=cache.hits, not_modified=api.not_modified)
     issues = [{"issue": raws[n], "timeline": timeline} for n, timeline in zip(issue_numbers, timelines)]
     pulls = []
     for (pr_repo_name, pr), first in zip(prs, firsts):
@@ -1407,7 +1516,7 @@ def local_events_path(args):
 
 
 # The counts of the last collect in this process, for the summary line of `snapshot` and `watch`.
-LAST_COLLECT = {"calls": 0, "cached": 0}
+LAST_COLLECT = {"calls": 0, "cached": 0, "not_modified": 0}
 
 
 def open_cache(args):
@@ -1428,11 +1537,12 @@ def open_cache(args):
 
 
 def calls_summary():
-    return f"{_plural(LAST_COLLECT['calls'], 'API call')} ({LAST_COLLECT['cached']} cached)"
+    return (f"{_plural(LAST_COLLECT['calls'], 'API call')} ({LAST_COLLECT['cached']} cached, "
+            f"{LAST_COLLECT['not_modified']} not modified)")
 
 
 def cmd_collect(args):
-    LAST_COLLECT.update(calls=0, cached=0)
+    LAST_COLLECT.update(calls=0, cached=0, not_modified=0)
     try:
         since = parse_when(args.since) if args.since else None
         until = parse_when(args.until) if args.until else None

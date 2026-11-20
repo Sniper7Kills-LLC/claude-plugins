@@ -15,7 +15,7 @@ no issue-flow run to be active, and it changes nothing on the tracker. To read c
 without API calls, it fetches PR heads into `refs/issue-flow/` of the local repository. It
 changes no branch, tag or work-tree file. It keeps the reads of unchanged issues, PRs and
 commits in `<git common dir>/issue-flow/cache/`. A second run reads only the listings and
-the CI runs of open PRs.
+the CI runs of open PRs. On GitHub, an unchanged listing page gets a 304, which costs no quota.
 
 The output is a **local file only**. Never publish it, never upload it, and never create
 an Artifact from it.
@@ -80,7 +80,7 @@ repository shares it. The user can ask for another path.
 
 The exit code is the result. Do not pipe the tool, and do not read `PIPESTATUS`: it is empty
 in zsh. Exit 0 means the page is written, and `snapshot` prints one line on stderr
-(`wrote <path>: <n> events, <n> lanes, <n> problems; <n> API calls (<n> cached)`). A problem is a rework request, a
+(`wrote <path>: <n> events, <n> lanes, <n> problems; <n> API calls (<n> cached, <n> not modified)`). A problem is a rework request, a
 changes-requested review or a failed CI run. The page lists them in its Problems view. Any other exit code means no new page:
 2 is a failed fetch or a failed render, 5 is a bad flag. Say so with the error text. Do not
 write an empty page.

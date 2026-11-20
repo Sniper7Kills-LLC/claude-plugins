@@ -216,8 +216,25 @@ with tempfile.TemporaryDirectory() as tmp:
     fake = os.path.join(tmp, "fake.py")
     with open(fake, "w") as handle:
         handle.write(r'''
-import json, os, re, sys
+import hashlib, json, os, re, subprocess, sys
 path = sys.argv[-1]
+# `gh api --include [-H "If-None-Match: <etag>"] <path>` (#92): the ETag is a hash of the body.
+# A match gets a 304 with no body, a "gh: HTTP 304" line and exit 1, as the real gh 2.88 does.
+if "--include" in sys.argv:
+    want = sys.argv[sys.argv.index("-H") + 1].split(":", 1)[1].strip() if "-H" in sys.argv else None
+    inner = subprocess.run([sys.executable, __file__, "api", path], capture_output=True, text=True)
+    if inner.returncode:
+        sys.stderr.write(inner.stderr); sys.exit(inner.returncode)
+    strong = '"%s"' % hashlib.sha256(inner.stdout.encode()).hexdigest()[:16]
+    status = "304" if want and want.removeprefix("W/") == strong else "200"
+    if os.environ.get("FAKE_STATUS_LOG"):
+        with open(os.environ["FAKE_STATUS_LOG"], "a") as log:
+            log.write(status + "\n")
+    if status == "304":
+        sys.stdout.write("HTTP/2.0 304 Not Modified\nEtag: %s\r\n\r\n" % strong)
+        sys.stderr.write("gh: HTTP 304\n"); sys.exit(1)
+    sys.stdout.write("HTTP/2.0 200 OK\nContent-Type: application/json\r\nEtag: W/%s\r\n\r\n%s" % (strong, inner.stdout))
+    sys.exit(0)
 data = json.load(open(os.environ["FAKE_DATA"]))
 if data.get("error"):
     print(json.dumps({"message": "token does not have permission"}))
@@ -1975,7 +1992,7 @@ with tempfile.TemporaryDirectory() as tmp:
         page = os.path.join(tmp, f"page-{forge_type}.html")
         snap, snap_calls = cache_run(forge_type, story, "--cache-dir", cache, "--out", page, command="snapshot")
         line = snap.stderr.strip().splitlines()[-1] if snap.stderr.strip() else ""
-        found = re.search(r"; (\d+) API calls? \((\d+) cached\)$", line)
+        found = re.search(r"; (\d+) API calls? \((\d+) cached, \d+ not modified\)$", line)
         check(snap.returncode == 0 and found and int(found.group(1)) == len(snap_calls) == len(listings) and int(found.group(2)) > 0,
               f"{tag} the snapshot summary counts the calls and the cached reads: {line!r} ({len(snap_calls)} calls)")
         watched = os.path.join(tmp, f"watch-cache-{forge_type}")
@@ -1996,7 +2013,7 @@ with tempfile.TemporaryDirectory() as tmp:
     with open(fx, "w") as handle:
         json.dump(build("github"), handle)
     snap = run(["snapshot", "--fixture", fx, "--out", os.path.join(tmp, "fx.html")])
-    check(snap.stderr.strip().endswith("; 0 API calls (0 cached)"), f"#91 a fixture snapshot makes no call: {snap.stderr!r}")
+    check(snap.stderr.strip().endswith("; 0 API calls (0 cached, 0 not modified)"), f"#91 a fixture snapshot makes no call: {snap.stderr!r}")
 
     # Cache order for commits: the git fetch runs only for PRs that hold an uncached commit.
     story = cache_story("github")
@@ -2071,6 +2088,193 @@ with tempfile.TemporaryDirectory() as tmp:
     check(store.get("race") in (["A" * 200000], ["B" * 200000]), "#91 the last write wins")
     leftovers = [n for _, _, names in os.walk(tmp) for n in names if not n.endswith(".json")]
     check(leftovers == [], f"#91 no temporary file is left: {leftovers}")
+
+# ---------------------------------------------------------------- conditional listings (#92)
+# GitHub answers `If-None-Match` with 304 when the listing page is unchanged, and a 304 does not
+# count against the primary quota. The fake gh of section 3 sends an ETag with `--include`.
+# A stub Api drives the page walk in process; the fake drives it end to end.
+import hashlib  # noqa: E402
+
+
+class StubListingApi:
+    """Serves `pages` (the server's listing) through `conditional`, and logs (page, etag sent)."""
+
+    forge_type, limit = "github", "per_page=100"
+
+    def __init__(self, pages, etags=True):
+        self.pages, self.etags, self.log = pages, etags, []
+
+    def conditional(self, path, etag=None):
+        n = int(re.search(r"[?&]page=(\d+)", path).group(1))
+        body = self.pages[n - 1] if n <= len(self.pages) else []
+        tag = f'W/"{hashlib.sha256(json.dumps(body).encode()).hexdigest()[:12]}"' if self.etags else None
+        self.log.append((n, etag))
+        if etag is not None and etag == tag:
+            return 304, tag, None
+        return 200, tag, body
+
+
+with tempfile.TemporaryDirectory() as tmp:
+    store = timeline.Cache(tmp)
+    path = "repos/o/r/issues?state=all"
+    server = StubListingApi([[{"n": 1}, {"n": 2}], [{"n": 3}]])
+    cold = timeline.read_listing(server, store, path)
+    check(cold == [{"n": 1}, {"n": 2}, {"n": 3}], f"#92 a cold listing reads every page: {cold}")
+    check(server.log == [(1, None), (2, None), (3, None)], f"#92 a cold listing sends no If-None-Match: {server.log}")
+    check(store.has(timeline.listing_key("github", path)) and timeline.listing_key("github", path).startswith("etag/"),
+          "#92 the ETags and pages are stored under a key that starts etag/")
+    check(store.hits == 0, "#92 a stored ETag is not a cached read")
+
+    server.log = []
+    warm = timeline.read_listing(server, store, path)
+    check(warm == cold, f"#92 a 304 reuses the stored body: {warm}")
+    check(len(server.log) == 3 and all(etag for _, etag in server.log), f"#92 a warm listing sends If-None-Match on every page: {server.log}")
+    check(store.hits == 0, f"#92 a 304 is not counted as a cached read: {store.hits}")
+
+    # A change on page 2: pages 1 and 2 were answered, then the whole listing is read again from page 1.
+    server.pages = [[{"n": 1}, {"n": 2}], [{"n": 3}, {"n": 4}]]
+    server.log = []
+    moved = timeline.read_listing(server, store, path)
+    check(moved == [{"n": 1}, {"n": 2}, {"n": 3}, {"n": 4}], f"#92 a changed page gives the new listing: {moved}")
+    check([n for n, _ in server.log] == [1, 2, 1, 2, 3] and [e for _, e in server.log[2:]] == [None, None, None],
+          f"#92 a changed page re-reads the whole listing without If-None-Match: {server.log}")
+    server.log = []
+    check(timeline.read_listing(server, store, path) == moved and all(e for _, e in server.log),
+          f"#92 the re-read listing is stored again: {server.log}")
+
+    # A change on page 1: the walk goes on from there without If-None-Match; nothing is read twice.
+    server.pages = [[{"n": 0}], [{"n": 3}, {"n": 4}]]
+    server.log = []
+    first = timeline.read_listing(server, store, path)
+    check(first == [{"n": 0}, {"n": 3}, {"n": 4}] and [n for n, _ in server.log] == [1, 2, 3] and server.log[1][1] is None,
+          f"#92 a changed first page reads the rest without If-None-Match: {first} {server.log}")
+
+    # keep_going stops the walk at the same page on a warm read.
+    sorted_path = "repos/o/r/pulls?state=all"
+    server = StubListingApi([[{"u": "b"}], [{"u": "a"}], []])
+    keep = lambda page: page[0]["u"] >= "c"  # noqa: E731
+    check(timeline.read_listing(server, store, sorted_path, keep) == [{"u": "b"}] and len(server.log) == 1,
+          f"#92 keep_going ends a cold walk: {server.log}")
+    server.log = []
+    check(timeline.read_listing(server, store, sorted_path, keep) == [{"u": "b"}] and len(server.log) == 1 and server.log[0][1],
+          f"#92 keep_going ends a warm walk: {server.log}")
+
+    # A page without an ETag leaves the listing unstored, so the next read sends no If-None-Match.
+    bare_path = "repos/o/r/issues?state=all&labels=x"
+    server = StubListingApi([[{"n": 1}]], etags=False)
+    timeline.read_listing(server, store, bare_path)
+    check(not store.has(timeline.listing_key("github", bare_path)), "#92 a listing with a page that has no ETag is not stored")
+
+    # A cache with reads off (--refresh-cache) sends no If-None-Match and stores the listing again.
+    server = StubListingApi([[{"n": 1}]])
+    timeline.read_listing(server, timeline.Cache(tmp, read=False), "repos/o/r/issues?x=1")
+    check(all(e is None for _, e in server.log), f"#92 --refresh-cache sends no If-None-Match: {server.log}")
+    check(store.has(timeline.listing_key("github", "repos/o/r/issues?x=1")), "#92 --refresh-cache stores the ETags")
+
+    # A bad entry is a miss, not a failure.
+    bad_key = timeline.listing_key("github", path)
+    with open(store.path_of(bad_key), "w") as handle:
+        json.dump({"cache_version": timeline.CACHE_VERSION, "key": bad_key, "value": {"pages": 3}}, handle)
+    server = StubListingApi([[{"n": 1}]])
+    check(timeline.read_listing(server, store, path) == [{"n": 1}] and server.log[0][1] is None, "#92 a bad etag entry is a miss")
+
+    # Api.conditional against a fake gh: a 304 is exit 1 with `gh: HTTP 304`, and is no error.
+    fake_gh = os.path.join(tmp, "gh304")
+    with open(fake_gh, "w") as handle:
+        handle.write("#!/bin/sh\n"
+                     "echo \"$@\" >> \"$0.calls\"\n"
+                     "case \"$*\" in\n"
+                     "  *If-None-Match*) printf 'HTTP/2.0 304 Not Modified\\nEtag: \"e1\"\\r\\n\\r\\n'; echo 'gh: HTTP 304' >&2; exit 1;;\n"
+                     "  *fail*) echo 'gh: HTTP 500: boom' >&2; exit 1;;\n"
+                     "  *--include*) printf 'HTTP/2.0 200 OK\\nEtag: W/\"e1\"\\r\\nLink: <x>\\r\\n\\r\\n[{\"n\": 1}]';;\n"
+                     "  *) printf '[{\"n\": 2}]';;\n"
+                     "esac\n")
+    os.chmod(fake_gh, 0o755)
+    saved = os.environ.get("IFW_GH")
+    os.environ["IFW_GH"] = fake_gh
+    try:
+        api = timeline.Api("github")
+        check(api.conditional("repos/o/r/issues?page=1") == (200, 'W/"e1"', [{"n": 1}]), "#92 a 200 gives its ETag and body")
+        check(api.conditional("repos/o/r/issues?page=1", 'W/"e1"') == (304, '"e1"', None), "#92 a 304 is no error")
+        check(api.sent == 2 and api.not_modified == 1, f"#92 a 304 counts as a sent call and as not modified: {api.sent} {api.not_modified}")
+        try:
+            api.conditional("repos/o/r/fail?page=1")
+            check(False, "#92 a failed conditional read falls back to the plain read")
+        except timeline.FetchError as exc:
+            check("boom" in str(exc), f"#92 a failed conditional read falls back to the plain read and its error: {exc}")
+        calls_log = open(fake_gh + ".calls").read().splitlines()
+        check(calls_log[0].startswith("api --include repos/") and "If-None-Match: W/\"e1\"" in calls_log[1],
+              f"#92 the request uses --include and -H If-None-Match: {calls_log}")
+        check(sum("If-None-Match" in c for c in calls_log) == 1, f"#92 a 304 is not retried: {calls_log}")
+        check(calls_log[-1] == "api repos/o/r/fail?page=1", f"#92 the fallback is the plain read: {calls_log}")
+    finally:
+        if saved is None:
+            os.environ.pop("IFW_GH")
+        else:
+            os.environ["IFW_GH"] = saved
+
+    # End to end: a warm collect with nothing changed sends only conditional listing reads, every one
+    # answered 304, and writes the same document.
+    fake = os.path.join(tmp, "fake.py")
+    with open(fake, "w") as handle:
+        handle.write(FAKE_SRC)
+    target = os.path.join(tmp, "fake")
+    with open(target, "w") as handle:
+        handle.write(f'#!/bin/sh\nexec "{sys.executable}" "{fake}" "$@"\n')
+    os.chmod(target, 0o755)
+    serial = iter(range(10 ** 6))
+
+    def etag_run(forge_type, story, *flags, command="collect"):
+        n = next(serial)
+        data = os.path.join(tmp, f"data-{n}.json")
+        with open(data, "w") as handle:
+            json.dump(story, handle)
+        counter = os.path.join(tmp, f"count-{n}")
+        statuses = os.path.join(tmp, f"status-{n}")
+        env = {"IFW_GH" if forge_type == "github" else "IFW_TEA": count_gh.wrap(counter, target), "FAKE_DATA": data,
+               "FAKE_STATUS_LOG": statuses, "IFW_WATCH_FAST": "1"}
+        proc = run([command, "--forge", forge_type, "--repo", "o/r", "--diff-source", "api", *flags], env)
+        got = open(statuses).read().split() if os.path.exists(statuses) else []
+        return proc, count_gh.calls(counter), got
+
+    story = cache_story("github")
+    cache = os.path.join(tmp, "cache-github")
+    cold, cold_calls, cold_status = etag_run("github", story, "--cache-dir", cache)
+    plain, plain_calls, _ = etag_run("github", story, "--no-cache")
+    warm, warm_calls, warm_status = etag_run("github", story, "--cache-dir", cache)
+    listings = [c for c in cold_calls if re.search(LISTING, c)]
+    check(cold.returncode == warm.returncode == plain.returncode == 0, f"#92 the collects exit 0: {warm.stderr[:300]}")
+    check(listings and all("--include" in c and "If-None-Match" not in c for c in listings),
+          f"#92 a cold collect reads the listings with --include and no If-None-Match: {listings}")
+    check(len(warm_calls) == len(listings) and all("If-None-Match" in c for c in warm_calls),
+          f"#92 a warm collect sends If-None-Match on every listing page and nothing else: {warm_calls}")
+    check(warm_status == ["304"] * len(warm_calls), f"#92 every warm call is answered 304, so none is rate-limited: {warm_status}")
+    check(warm.stdout != "" and warm.stdout == cold.stdout == plain.stdout, "#92 the document after 304s is byte-identical")
+    check(not any("--include" in c or "If-None-Match" in c for c in plain_calls), f"#92 --no-cache sends no If-None-Match: {plain_calls[:3]}")
+
+    # A changed issue listing: that listing is read again in full; the others stay 304.
+    changed = cache_story("github")
+    changed["issues"][0]["issue"]["title"] = "A new title"
+    moved, moved_calls, moved_status = etag_run("github", changed, "--cache-dir", cache)
+    moved_plain, _, _ = etag_run("github", changed, "--no-cache")
+    check(moved.returncode == 0 and moved.stdout == moved_plain.stdout != cold.stdout, "#92 a changed listing reaches the document")
+    check("200" in moved_status and "304" in moved_status, f"#92 only the changed listing is answered 200: {moved_status}")
+
+    # The summary counts the 304s.
+    page = os.path.join(tmp, "warm.html")
+    snap, snap_calls, snap_status = etag_run("github", changed, "--cache-dir", cache, "--out", page, command="snapshot")
+    line = snap.stderr.strip().splitlines()[-1] if snap.stderr.strip() else ""
+    found = re.search(r"; (\d+) API calls? \((\d+) cached, (\d+) not modified\)$", line)
+    check(snap.returncode == 0 and found and int(found.group(1)) == len(snap_calls) and int(found.group(3)) == snap_status.count("304") > 0,
+          f"#92 the summary counts the not-modified calls: {line!r} {snap_status}")
+
+    # Gitea: no ETag in the API, so the listings are read plain on every collect.
+    gt_story = cache_story("gitea")
+    gt_cache = os.path.join(tmp, "cache-gitea")
+    etag_run("gitea", gt_story, "--cache-dir", gt_cache)
+    gt_warm, gt_calls, gt_status = etag_run("gitea", gt_story, "--cache-dir", gt_cache)
+    check(gt_warm.returncode == 0 and gt_calls and gt_status == [] and not any("--include" in c for c in gt_calls),
+          f"#92 gitea sends no conditional request: {gt_calls[:3]}")
 
 if failures:
     for failure in failures:
