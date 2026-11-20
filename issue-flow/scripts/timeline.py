@@ -871,14 +871,20 @@ def merge_local(doc, rows, since=None, until=None, only_issue=None, only_batch=N
     member_of.update({int(key): int(key) for key in batches})
     # A worktree event has no issue of its own. The branch `issue/<n>-…` names it, and a later
     # event for the same worktree path (a remove has no branch) inherits it.
-    issue_of = {}
+    # An agent event inherits the issue of the agent's `agent.spawned`, the only event that reads the brief.
+    # Without that, one agent would draw as one lane per issue value, in two batch groups.
+    issue_of, agent_issue = {}, {}
     for row in sorted(rows, key=lambda r: r["ts"]):
         branch = ISSUE_BRANCH.match(row.get("branch") or "")
         if isinstance(row.get("issue"), int):
             row_issue = row["issue"]
         else:
             row_issue = int(branch.group(1)) if branch else issue_of.get(row.get("worktree"))
+            if row_issue is None:
+                row_issue = agent_issue.get(row.get("agent"))
         row["issue"] = row_issue
+        if row.get("kind") == "agent.spawned" and row_issue is not None and row.get("agent"):
+            agent_issue[row["agent"]] = row_issue
         if row_issue is not None and row.get("worktree"):
             issue_of[row["worktree"]] = row_issue
     for row in rows:

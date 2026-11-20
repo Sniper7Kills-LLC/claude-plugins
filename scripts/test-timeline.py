@@ -680,6 +680,23 @@ check(lane_ids.get("agent:a1") == "agent", f"agent lane exists: {lane_ids}")
 check(lane_ids.get("worktree:/w/51") == "worktree", f"worktree lane exists: {lane_ids}")
 check(payload(timeline.render_html(lane_doc))["events"] == lane_doc["events"], "page embeds local events")
 
+# One agent is one lane. Only agent.spawned names the issue (from the brief), so every later local event
+# of the same agent id inherits that issue, and with it the batch. The fixture is a real dogfood log.
+DOGFOOD = os.path.join(ROOT, "scripts", "fixtures", "dogfood-events.jsonl")
+dog_doc = {"batches": {"78": {"members": [86], "branch": "batch/78-x"}}, "issues": {}, "events": []}
+timeline.merge_local(dog_doc, timeline.read_local_events(DOGFOOD))
+dog_agents = [e for e in dog_doc["events"] if e["kind"].startswith("agent.")]
+check(dog_agents and all(e["issue"] == 86 and e["batch"] == 78 for e in dog_agents),
+      f"every event of a spawned agent carries its issue and batch: {[(e['agent'], e['issue'], e['batch']) for e in dog_agents]}")
+dog_model, _ = timeline.build_model(dog_doc)
+dog_lanes = [(group["key"], lane["id"]) for group in dog_model for lane in group["lanes"] if lane["kind"] == "agent"]
+check(len({lane_id for _key, lane_id in dog_lanes}) == len(dog_lanes) == 3 and {key for key, _ in dog_lanes} == {"78"},
+      f"one lane per agent id, all under batch 78: {dog_lanes}")
+dog_filtered = {"batches": dog_doc["batches"], "issues": {}, "events": []}
+timeline.merge_local(dog_filtered, timeline.read_local_events(DOGFOOD), only_issue=86)
+check(len([e for e in dog_filtered["events"] if e["kind"].startswith("agent.")]) == len(dog_agents),
+      "--issue keeps the later events of a spawned agent")
+
 # ---------------------------------------------------------------- granular data (#80)
 # Commits with capped diffs, classified comments, reviews, CI runs and the why-links.
 FIXTURE = os.path.join(ROOT, "scripts", "fixtures", "batch-78.json")
