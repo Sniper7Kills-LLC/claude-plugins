@@ -330,6 +330,73 @@ checkout has the commit. `--diff-source` chooses the source:
   does not say which parent GitHub compares a merge commit with. The measured window had 2
   merge commits, and the first parent gave the API files.
 
+**The read cache keeps the reads of unchanged items.** The listings always run, so `collect`
+knows each item's `updated_at`. An item whose key has an entry in the cache costs no call.
+
+- **Where.** `<git common dir>/issue-flow/cache/` of the `--repo-path` checkout. No commit
+  carries it, and every worktree of the repository shares it. `--cache-dir <path>` names another
+  directory. Outside a git repository, and with `--fixture`, there is no cache.
+- **Keys.** `forge` is `github` or `gitea`, and `repo` is the repository that holds the item.
+
+  | Read | Key | Kept |
+  |---|---|---|
+  | An issue's timeline | `<forge>/<repo>/issue/<n>/<updated_at>` | until `updated_at` changes |
+  | A PR's timeline, reviews, commits, review comments and CI runs | `<forge>/<repo>/pull/<n>/<updated_at>/<head sha>/<read>` | until `updated_at` or the head changes |
+  | A review's comments (Gitea) | the PR key, then `/review/<id>/comments` | as the PR key |
+  | A commit's files (GitHub) or `.diff` text (Gitea) | `<forge>/commit/<sha>` | always: a commit never changes |
+  | A failed run's jobs | `<forge>/<repo>/run/<id>/<updated_at>/jobs` (Gitea: `completed_at`) | until the run changes |
+
+  An item that has no `updated_at`, a PR that has no head sha, and a run with no time are read
+  every time. The listings are never cached.
+- **CI runs of an open PR.** A run starts and ends with no change to the PR's `updated_at`. So
+  `collect` reads the runs again for each PR that is open, and for each PR updated in the last
+  hour (`RUNS_STALE_AFTER`). The new runs replace the entry. The PR's other reads, and the jobs
+  of a run that did not change, still come from the cache.
+- **Commits come before git.** `collect` looks in the cache first. The `git fetch` of
+  `--diff-source auto` runs only for the PRs that hold an uncached commit. A commit has the same
+  value whether git or the API gave it.
+- **The file.** Each key has one JSON file, `<sha256 of the key>.json`, under a directory named
+  for the first two hex digits. The file holds `{"cache_version", "key", "value"}`, and `value`
+  is the forge payload. An entry with another `cache_version` is a miss, and the next write
+  replaces it. A file that does not parse is a miss too.
+- **Two collects at once.** Each write goes to a temporary file in the same directory, then one
+  rename replaces the entry. Two writers of one key leave one whole entry: the last one written.
+  A failed write leaves the old entry, and the collect goes on.
+- **The document does not depend on the cache.** A warm collect gives a document byte-identical
+  to `--no-cache` for the same tracker state.
+- **The API.** `Cache(root, read=True, write=True)` in `timeline.py` has `get(key)` (the value,
+  or None for a miss), `put(key, value)` and `has(key)` (no hit is counted). The key functions are
+  `issue_key`, `pull_key`, `commit_key` and `jobs_key`. Another kind of entry uses its own key
+  prefix: ETag entries use `etag/`.
+
+| Flag | Reads the cache | Writes the cache |
+|---|---|---|
+| (none) | yes | yes |
+| `--refresh-cache` | no | yes: every read |
+| `--no-cache` | no | no, and no `If-None-Match` is sent |
+
+`--no-cache` and `--refresh-cache` together exit 5. `snapshot` and `watch` pass all three
+flags to `collect`.
+
+**The counts.** The summary line of `snapshot` ends with the cost of the collect:
+`wrote <path>: <E> events, <L> lanes, <P> problems; <C> API calls (<M> cached)`. Each `watch`
+refresh line ends with the same `<C> API calls (<M> cached)`.
+
+| Count | Meaning |
+|---|---|
+| `C` | The HTTP requests that `collect` sent. A retry is one more request. A request answered with 304 counts. |
+| `M` | The reads that the cache served, with no request sent. One read is one row of the key table: a PR's reviews are one read, and its commits are another. |
+| `K` | The sent requests answered with 304. `K` is part of `C`. These requests do not count against the primary quota. |
+| `Q` | `core.remaining` of the rate limit, read after the run. |
+
+An estimate of a run's cost counts the reads that are not cached, so it leaves out `M`. It counts
+each listing page as one possible call, because a 304 is not known before the request.
+
+**Measured.** Two back-to-back collects of this repository, on the 1-day window
+`--since 2026-11-19T00:00:00Z --until 2026-11-20T00:00:00Z`, with `--pr-repo` for the fork, on
+2026-11-20: the first made 155 calls and the second made 12. The 12 are 11 listing pages and the
+CI runs of the one open PR. The two documents are equal.
+
 **Count the calls of a run.** `scripts/count-gh.py` wraps `gh` (or `tea`) through `IFW_GH`
 (or `IFW_TEA`). The wrapper logs each call and then runs the real command:
 

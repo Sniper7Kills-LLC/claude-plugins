@@ -1,6 +1,6 @@
 ---
 name: timeline
-description: Show what an issue-flow run did as one local HTML page - issue lanes, status changes, pull requests, checkpoints and batch merges - either as a snapshot or as a live page that refreshes while the run goes. Use when the user says "/timeline", "show the issue-flow timeline", "visualize the workflow", "show me what the run did", or "watch the run". Read-only on the tracker. Writes one HTML file and the PR head refs under refs/issue-flow/ on this machine and publishes nothing.
+description: Show what an issue-flow run did as one local HTML page - issue lanes, status changes, pull requests, checkpoints and batch merges - either as a snapshot or as a live page that refreshes while the run goes. Use when the user says "/timeline", "show the issue-flow timeline", "visualize the workflow", "show me what the run did", or "watch the run". Read-only on the tracker. Writes one HTML file, a read cache and the PR head refs under refs/issue-flow/ on this machine and publishes nothing.
 ---
 
 # Timeline — see what the run did
@@ -13,7 +13,9 @@ The skill is **read-only**. It reads issues, issue timelines, pull requests (wit
 comments, commits, reviews and CI runs) and the local-event log. It needs
 no issue-flow run to be active, and it changes nothing on the tracker. To read commit diffs
 without API calls, it fetches PR heads into `refs/issue-flow/` of the local repository. It
-changes no branch, tag or work-tree file.
+changes no branch, tag or work-tree file. It keeps the reads of unchanged issues, PRs and
+commits in `<git common dir>/issue-flow/cache/`. A second run reads only the listings and
+the CI runs of open PRs.
 
 The output is a **local file only**. Never publish it, never upload it, and never create
 an Artifact from it.
@@ -56,6 +58,10 @@ Detect the forge as `references/forge.md` `## Detection` describes: a `forge` bl
 the document is the same for every value. A tracker rate limit is retried 3 times, then the
 run fails with exit 2. Pass `--jobs 1` only to debug one read at a time.
 
+`collect` keeps a read cache. Pass `--refresh-cache` when the user says the page shows old
+data: it reads everything again and replaces the cache. `--no-cache` reads everything and keeps
+nothing.
+
 `collect` does not detect the forge by itself. It stops with exit 5 when `--forge` and
 `--repo` are both missing.
 
@@ -74,7 +80,7 @@ repository shares it. The user can ask for another path.
 
 The exit code is the result. Do not pipe the tool, and do not read `PIPESTATUS`: it is empty
 in zsh. Exit 0 means the page is written, and `snapshot` prints one line on stderr
-(`wrote <path>: <n> events, <n> lanes, <n> problems`). A problem is a rework request, a
+(`wrote <path>: <n> events, <n> lanes, <n> problems; <n> API calls (<n> cached)`). A problem is a rework request, a
 changes-requested review or a failed CI run. The page lists them in its Problems view. Any other exit code means no new page:
 2 is a failed fetch or a failed render, 5 is a bad flag. Say so with the error text. Do not
 write an empty page.

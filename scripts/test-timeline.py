@@ -7,14 +7,17 @@ the CLI as a subprocess: with --fixture, and live against a fake `gh`/`tea` that
 serves the same payloads (including the Gitea API-error body that `tea api` prints
 with exit 0). Later issues in the batch add their own sections below."""
 
+import contextlib
 import importlib.util
+import io
 import json
 import os
+import re
 import subprocess
 import sys
 import tempfile
 import time
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 SCRIPT = os.path.join(ROOT, "issue-flow", "scripts", "timeline.py")
@@ -182,9 +185,15 @@ HERMETIC = tempfile.mkdtemp(prefix="ifw-hermetic-")
 subprocess.run(["git", "init", "-q", HERMETIC], check=True)
 
 
+CACHE_FLAGS = ("--no-cache", "--refresh-cache", "--cache-dir")
+
+
 def run(args, env=None):
     if args[:1] in (["collect"], ["snapshot"], ["watch"]) and "--local-events" not in args:
         args = [*args, "--local-events", "off"]
+    # A test that runs the fake forge twice must not get its second answer from the cache (#91).
+    if args[:1] in (["collect"], ["snapshot"], ["watch"]) and not any(f in args for f in CACHE_FLAGS):
+        args = [*args, "--no-cache"]
     return subprocess.run([sys.executable, SCRIPT, *args], capture_output=True, text=True, cwd=HERMETIC,
                           env={**os.environ, **(env or {})})
 
@@ -1812,6 +1821,256 @@ with tempfile.TemporaryDirectory() as tmp:
 for url in ("https://host/O/R.git", "git@host:o/r.git", "ssh://git@host:2222/o/r", "/srv/o/r.git/", "https://host/o/r"):
     check(timeline._url_repo(url) == "o/r", f"#90 {url} names o/r: {timeline._url_repo(url)}")
 check(timeline._url_repo("r") is None and timeline._url_repo("") is None, "#90 a URL without an owner names no repository")
+
+# ---------------------------------------------------------------- cache (#91)
+# A fake gh/tea serves a story with two closed PRs: 60 (story2) and 62. scripts/count-gh.py counts
+# the calls. Each run names a --cache-dir in a scratch directory, so no test reads the real cache.
+LISTING = r"/(issues|pulls)\?"
+OLD = "2026-06-01T12:00:00Z"
+
+
+def cache_story(forge_type, pr60_state="closed", pr60_updated=OLD, pr62_updated=OLD, pr62_review=False, extra_run=False):
+    gh = forge_type == "github"
+    data = story2(forge_type)
+    for entry in data["issues"]:
+        entry["issue"]["updated_at"] = OLD
+    pr60 = data["pulls"][0]
+    merged = "2026-06-01T11:30:00Z" if pr60_state == "closed" else None
+    pr60["pr"].update(state=pr60_state, updated_at=pr60_updated, merged_at=merged, closed_at=merged)
+    if extra_run:
+        run_902 = {"id": 902, "name": "ci", "conclusion": "success", "status": "completed", "head_sha": "c100",
+                   "html_url": "https://x/runs/902"}
+        if gh:
+            run_902.update({"run_started_at": "2026-06-01T11:40:00Z", "updated_at": "2026-06-01T11:41:00Z"})
+        else:
+            run_902.pop("name")
+            run_902.update({"started_at": "2026-06-01T11:40:00+00:00", "completed_at": "2026-06-01T11:41:00+00:00",
+                            "path": ".gitea/workflows/ci.yaml"})
+        pr60["runs"].append({"run": run_902, "jobs": []})
+    c700 = gh_commit("c700", "second change", [{"filename": "src/b.py"}], ts="2026-06-01T11:00:00Z")
+    if not gh:
+        c700["diff"] = "diff --git a/src/b.py b/src/b.py\n--- a/src/b.py\n+++ b/src/b.py\n@@ -1 +1 @@\n-b\n+B\n"
+        c700["files"] = [{"filename": "src/b.py", "status": "modified"}]
+    reviews = [{"id": 20, "state": "APPROVED", "body": "Fine.", "user": {"login": "rev"}, "submitted_at": "2026-06-01T12:30:00Z",
+                "html_url": "https://x/pull/62#pullrequestreview-20", "comments_count": 0}] if pr62_review else []
+    pr62 = dict(pr_raw(62, "Second", "issue/52-x", "batch/50-bar", "2026-06-01T10:30:00Z", merged="2026-06-01T11:45:00Z"),
+                head={"ref": "issue/52-x", "sha": "c700"}, updated_at=pr62_updated)
+    data["pulls"].append({"pr": pr62, "timeline": [], "commits": [c700], "reviews": reviews, "review_comments": [], "runs": []})
+    return data
+
+
+with tempfile.TemporaryDirectory() as tmp:
+    fake = os.path.join(tmp, "fake.py")
+    with open(fake, "w") as handle:
+        handle.write(FAKE_SRC)
+    target = os.path.join(tmp, "fake")
+    with open(target, "w") as handle:
+        handle.write(f'#!/bin/sh\nexec "{sys.executable}" "{fake}" "$@"\n')
+    os.chmod(target, 0o755)
+    serial = iter(range(10 ** 6))
+
+    def cache_run(forge_type, story, *flags, command="collect", cwd=None):
+        n = next(serial)
+        data = os.path.join(tmp, f"data-{n}.json")
+        with open(data, "w") as handle:
+            json.dump(story, handle)
+        counter = os.path.join(tmp, f"count-{n}")
+        env = {"IFW_GH" if forge_type == "github" else "IFW_TEA": count_gh.wrap(counter, target), "FAKE_DATA": data,
+               "IFW_WATCH_FAST": "1"}
+        args = [command, "--forge", forge_type, "--repo", "o/r", "--diff-source", "api", *flags]
+        if cwd is None:
+            proc = run(args, env)
+        else:
+            proc = subprocess.run([sys.executable, SCRIPT, *args, "--local-events", "off"], capture_output=True,
+                                  text=True, cwd=cwd, env={**os.environ, **env})
+        return proc, count_gh.calls(counter)
+
+    def others(calls):
+        return [c for c in calls if not re.search(LISTING, c)]
+
+    for forge_type in ("github", "gitea"):
+        tag = f"#91 {forge_type}"
+        cache = os.path.join(tmp, f"cache-{forge_type}")
+        story = cache_story(forge_type)
+        cold, cold_calls = cache_run(forge_type, story, "--cache-dir", cache)
+        plain, plain_calls = cache_run(forge_type, story, "--no-cache")
+        warm, warm_calls = cache_run(forge_type, story, "--cache-dir", cache)
+        listings = [c for c in cold_calls if re.search(LISTING, c)]
+        check(cold.returncode == 0 and warm.returncode == 0 and plain.returncode == 0,
+              f"{tag} cold, warm and --no-cache collects exit 0: {cold.stderr[:200]} {warm.stderr[:200]}")
+        check(len(cold_calls) > len(listings) > 0, f"{tag} a cold collect reads more than the listings: {len(cold_calls)}")
+        # 1. A warm cache and no changes: only the listings are read.
+        check(others(warm_calls) == [] and len(warm_calls) == len(listings),
+              f"{tag} a warm collect makes only the listing calls: {others(warm_calls)}")
+        check(cold.stdout != "" and warm.stdout == plain.stdout == cold.stdout,
+              f"{tag} the warm, cold and --no-cache documents are byte-identical")
+        check(len(plain_calls) == len(cold_calls), f"{tag} --no-cache reads everything: {len(plain_calls)} against {len(cold_calls)}")
+
+        # 2. A changed updated_at on PR 62 re-reads that PR only. Its commit is kept by sha.
+        changed = cache_story(forge_type, pr62_updated="2026-06-01T13:00:00Z", pr62_review=True)
+        moved, moved_calls = cache_run(forge_type, changed, "--cache-dir", cache)
+        moved_plain, _ = cache_run(forge_type, changed, "--no-cache")
+        extra = others(moved_calls)
+        check(extra and all(re.search(r"/(pulls|issues)/62/|head_sha=c700", c) for c in extra),
+              f"{tag} a changed PR re-reads only that PR: {extra}")
+        check(not any("commits/c700" in c for c in extra), f"{tag} a cached commit is not read again: {extra}")
+        check(moved.returncode == 0 and moved.stdout == moved_plain.stdout != cold.stdout,
+              f"{tag} the document after one PR changed equals --no-cache")
+
+        # 3. The CI runs of an open PR are read again; its other reads and its failed run's jobs are not.
+        opened = cache_story(forge_type, pr60_state="open", extra_run=True)
+        op, op_calls = cache_run(forge_type, opened, "--cache-dir", cache)
+        op_plain, _ = cache_run(forge_type, opened, "--no-cache")
+        extra = others(op_calls)
+        check(extra and all("head_sha=c100" in c for c in extra), f"{tag} an open PR re-reads only its CI runs: {extra}")
+        check(op.returncode == 0 and op.stdout == op_plain.stdout and "runs/902" in op.stdout,
+              f"{tag} a new run on an open PR reaches the document")
+        # A closed PR updated in the last hour re-reads its runs too, on every collect.
+        recent = (datetime.now(timezone.utc) - timedelta(minutes=10)).strftime("%Y-%m-%dT%H:%M:%SZ")
+        fresh = cache_story(forge_type, pr60_updated=recent)
+        cache_run(forge_type, fresh, "--cache-dir", cache)
+        _, again_calls = cache_run(forge_type, fresh, "--cache-dir", cache)
+        extra = others(again_calls)
+        check(extra and all("head_sha=c100" in c for c in extra), f"{tag} a PR updated in the last hour re-reads its CI runs: {extra}")
+        _, old_calls = cache_run(forge_type, story, "--cache-dir", cache)
+        check(others(old_calls) == [], f"{tag} a closed PR updated more than an hour ago reads no runs: {others(old_calls)}")
+
+        # 4. --refresh-cache reads nothing from the cache and writes every entry again.
+        key = timeline.issue_key(forge_type, "o/r", 51, OLD)
+        bogus = [{"event": "labeled", "created_at": "2026-06-01T09:00:00Z", "actor": {"login": "x"}, "label": {"name": "status:blocked"}}]
+        if forge_type == "gitea":
+            bogus = [{"type": "label", "created_at": "2026-06-01T09:00:00+00:00", "user": {"login": "x"},
+                      "label": {"name": "status:blocked"}, "body": "1"}]
+        timeline.Cache(cache).put(key, bogus)
+        poisoned, _ = cache_run(forge_type, story, "--cache-dir", cache)
+        check(poisoned.stdout != cold.stdout, f"{tag} the test entry is read from the cache")
+        refreshed, refreshed_calls = cache_run(forge_type, story, "--cache-dir", cache, "--refresh-cache")
+        check(refreshed.stdout == cold.stdout and len(refreshed_calls) == len(cold_calls),
+              f"{tag} --refresh-cache reads nothing from the cache: {len(refreshed_calls)} calls")
+        after, after_calls = cache_run(forge_type, story, "--cache-dir", cache)
+        check(after.stdout == cold.stdout and others(after_calls) == [], f"{tag} --refresh-cache writes every entry again")
+
+        # 5. An entry with another cache_version is a miss, and the next write replaces it.
+        for folder, _, names in os.walk(cache):
+            for name in names:
+                with open(os.path.join(folder, name)) as handle:
+                    entry = json.load(handle)
+                entry["cache_version"] = timeline.CACHE_VERSION + 1
+                with open(os.path.join(folder, name), "w") as handle:
+                    json.dump(entry, handle)
+        stale, stale_calls = cache_run(forge_type, story, "--cache-dir", cache)
+        check(stale.stdout == cold.stdout and len(stale_calls) == len(cold_calls),
+              f"{tag} a cache_version mismatch discards the entries: {len(stale_calls)} calls")
+        _, next_calls = cache_run(forge_type, story, "--cache-dir", cache)
+        check(others(next_calls) == [], f"{tag} the entries are written again after a version mismatch")
+
+        # 6. --no-cache neither reads nor writes.
+        empty = os.path.join(tmp, f"empty-{forge_type}")
+        os.makedirs(empty)
+        _, nc_calls = cache_run(forge_type, story, "--cache-dir", cache, "--no-cache")
+        cache_run(forge_type, story, "--cache-dir", empty, "--no-cache")
+        check(len(nc_calls) == len(cold_calls) and os.listdir(empty) == [], f"{tag} --no-cache reads and writes nothing")
+
+        # 7. snapshot reports the calls and the cache hits; watch passes the cache flags to collect.
+        page = os.path.join(tmp, f"page-{forge_type}.html")
+        snap, snap_calls = cache_run(forge_type, story, "--cache-dir", cache, "--out", page, command="snapshot")
+        line = snap.stderr.strip().splitlines()[-1] if snap.stderr.strip() else ""
+        found = re.search(r"; (\d+) API calls? \((\d+) cached\)$", line)
+        check(snap.returncode == 0 and found and int(found.group(1)) == len(snap_calls) == len(listings) and int(found.group(2)) > 0,
+              f"{tag} the snapshot summary counts the calls and the cached reads: {line!r} ({len(snap_calls)} calls)")
+        watched = os.path.join(tmp, f"watch-cache-{forge_type}")
+        proc, _ = cache_run(forge_type, story, "--cache-dir", watched, "--out", page, "--interval", "1", "--max-minutes", "0.01",
+                            command="watch")
+        check(proc.returncode == 0 and os.path.isdir(watched) and os.listdir(watched), f"{tag} watch passes --cache-dir to collect: {proc.stderr[:200]}")
+        check("API call" in proc.stderr, f"{tag} the watch line counts the calls: {proc.stderr[:200]!r}")
+
+    # The default cache is <git common dir>/issue-flow/cache of the --repo-path checkout.
+    repo = os.path.join(tmp, "repo")
+    subprocess.run(["git", "init", "-q", repo], check=True)
+    proc, _ = cache_run("github", cache_story("github"), cwd=repo)
+    default = os.path.join(repo, ".git", "issue-flow", "cache")
+    check(proc.returncode == 0 and os.path.isdir(default) and os.listdir(default), f"#91 the default cache is in the common dir: {proc.stderr[:200]}")
+    both = run(["collect", "--forge", "github", "--repo", "o/r", "--no-cache", "--refresh-cache"])
+    check(both.returncode == 5, f"#91 --no-cache with --refresh-cache exits 5: {both.returncode}")
+    fx = os.path.join(tmp, "fx.json")
+    with open(fx, "w") as handle:
+        json.dump(build("github"), handle)
+    snap = run(["snapshot", "--fixture", fx, "--out", os.path.join(tmp, "fx.html")])
+    check(snap.stderr.strip().endswith("; 0 API calls (0 cached)"), f"#91 a fixture snapshot makes no call: {snap.stderr!r}")
+
+    # Cache order for commits: the git fetch runs only for PRs that hold an uncached commit.
+    story = cache_story("github")
+    data = os.path.join(tmp, "order.json")
+    with open(data, "w") as handle:
+        json.dump(story, handle)
+    saved_env = {k: os.environ.get(k) for k in ("IFW_GH", "FAKE_DATA")}
+    os.environ.update({"IFW_GH": target, "FAKE_DATA": data})
+    fetched, original = [], timeline.GitDiffs.fetch
+    timeline.GitDiffs.fetch = lambda self, repo, numbers: fetched.append((repo, list(numbers))) or list(numbers)
+    try:
+        order = timeline.Cache(os.path.join(tmp, "order-cache"))
+        for c in story["pulls"][0]["commits"]:
+            order.put(timeline.commit_key("github", c["sha"]), c["files"])
+        with contextlib.redirect_stderr(io.StringIO()):
+            timeline.fetch_bundle("github", "o/r", repo_path=HERMETIC, jobs=1, cache=order)
+        check(fetched == [("o/r", [62])], f"#91 the fetch skips a PR whose commits are all cached: {fetched}")
+        fetched.clear()
+        timeline.fetch_bundle("github", "o/r", repo_path=HERMETIC, jobs=1, cache=order)
+        check(fetched == [], f"#91 a warm cache runs no git fetch: {fetched}")
+    finally:
+        timeline.GitDiffs.fetch = original
+        for k, v in saved_env.items():
+            if v is None:
+                os.environ.pop(k, None)
+            else:
+                os.environ[k] = v
+
+# The Cache class: get, put and has, and a torn file never reads as an entry.
+WRITER = r"""
+import importlib.util, sys
+spec = importlib.util.spec_from_file_location("timeline", sys.argv[1])
+timeline = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(timeline)
+cache = timeline.Cache(sys.argv[2])
+for _ in range(150):
+    cache.put("race", [sys.argv[3] * 200000])
+"""
+with tempfile.TemporaryDirectory() as tmp:
+    store = timeline.Cache(tmp)
+    check(store.get("k") is None and not store.has("k"), "#91 an empty cache has no entry")
+    store.put("k", [])
+    check(store.has("k") and store.get("k") == [], "#91 an empty list is an entry, not a miss")
+    store.put("none", None)
+    store.put(None, [1])
+    check(not store.has("none"), "#91 None is never stored")
+    check(store.hits == 1, f"#91 get counts the hits, has does not: {store.hits}")
+    os.makedirs(os.path.dirname(store.path_of("bad")), exist_ok=True)
+    with open(store.path_of("bad"), "w") as handle:
+        handle.write('{"cache_version": 1, "key": "bad", "val')
+    check(store.get("bad") is None, "#91 a torn file reads as a miss")
+    check(timeline.Cache(tmp, read=False).get("k") is None, "#91 a cache with reads off reads nothing")
+    timeline.Cache(tmp, write=False).put("w", [1])
+    check(not store.has("w"), "#91 a cache with writes off writes nothing")
+    store.put("other", [1])
+    with open(store.path_of("k"), "w") as handle:
+        handle.write(open(store.path_of("other")).read())
+    check(store.get("k") is None, "#91 an entry stored under another key is a miss")
+
+    writers = [subprocess.Popen([sys.executable, "-c", WRITER, SCRIPT, tmp, letter]) for letter in "AB"]
+    seen, torn = set(), 0
+    while any(w.poll() is None for w in writers):
+        value = store.get("race")
+        if value is None:
+            continue
+        if len(value) == 1 and value[0] in ("A" * 200000, "B" * 200000):
+            seen.add(value[0][0])
+        else:
+            torn += 1
+    check(all(w.returncode == 0 for w in writers), "#91 both writers finish")
+    check(torn == 0 and seen, f"#91 two concurrent writers never leave a torn entry: {torn} torn, saw {seen}")
+    check(store.get("race") in (["A" * 200000], ["B" * 200000]), "#91 the last write wins")
+    leftovers = [n for _, _, names in os.walk(tmp) for n in names if not n.endswith(".json")]
+    check(leftovers == [], f"#91 no temporary file is left: {leftovers}")
 
 if failures:
     for failure in failures:

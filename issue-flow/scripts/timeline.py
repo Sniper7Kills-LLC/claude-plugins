@@ -26,8 +26,8 @@ documented in references/timeline.md.
 
 `snapshot` runs `collect` and `render` in one process and takes every `collect` flag plus --out
 (the page path; default `<git common dir>/issue-flow/timeline.html`). It exits 0 only when the
-page is written, and prints one stderr line with the path and the event, lane and problem counts.
-`watch` runs the same code on a timer.
+page is written, and prints one stderr line with the path, the event, lane and problem counts, and
+`<n> API calls (<m> cached)`. `watch` runs the same code on a timer.
 
 `collect` is read-only on the tracker. It reads issues, issue timelines and pull requests (paged until
 an empty page) and prints one JSON document, or writes it to --out. The schema is in
@@ -52,6 +52,13 @@ refs/issue-flow/pull/<owner>/<repo>/<n>, and no branch, tag, remote ref or work-
 changes. A commit git still lacks is read through the API, and one stderr line counts them.
 `git` fails on such a commit (exit 2); `api` reads every commit through the API. The "API cost"
 section of references/timeline.md has the details and a measurement.
+
+A read cache in <git common dir>/issue-flow/cache/ (or --cache-dir PATH) keeps every read but the
+listings, keyed by the item's updated_at, a PR's head sha, a commit's sha, or a run's time. A
+second collect with no changes reads only the listings. The CI runs of an open PR, or of a PR
+updated in the last hour, are read every time. --no-cache neither reads nor writes the cache;
+--refresh-cache reads nothing from it and writes every read. The document is the same with and
+without the cache.
 
 Flags: --since/--until take an ISO date, an ISO timestamp, or a relative age (`7d`,
 `24h`, `2w`). --issue and --batch keep one issue or one batch (a tracking-issue number).
@@ -101,6 +108,7 @@ body (nothing is printed to stdout), 5 = the invocation is malformed.
 """
 
 import argparse
+import hashlib
 import html
 import json
 import os
@@ -109,6 +117,7 @@ import signal
 import subprocess
 import sys
 import tempfile
+import threading
 import time
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timedelta, timezone
@@ -166,6 +175,9 @@ MAX_COMMIT_FILES = 300
 # line that starts with a letter), so the heading is dropped and a patch is the same from every source.
 HUNK_HEADING = re.compile(r"^(@@ -\d+(?:,\d+)? \+\d+(?:,\d+)? @@).*$", re.M)
 DIFF_SOURCES = ("auto", "git", "api")
+CACHE_VERSION = 1
+# A closed PR updated this recently can still get a CI run that does not change its updated_at.
+RUNS_STALE_AFTER = timedelta(hours=1)
 
 
 class FetchError(Exception):
@@ -717,8 +729,9 @@ def normalize(bundle, since=None, until=None, only_issue=None, only_batch=None, 
 class Api:
     """Reads one forge through `gh api` or `tea api`; every body is checked for an error object.
 
-    Calls are safe to make from many threads: an `Api` holds only its settings. `pmap` runs
-    reads on a bounded pool and returns the results in the order of the inputs.
+    Calls are safe to make from many threads: an `Api` holds only its settings and a call count.
+    `pmap` runs reads on a bounded pool and returns the results in the order of the inputs.
+    `sent` counts the requests sent, and a retry is one more request.
     """
 
     def __init__(self, forge_type, repo_path=".", jobs=DEFAULT_JOBS):
@@ -727,6 +740,8 @@ class Api:
         self.jobs = jobs
         self.cmd = os.environ.get("IFW_GH", "gh") if forge_type == "github" else os.environ.get("IFW_TEA", "tea")
         self.limit = "per_page=100" if forge_type == "github" else "limit=50"
+        self.sent = 0
+        self._sent_lock = threading.Lock()
 
     def path(self, repo, suffix):
         return f"{'repos' if self.forge_type == 'github' else '/repos'}/{repo}{suffix}"
@@ -756,6 +771,8 @@ class Api:
         """
         base = float(os.environ.get("IFW_RETRY_DELAY", "2"))
         for attempt in range(1, RETRY_ATTEMPTS + 1):
+            with self._sent_lock:
+                self.sent += 1
             try:
                 result = subprocess.run([self.cmd, "api", path], cwd=self.repo_path, capture_output=True, text=True)
             except OSError as exc:
@@ -953,6 +970,130 @@ class GitDiffs:
         return files
 
 
+class Cache:
+    """Keeps the result of one read per key in a directory, as one JSON file per key.
+
+    A file holds {"cache_version", "key", "value"}. `get` returns None for a miss: no file, a file
+    that does not parse, another `cache_version`, or another key. A value is never None. Every
+    write goes to a temporary file in the same directory and then replaces the entry in one
+    rename. So two collects that write the same key leave one whole entry, the last one written.
+
+    `read=False` makes every `get` and `has` a miss. `write=False` makes `put` do nothing.
+    `Cache(None)` does neither. `hits` counts the `get` calls that found an entry.
+    """
+
+    def __init__(self, root, read=True, write=True):
+        self.root = root
+        self.read = read and root is not None
+        self.write = write and root is not None
+        self.hits = 0
+        self._lock = threading.Lock()
+
+    def path_of(self, key):
+        """Return the file of `key`. The name is a hash, so any key is a safe file name."""
+        digest = hashlib.sha256(key.encode()).hexdigest()
+        return os.path.join(self.root, digest[:2], digest + ".json")
+
+    def _load(self, key):
+        if not self.read or key is None:
+            return None
+        try:
+            with open(self.path_of(key), encoding="utf-8") as handle:
+                entry = json.load(handle)
+        except (OSError, ValueError):
+            return None
+        if not isinstance(entry, dict) or entry.get("cache_version") != CACHE_VERSION or entry.get("key") != key:
+            return None
+        return entry.get("value")
+
+    def has(self, key):
+        """Return True when `get(key)` would find an entry. It does not count as a hit."""
+        return self._load(key) is not None
+
+    def get(self, key):
+        value = self._load(key)
+        if value is not None:
+            with self._lock:
+                self.hits += 1
+        return value
+
+    def put(self, key, value):
+        """Store `value` under `key`. A failed write leaves the old entry; the collect goes on."""
+        if not self.write or key is None or value is None:
+            return
+        path = self.path_of(key)
+        tmp = None
+        try:
+            os.makedirs(os.path.dirname(path), exist_ok=True)
+            fd, tmp = tempfile.mkstemp(dir=os.path.dirname(path), prefix=".", suffix=".tmp")
+            with os.fdopen(fd, "w", encoding="utf-8") as handle:
+                json.dump({"cache_version": CACHE_VERSION, "key": key, "value": value}, handle, ensure_ascii=False)
+            os.replace(tmp, path)
+        except OSError:
+            if tmp and os.path.exists(tmp):
+                os.unlink(tmp)
+
+    def cached(self, key, read, refresh=False):
+        """Return a callable that gives the entry of `key`, or runs `read` and stores its result.
+
+        A `key` of None turns the cache off for this read. `refresh=True` runs `read` even when
+        an entry exists, and stores the new result.
+        """
+        if key is None:
+            return read
+
+        def go():
+            if not refresh:
+                value = self.get(key)
+                if value is not None:
+                    return value
+            value = read()
+            self.put(key, value)
+            return value
+        return go
+
+
+# The cache keys. A read whose key holds no updated_at (or no sha) is never cached.
+def issue_key(forge_type, repo, number, updated_at):
+    return f"{forge_type}/{repo}/issue/{number}/{updated_at}" if updated_at else None
+
+
+def pull_key(forge_type, repo, pr):
+    updated, sha = pr.get("updated_at"), (pr.get("head") or {}).get("sha")
+    return f"{forge_type}/{repo}/pull/{pr['number']}/{updated}/{sha}" if updated and sha else None
+
+
+def commit_key(forge_type, sha):
+    """A commit never changes, so its key holds only the sha. The forge sets the value's shape."""
+    return f"{forge_type}/commit/{sha}" if sha else None
+
+
+def jobs_key(forge_type, repo, run):
+    updated = run.get("updated_at") or run.get("completed_at")
+    return f"{forge_type}/{repo}/run/{run.get('id')}/{updated}/jobs" if updated and run.get("id") is not None else None
+
+
+def runs_may_change(pr, now):
+    """Return True when a PR's CI runs can change while its updated_at stays the same.
+
+    A run on an open PR starts and ends without a PR event. A run that a merge or a close
+    started can still be going, so a PR updated in the last RUNS_STALE_AFTER counts too.
+    """
+    if pr.get("state") == "open":
+        return True
+    if not pr.get("updated_at"):
+        return True
+    return _parse_dt(pr["updated_at"]) >= now - RUNS_STALE_AFTER
+
+
+def _cached_commit_reader(cache, forge_type, read_commit):
+    """Return a `read_commit` that asks the cache first, then `read_commit` (or the API read)."""
+    def read(commit, api_read):
+        inner = (lambda: read_commit(commit, api_read)) if read_commit else api_read
+        return cache.cached(commit_key(forge_type, commit.get("sha")), inner)()
+    return read
+
+
 def _pull_reads(api, repo, pr):
     """Return the first-wave reads of one PR, as {name: callable}. None depends on another read."""
     n = pr["number"]
@@ -979,16 +1120,19 @@ def _pull_reads(api, repo, pr):
     return reads
 
 
-def _pull_followups(api, repo, pr, first, read_commit=None):
+def _pull_followups(api, repo, pr, first, read_commit=None, cache=None):
     """Return the second-wave reads of one PR, as a list of (apply, callable).
 
     These need the first wave: a commit's files or diff, a review's comments, a failed run's jobs.
     `apply(value)` stores the result into `first`, so a read's place in the document never
     depends on when it ends. `read_commit(commit, api_read)`, when given, reads a commit's files
-    or diff and calls `api_read()` only for a commit it cannot read.
+    or diff and calls `api_read()` only for a commit it cannot read. `cache` keeps a review's
+    comments under the PR's key and a run's jobs under the run's key.
     """
     n = pr["number"]
     github = api.forge_type == "github"
+    cache = cache or Cache(None)
+    base = pull_key(api.forge_type, repo, pr)
     reads = []
     for commit in first["commits"]:
         key = "files" if github else "diff"
@@ -1003,8 +1147,9 @@ def _pull_followups(api, repo, pr, first, read_commit=None):
         first["review_comments"] = []
         for review in first["reviews"]:
             if review.get("comments_count"):
-                reads.append((first["review_comments"].extend,
-                              lambda r=review: api.paged(api.path(repo, f"/pulls/{n}/reviews/{r['id']}/comments"))))
+                read = lambda r=review: api.paged(api.path(repo, f"/pulls/{n}/reviews/{r['id']}/comments"))  # noqa: E731
+                key = f"{base}/review/{review.get('id')}/comments" if base else None
+                reads.append((first["review_comments"].extend, cache.cached(key, read)))
     limit = "?per_page=100" if github else "?limit=50"
     first["runs"] = [{"run": run, "jobs": []} for run in first.get("runs") or []]
     for entry in first["runs"]:
@@ -1016,7 +1161,8 @@ def _pull_followups(api, repo, pr, first, read_commit=None):
                     if _not_found(exc):
                         return []
                     raise
-            reads.append((lambda value, e=entry: e.__setitem__("jobs", value), read_jobs))
+            reads.append((lambda value, e=entry: e.__setitem__("jobs", value),
+                          cache.cached(jobs_key(api.forge_type, repo, entry["run"]), read_jobs)))
     return reads
 
 
@@ -1068,7 +1214,7 @@ def pr_repo_list(repo, values):
 
 
 def fetch_bundle(forge_type, repo, pr_repo=None, repo_path=".", since=None, only_issue=None, jobs=DEFAULT_JOBS,
-                 diff_source="auto"):
+                 diff_source="auto", cache=None, stats=None):
     """Read the issues of `repo` and the PRs of `repo` plus every `pr_repo` (a string, or a list of strings).
 
     The reads go in waves: the listings, then each issue's and PR's own reads, then the reads that
@@ -1079,8 +1225,14 @@ def fetch_bundle(forge_type, repo, pr_repo=None, repo_path=".", since=None, only
     `diff_source` says where a commit's files or diff come from: `api` reads each one through the
     forge; `git` reads each one from the checkout at `repo_path` and fails on a commit it does
     not have; `auto` reads from git and falls back to the API per commit.
+
+    `cache` (a `Cache`) serves every read but the listings when its key matches. The commit cache
+    comes before git, so the fetch runs only for PRs that hold an uncached commit. `stats`, a dict,
+    gets `calls` (requests sent) and `cached` (reads served by the cache).
     """
     api = Api(forge_type, repo_path, jobs)
+    cache = cache or Cache(None)
+    now = datetime.now(timezone.utc)
     owner, _, name = repo.partition("/")
     forge = {"type": forge_type, "host": None, "owner": owner, "repo": name}
     pr_repos = pr_repo_list(repo, [pr_repo] if isinstance(pr_repo, str) else pr_repo)
@@ -1127,30 +1279,39 @@ def fetch_bundle(forge_type, repo, pr_repo=None, repo_path=".", since=None, only
             prs.append((pr_repo_name, pr))
 
     # Wave 2: each issue's timeline and each PR's own reads.
-    tasks = [lambda n=n: api.paged(api.path(repo, f"/issues/{n}/timeline")) for n in issue_numbers]
+    tasks = [cache.cached(issue_key(forge_type, repo, n, raws[n].get("updated_at")),
+                          lambda n=n: api.paged(api.path(repo, f"/issues/{n}/timeline"))) for n in issue_numbers]
     names = []
     for pr_repo_name, pr in prs:
         reads = _pull_reads(api, pr_repo_name, pr)
+        base = pull_key(forge_type, pr_repo_name, pr)
         names.append(list(reads))
-        tasks.extend(reads.values())
+        # The runs entry is written again on each re-read, so a later hit holds the newest runs.
+        tasks.extend(cache.cached(base and f"{base}/{name}", read, refresh=name == "runs" and runs_may_change(pr, now))
+                     for name, read in reads.items())
     results = iter(api.pmap(lambda read: read(), tasks))
     timelines = [next(results) for _ in issue_numbers]
     firsts = [{key: next(results) for key in keys} for keys in names]
 
     read_commit, fallbacks = None, []
     if diff_source != "api":
-        read_commit = _git_commit_reader(GitDiffs(repo_path), prs, firsts, forge_type, diff_source, fallbacks)
+        uncached = [{"commits": [c for c in first["commits"] if not cache.has(commit_key(forge_type, c.get("sha")))]}
+                    for first in firsts]
+        read_commit = _git_commit_reader(GitDiffs(repo_path), prs, uncached, forge_type, diff_source, fallbacks)
+    read_commit = _cached_commit_reader(cache, forge_type, read_commit)
 
     # Wave 3: the reads that need wave 2.
     followups = []
     for (pr_repo_name, pr), first in zip(prs, firsts):
-        followups.extend(_pull_followups(api, pr_repo_name, pr, first, read_commit))
+        followups.extend(_pull_followups(api, pr_repo_name, pr, first, read_commit, cache))
     for (apply, _), value in zip(followups, api.pmap(lambda item: item[1](), followups)):
         apply(value)
     if fallbacks:
         print(f"collect: read {_plural(len(fallbacks), 'commit')} through the API: not in the local repository at "
               f"{repo_path}", file=sys.stderr)
 
+    if stats is not None:
+        stats.update(calls=api.sent, cached=cache.hits)
     issues = [{"issue": raws[n], "timeline": timeline} for n, timeline in zip(issue_numbers, timelines)]
     pulls = []
     for (pr_repo_name, pr), first in zip(prs, firsts):
@@ -1245,7 +1406,33 @@ def local_events_path(args):
         return None
 
 
+# The counts of the last collect in this process, for the summary line of `snapshot` and `watch`.
+LAST_COLLECT = {"calls": 0, "cached": 0}
+
+
+def open_cache(args):
+    """Return the Cache this collect uses. --no-cache and --fixture use none.
+
+    The default directory is <git common dir>/issue-flow/cache of --repo-path, which every
+    worktree shares and no commit carries. Outside a git repository there is no default cache.
+    """
+    if args.fixture or args.no_cache:
+        return Cache(None)
+    root = args.cache_dir
+    if not root:
+        try:
+            root = common_dir_path("cache", args.repo_path)
+        except (RuntimeError, OSError):
+            return Cache(None)
+    return Cache(root, read=not args.refresh_cache)
+
+
+def calls_summary():
+    return f"{_plural(LAST_COLLECT['calls'], 'API call')} ({LAST_COLLECT['cached']} cached)"
+
+
 def cmd_collect(args):
+    LAST_COLLECT.update(calls=0, cached=0)
     try:
         since = parse_when(args.since) if args.since else None
         until = parse_when(args.until) if args.until else None
@@ -1270,7 +1457,7 @@ def cmd_collect(args):
                 bundle = json.load(handle)
         else:
             bundle = fetch_bundle(args.forge, args.repo, args.pr_repo, args.repo_path, since, args.issue, args.jobs,
-                                  args.diff_source)
+                                  args.diff_source, open_cache(args), LAST_COLLECT)
         doc = normalize(bundle, since, until, args.issue, args.batch, not args.no_diffs, args.max_diff_bytes)
         log = local_events_path(args)
         if log:
@@ -2551,8 +2738,8 @@ def cmd_snapshot(args):
         return code
     groups, _ = build_model(doc)
     lanes = sum(len(group["lanes"]) for group in groups)
-    print(f"wrote {out_path}: {len(doc['events'])} events, {lanes} lanes, {len(problem_rows(doc))} problems",
-          file=sys.stderr)
+    print(f"wrote {out_path}: {len(doc['events'])} events, {lanes} lanes, {len(problem_rows(doc))} problems; "
+          f"{calls_summary()}", file=sys.stderr)
     return 0
 
 
@@ -2589,8 +2776,8 @@ def cmd_watch(args):
                     if failures_in_a_row >= WATCH_FAILURE_LIMIT:
                         return 2
                 else:
-                    print(f"wrote {out_path} at {datetime.now(timezone.utc).isoformat(timespec='seconds')}",
-                          file=sys.stderr, flush=True)
+                    print(f"wrote {out_path} at {datetime.now(timezone.utc).isoformat(timespec='seconds')}; "
+                          f"{calls_summary()}", file=sys.stderr, flush=True)
                 remaining = deadline - time.monotonic()
                 if remaining <= 0:
                     return 0
@@ -2626,6 +2813,13 @@ def main(argv=None):
     collect.add_argument("--diff-source", choices=DIFF_SOURCES, default="auto",
                          help="where commit files and patches come from: `git` (the --repo-path checkout), `api`, "
                               "or `auto`, git first and the API for a commit git lacks (default auto)")
+    cache_mode = collect.add_mutually_exclusive_group()
+    cache_mode.add_argument("--no-cache", action="store_true",
+                            help="read nothing from the read cache and write nothing to it")
+    cache_mode.add_argument("--refresh-cache", action="store_true",
+                            help="read nothing from the read cache, and write every read to it")
+    collect.add_argument("--cache-dir", metavar="PATH",
+                         help="the read cache directory (default: <git common dir>/issue-flow/cache of --repo-path)")
     collect.add_argument("--out", help="write the document here instead of stdout")
     collect.set_defaults(func=cmd_collect)
     render = sub.add_parser("render", help="turn a timeline document into one self-contained HTML page")
