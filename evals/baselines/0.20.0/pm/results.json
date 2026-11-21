@@ -74,7 +74,49 @@
       "transcript": null,
       "model": "claude-opus-5-5",
       "error": null,
-      "sandbox": null
+      "sandbox": null,
+      "agents": {
+        "agents": [
+          {
+            "type": "main",
+            "id": "4f2b2669-a48a-4515-8a39-61f99ca72311",
+            "turns": 4,
+            "input": 8,
+            "output": 1099,
+            "cache_read": 139081,
+            "cache_write": 46450,
+            "model": "claude-opus-5-5",
+            "cost_usd": 0.421428
+          }
+        ],
+        "totals": {
+          "turns": 4,
+          "input": 8,
+          "output": 1099,
+          "cache_read": 139081,
+          "cache_write": 46450,
+          "cost_usd": 0.421428,
+          "unpriced_models": [],
+          "skipped_lines": 0,
+          "by_type": {
+            "main": {
+              "agents": 1,
+              "turns": 4,
+              "input": 8,
+              "output": 1099,
+              "cache_read": 139081,
+              "cache_write": 46450,
+              "cost_usd": 0.421428
+            }
+          }
+        },
+        "pricing_date": "2026-11-21"
+      },
+      "tokens": {
+        "main": 186638,
+        "subagents": 0
+      },
+      "effort": "medium"
     },
     {
       "case": "pm-a0-split-status",
@@ -138,7 +180,49 @@
       "transcript": null,
       "model": "claude-opus-5-5",
       "error": null,
-      "sandbox": null
+      "sandbox": null,
+      "agents": {
+        "agents": [
+          {
+            "type": "main",
+            "id": "b0f07dca-df43-40f3-8404-cea84f1825c7",
+            "turns": 4,
+            "input": 8,
+            "output": 966,
+            "cache_read": 139082,
+            "cache_write": 46335,
+            "model": "claude-opus-5-5",
+            "cost_usd": 0.417848
+          }
+        ],
+        "totals": {
+          "turns": 4,
+          "input": 8,
+          "output": 966,
+          "cache_read": 139082,
+          "cache_write": 46335,
+          "cost_usd": 0.417848,
+          "unpriced_models": [],
+          "skipped_lines": 0,
+          "by_type": {
+            "main": {
+              "agents": 1,
+              "turns": 4,
+              "input": 8,
+              "output": 966,
+              "cache_read": 139082,
+              "cache_write": 46335,
+              "cost_usd": 0.417848
+            }
+          }
+        },
+        "pricing_date": "2026-11-21"
+      },
+      "tokens": {
+        "main": 186391,
+        "subagents": 0
+      },
+      "effort": "medium"
     },
     {
       "case": "pm-a0-split-status",
@@ -202,7 +286,49 @@
       "transcript": null,
       "model": "claude-opus-5-5",
       "error": null,
-      "sandbox": null
+      "sandbox": null,
+      "agents": {
+        "agents": [
+          {
+            "type": "main",
+            "id": "892a5ff2-fc4d-458c-b6d6-3da514e7d74f",
+            "turns": 4,
+            "input": 8,
+            "output": 1018,
+            "cache_read": 139060,
+            "cache_write": 46340,
+            "model": "claude-opus-5-5",
+            "cost_usd": 0.418924
+          }
+        ],
+        "totals": {
+          "turns": 4,
+          "input": 8,
+          "output": 1018,
+          "cache_read": 139060,
+          "cache_write": 46340,
+          "cost_usd": 0.418924,
+          "unpriced_models": [],
+          "skipped_lines": 0,
+          "by_type": {
+            "main": {
+              "agents": 1,
+              "turns": 4,
+              "input": 8,
+              "output": 1018,
+              "cache_read": 139060,
+              "cache_write": 46340,
+              "cost_usd": 0.418924
+            }
+          }
+        },
+        "pricing_date": "2026-11-21"
+      },
+      "tokens": {
+        "main": 186426,
+        "subagents": 0
+      },
+      "effort": "medium"
     },
     {
       "case": "pm-batch-cross-check",
@@ -271,7 +397,49 @@
       "transcript": null,
       "model": "claude-opus-5-5",
       "error": null,
-      "sandbox": null
+      "sandbox": null,
+      "agents": {
+        "agents": [
+          {
+            "type": "main",
+            "id": "043aa879-e6ea-4b53-8413-cd8e65cff4cc",
+            "turns": 8,
+            "input": 16,
+            "output": 4195,
+            "cache_read": 428865,
+            "cache_write": 58630,
+            "model": "claude-opus-5-5",
+            "cost_usd": 0.638777
+          }
+        ],
+        "totals": {
+          "turns": 8,
+          "input": 16,
+          "output": 4195,
+          "cache_read": 428865,
+          "cache_write": 58630,
+          "cost_usd": 0.638777,
+          "unpriced_models": [],
+          "skipped_lines": 0,
+          "by_type": {
+            "main": {
+              "agents": 1,
+              "turns": 8,
+              "input": 16,
+              "output": 4195,
+              "cache_read": 428865,
+              "cache_write": 58630,
+              "cost_usd": 0.638777
+            }
+          }
+        },
+        "pricing_date": "2026-11-21"
+      },
+      "tokens": {
+        "main": 491706,
+        "subagents": 0
+      },
+      "effort": "medium"
     },
     {
       "case": "pm-batch-cross-check",
@@ -340,7 +508,49 @@
       "transcript": null,
       "model": "claude-opus-5-5",
       "error": null,
-      "sandbox": null
+      "sandbox": null,
+      "agents": {
+        "agents": [
+          {
+            "type": "main",
+            "id": "294142d2-4cfa-47aa-ad24-2ec3fec96d2e",
+            "turns": 8,
+            "input": 16,
+            "output": 3285,
+            "cache_read": 423517,
+            "cache_write": 57136,
+            "model": "claude-opus-5-5",
+            "cost_usd": 0.607555
+          }
+        ],
+        "totals": {
+          "turns": 8,
+          "input": 16,
+          "output": 3285,
+          "cache_read": 423517,
+          "cache_write": 57136,
+          "cost_usd": 0.607555,
+          "unpriced_models": [],
+          "skipped_lines": 0,
+          "by_type": {
+            "main": {
+              "agents": 1,
+              "turns": 8,
+              "input": 16,
+              "output": 3285,
+              "cache_read": 423517,
+              "cache_write": 57136,
+              "cost_usd": 0.607555
+            }
+          }
+        },
+        "pricing_date": "2026-11-21"
+      },
+      "tokens": {
+        "main": 483954,
+        "subagents": 0
+      },
+      "effort": "medium"
     },
     {
       "case": "pm-batch-cross-check",
@@ -425,7 +635,69 @@
       "transcript": null,
       "model": "claude-opus-5-5",
       "error": null,
-      "sandbox": null
+      "sandbox": null,
+      "agents": {
+        "agents": [
+          {
+            "type": "main",
+            "id": "f59375c8-452a-475d-ba41-2f36bae70c6e",
+            "turns": 8,
+            "input": 16,
+            "output": 4775,
+            "cache_read": 414982,
+            "cache_write": 57108,
+            "model": "claude-opus-5-5",
+            "cost_usd": 0.635424
+          },
+          {
+            "type": "general-purpose",
+            "id": "adf961a7d98e41254",
+            "turns": 1,
+            "input": 2,
+            "output": 1342,
+            "cache_read": 0,
+            "cache_write": 13852,
+            "model": "claude-haiku-5-5",
+            "cost_usd": 0.002403
+          }
+        ],
+        "totals": {
+          "turns": 9,
+          "input": 18,
+          "output": 6117,
+          "cache_read": 414982,
+          "cache_write": 70960,
+          "cost_usd": 0.637827,
+          "unpriced_models": [],
+          "skipped_lines": 0,
+          "by_type": {
+            "main": {
+              "agents": 1,
+              "turns": 8,
+              "input": 16,
+              "output": 4775,
+              "cache_read": 414982,
+              "cache_write": 57108,
+              "cost_usd": 0.635424
+            },
+            "general-purpose": {
+              "agents": 1,
+              "turns": 1,
+              "input": 2,
+              "output": 1342,
+              "cache_read": 0,
+              "cache_write": 13852,
+              "cost_usd": 0.002403
+            }
+          }
+        },
+        "pricing_date": "2026-11-21"
+      },
+      "tokens": {
+        "main": 476881,
+        "subagents": 15196
+      },
+      "effort": "medium"
     },
     {
       "case": "pm-c1-no-prepatch",
@@ -494,7 +766,49 @@
       "transcript": null,
       "model": "claude-opus-5-5",
       "error": null,
-      "sandbox": null
+      "sandbox": null,
+      "agents": {
+        "agents": [
+          {
+            "type": "main",
+            "id": "65f5f192-b9a6-4cab-a460-6da9f3d6239e",
+            "turns": 5,
+            "input": 10,
+            "output": 2093,
+            "cache_read": 199370,
+            "cache_write": 48853,
+            "model": "claude-opus-5-5",
+            "cost_usd": 0.472598
+          }
+        ],
+        "totals": {
+          "turns": 5,
+          "input": 10,
+          "output": 2093,
+          "cache_read": 199370,
+          "cache_write": 48853,
+          "cost_usd": 0.472598,
+          "unpriced_models": [],
+          "skipped_lines": 0,
+          "by_type": {
+            "main": {
+              "agents": 1,
+              "turns": 5,
+              "input": 10,
+              "output": 2093,
+              "cache_read": 199370,
+              "cache_write": 48853,
+              "cost_usd": 0.472598
+            }
+          }
+        },
+        "pricing_date": "2026-11-21"
+      },
+      "tokens": {
+        "main": 250326,
+        "subagents": 0
+      },
+      "effort": "medium"
     },
     {
       "case": "pm-c1-no-prepatch",
@@ -563,7 +877,49 @@
       "transcript": null,
       "model": "claude-opus-5-5",
       "error": null,
-      "sandbox": null
+      "sandbox": null,
+      "agents": {
+        "agents": [
+          {
+            "type": "main",
+            "id": "2873f7fa-6abd-4187-a667-5e4efb697027",
+            "turns": 4,
+            "input": 8,
+            "output": 1734,
+            "cache_read": 141312,
+            "cache_write": 47970,
+            "model": "claude-opus-5-5",
+            "cost_usd": 0.446734
+          }
+        ],
+        "totals": {
+          "turns": 4,
+          "input": 8,
+          "output": 1734,
+          "cache_read": 141312,
+          "cache_write": 47970,
+          "cost_usd": 0.446734,
+          "unpriced_models": [],
+          "skipped_lines": 0,
+          "by_type": {
+            "main": {
+              "agents": 1,
+              "turns": 4,
+              "input": 8,
+              "output": 1734,
+              "cache_read": 141312,
+              "cache_write": 47970,
+              "cost_usd": 0.446734
+            }
+          }
+        },
+        "pricing_date": "2026-11-21"
+      },
+      "tokens": {
+        "main": 191024,
+        "subagents": 0
+      },
+      "effort": "medium"
     },
     {
       "case": "pm-c1-no-prepatch",
@@ -632,7 +988,49 @@
       "transcript": null,
       "model": "claude-opus-5-5",
       "error": null,
-      "sandbox": null
+      "sandbox": null,
+      "agents": {
+        "agents": [
+          {
+            "type": "main",
+            "id": "b264bdb7-dd57-41eb-aa98-47d53445e5c7",
+            "turns": 5,
+            "input": 10,
+            "output": 2445,
+            "cache_read": 198885,
+            "cache_write": 48658,
+            "model": "claude-opus-5-5",
+            "cost_usd": 0.477981
+          }
+        ],
+        "totals": {
+          "turns": 5,
+          "input": 10,
+          "output": 2445,
+          "cache_read": 198885,
+          "cache_write": 48658,
+          "cost_usd": 0.477981,
+          "unpriced_models": [],
+          "skipped_lines": 0,
+          "by_type": {
+            "main": {
+              "agents": 1,
+              "turns": 5,
+              "input": 10,
+              "output": 2445,
+              "cache_read": 198885,
+              "cache_write": 48658,
+              "cost_usd": 0.477981
+            }
+          }
+        },
+        "pricing_date": "2026-11-21"
+      },
+      "tokens": {
+        "main": 249998,
+        "subagents": 0
+      },
+      "effort": "medium"
     },
     {
       "case": "pm-c1-unevidenced",
@@ -701,7 +1099,49 @@
       "transcript": null,
       "model": "claude-opus-5-5",
       "error": null,
-      "sandbox": null
+      "sandbox": null,
+      "agents": {
+        "agents": [
+          {
+            "type": "main",
+            "id": "44cc57e8-7cf7-4301-b030-e3361497a60f",
+            "turns": 4,
+            "input": 8,
+            "output": 1816,
+            "cache_read": 142353,
+            "cache_write": 49015,
+            "model": "claude-opus-5-5",
+            "cost_usd": 0.456943
+          }
+        ],
+        "totals": {
+          "turns": 4,
+          "input": 8,
+          "output": 1816,
+          "cache_read": 142353,
+          "cache_write": 49015,
+          "cost_usd": 0.456943,
+          "unpriced_models": [],
+          "skipped_lines": 0,
+          "by_type": {
+            "main": {
+              "agents": 1,
+              "turns": 4,
+              "input": 8,
+              "output": 1816,
+              "cache_read": 142353,
+              "cache_write": 49015,
+              "cost_usd": 0.456943
+            }
+          }
+        },
+        "pricing_date": "2026-11-21"
+      },
+      "tokens": {
+        "main": 193192,
+        "subagents": 0
+      },
+      "effort": "medium"
     },
     {
       "case": "pm-c1-unevidenced",
@@ -770,7 +1210,49 @@
       "transcript": null,
       "model": "claude-opus-5-5",
       "error": null,
-      "sandbox": null
+      "sandbox": null,
+      "agents": {
+        "agents": [
+          {
+            "type": "main",
+            "id": "19c691f1-93a5-4279-8336-ddca2023705e",
+            "turns": 4,
+            "input": 8,
+            "output": 1429,
+            "cache_read": 141058,
+            "cache_write": 47616,
+            "model": "claude-opus-5-5",
+            "cost_usd": 0.437752
+          }
+        ],
+        "totals": {
+          "turns": 4,
+          "input": 8,
+          "output": 1429,
+          "cache_read": 141058,
+          "cache_write": 47616,
+          "cost_usd": 0.437752,
+          "unpriced_models": [],
+          "skipped_lines": 0,
+          "by_type": {
+            "main": {
+              "agents": 1,
+              "turns": 4,
+              "input": 8,
+              "output": 1429,
+              "cache_read": 141058,
+              "cache_write": 47616,
+              "cost_usd": 0.437752
+            }
+          }
+        },
+        "pricing_date": "2026-11-21"
+      },
+      "tokens": {
+        "main": 190111,
+        "subagents": 0
+      },
+      "effort": "medium"
     },
     {
       "case": "pm-c1-unevidenced",
@@ -839,7 +1321,49 @@
       "transcript": null,
       "model": "claude-opus-5-5",
       "error": null,
-      "sandbox": null
+      "sandbox": null,
+      "agents": {
+        "agents": [
+          {
+            "type": "main",
+            "id": "4cee8080-c3d7-4f30-a125-2944e9851541",
+            "turns": 4,
+            "input": 8,
+            "output": 1565,
+            "cache_read": 141944,
+            "cache_write": 48529,
+            "model": "claude-opus-5-5",
+            "cost_usd": 0.447953
+          }
+        ],
+        "totals": {
+          "turns": 4,
+          "input": 8,
+          "output": 1565,
+          "cache_read": 141944,
+          "cache_write": 48529,
+          "cost_usd": 0.447953,
+          "unpriced_models": [],
+          "skipped_lines": 0,
+          "by_type": {
+            "main": {
+              "agents": 1,
+              "turns": 4,
+              "input": 8,
+              "output": 1565,
+              "cache_read": 141944,
+              "cache_write": 48529,
+              "cost_usd": 0.447953
+            }
+          }
+        },
+        "pricing_date": "2026-11-21"
+      },
+      "tokens": {
+        "main": 192046,
+        "subagents": 0
+      },
+      "effort": "medium"
     },
     {
       "case": "pm-semantic-conflict",
@@ -903,7 +1427,49 @@
       "transcript": null,
       "model": "claude-opus-5-5",
       "error": null,
-      "sandbox": null
+      "sandbox": null,
+      "agents": {
+        "agents": [
+          {
+            "type": "main",
+            "id": "1f4bfbcf-78d8-4b73-b2fc-f2dc85f5e93d",
+            "turns": 4,
+            "input": 8,
+            "output": 1821,
+            "cache_read": 154835,
+            "cache_write": 50886,
+            "model": "claude-opus-5-5",
+            "cost_usd": 0.474507
+          }
+        ],
+        "totals": {
+          "turns": 4,
+          "input": 8,
+          "output": 1821,
+          "cache_read": 154835,
+          "cache_write": 50886,
+          "cost_usd": 0.474507,
+          "unpriced_models": [],
+          "skipped_lines": 0,
+          "by_type": {
+            "main": {
+              "agents": 1,
+              "turns": 4,
+              "input": 8,
+              "output": 1821,
+              "cache_read": 154835,
+              "cache_write": 50886,
+              "cost_usd": 0.474507
+            }
+          }
+        },
+        "pricing_date": "2026-11-21"
+      },
+      "tokens": {
+        "main": 207550,
+        "subagents": 0
+      },
+      "effort": "medium"
     },
     {
       "case": "pm-semantic-conflict",
@@ -967,7 +1533,49 @@
       "transcript": null,
       "model": "claude-opus-5-5",
       "error": null,
-      "sandbox": null
+      "sandbox": null,
+      "agents": {
+        "agents": [
+          {
+            "type": "main",
+            "id": "d9c2f530-6dee-4d5f-a6cb-2f381883496a",
+            "turns": 4,
+            "input": 8,
+            "output": 2057,
+            "cache_read": 154761,
+            "cache_write": 50942,
+            "model": "claude-opus-5-5",
+            "cost_usd": 0.47966
+          }
+        ],
+        "totals": {
+          "turns": 4,
+          "input": 8,
+          "output": 2057,
+          "cache_read": 154761,
+          "cache_write": 50942,
+          "cost_usd": 0.47966,
+          "unpriced_models": [],
+          "skipped_lines": 0,
+          "by_type": {
+            "main": {
+              "agents": 1,
+              "turns": 4,
+              "input": 8,
+              "output": 2057,
+              "cache_read": 154761,
+              "cache_write": 50942,
+              "cost_usd": 0.47966
+            }
+          }
+        },
+        "pricing_date": "2026-11-21"
+      },
+      "tokens": {
+        "main": 207768,
+        "subagents": 0
+      },
+      "effort": "medium"
     },
     {
       "case": "pm-semantic-conflict",
@@ -1047,7 +1655,69 @@
       "transcript": null,
       "model": "claude-opus-5-5",
       "error": null,
-      "sandbox": null
+      "sandbox": null,
+      "agents": {
+        "agents": [
+          {
+            "type": "main",
+            "id": "959a05a6-7bef-4f7e-813d-da15b75a52fc",
+            "turns": 5,
+            "input": 10,
+            "output": 2320,
+            "cache_read": 217271,
+            "cache_write": 51830,
+            "model": "claude-opus-5-5",
+            "cost_usd": 0.504534
+          },
+          {
+            "type": "Explore",
+            "id": "a47f08b883bf5ad97",
+            "turns": 1,
+            "input": 2,
+            "output": 1220,
+            "cache_read": 0,
+            "cache_write": 11783,
+            "model": "claude-haiku-5-5",
+            "cost_usd": 0.002083
+          }
+        ],
+        "totals": {
+          "turns": 6,
+          "input": 12,
+          "output": 3540,
+          "cache_read": 217271,
+          "cache_write": 63613,
+          "cost_usd": 0.506617,
+          "unpriced_models": [],
+          "skipped_lines": 0,
+          "by_type": {
+            "main": {
+              "agents": 1,
+              "turns": 5,
+              "input": 10,
+              "output": 2320,
+              "cache_read": 217271,
+              "cache_write": 51830,
+              "cost_usd": 0.504534
+            },
+            "Explore": {
+              "agents": 1,
+              "turns": 1,
+              "input": 2,
+              "output": 1220,
+              "cache_read": 0,
+              "cache_write": 11783,
+              "cost_usd": 0.002083
+            }
+          }
+        },
+        "pricing_date": "2026-11-21"
+      },
+      "tokens": {
+        "main": 271431,
+        "subagents": 13005
+      },
+      "effort": "medium"
     },
     {
       "case": "pm-triage",
@@ -1111,7 +1781,49 @@
       "transcript": null,
       "model": "claude-opus-5-5",
       "error": null,
-      "sandbox": null
+      "sandbox": null,
+      "agents": {
+        "agents": [
+          {
+            "type": "main",
+            "id": "8b314276-1b0d-4c47-89cb-d6dd21d129b8",
+            "turns": 5,
+            "input": 10,
+            "output": 1122,
+            "cache_read": 196515,
+            "cache_write": 47247,
+            "model": "claude-opus-5-5",
+            "cost_usd": 0.439759
+          }
+        ],
+        "totals": {
+          "turns": 5,
+          "input": 10,
+          "output": 1122,
+          "cache_read": 196515,
+          "cache_write": 47247,
+          "cost_usd": 0.439759,
+          "unpriced_models": [],
+          "skipped_lines": 0,
+          "by_type": {
+            "main": {
+              "agents": 1,
+              "turns": 5,
+              "input": 10,
+              "output": 1122,
+              "cache_read": 196515,
+              "cache_write": 47247,
+              "cost_usd": 0.439759
+            }
+          }
+        },
+        "pricing_date": "2026-11-21"
+      },
+      "tokens": {
+        "main": 244894,
+        "subagents": 0
+      },
+      "effort": "medium"
     },
     {
       "case": "pm-triage",
@@ -1175,7 +1887,49 @@
       "transcript": null,
       "model": "claude-opus-5-5",
       "error": null,
-      "sandbox": null
+      "sandbox": null,
+      "agents": {
+        "agents": [
+          {
+            "type": "main",
+            "id": "f1f2f5eb-d7bb-4d07-82ae-c0813fe2e573",
+            "turns": 5,
+            "input": 10,
+            "output": 1001,
+            "cache_read": 196544,
+            "cache_write": 47153,
+            "model": "claude-opus-5-5",
+            "cost_usd": 0.436593
+          }
+        ],
+        "totals": {
+          "turns": 5,
+          "input": 10,
+          "output": 1001,
+          "cache_read": 196544,
+          "cache_write": 47153,
+          "cost_usd": 0.436593,
+          "unpriced_models": [],
+          "skipped_lines": 0,
+          "by_type": {
+            "main": {
+              "agents": 1,
+              "turns": 5,
+              "input": 10,
+              "output": 1001,
+              "cache_read": 196544,
+              "cache_write": 47153,
+              "cost_usd": 0.436593
+            }
+          }
+        },
+        "pricing_date": "2026-11-21"
+      },
+      "tokens": {
+        "main": 244708,
+        "subagents": 0
+      },
+      "effort": "medium"
     },
     {
       "case": "pm-triage",
@@ -1239,7 +1993,49 @@
       "transcript": null,
       "model": "claude-opus-5-5",
       "error": null,
-      "sandbox": null
+      "sandbox": null,
+      "agents": {
+        "agents": [
+          {
+            "type": "main",
+            "id": "00cf3e11-8dd7-4baa-9f21-70c797653c97",
+            "turns": 5,
+            "input": 10,
+            "output": 1021,
+            "cache_read": 196628,
+            "cache_write": 47229,
+            "model": "claude-opus-5-5",
+            "cost_usd": 0.437618
+          }
+        ],
+        "totals": {
+          "turns": 5,
+          "input": 10,
+          "output": 1021,
+          "cache_read": 196628,
+          "cache_write": 47229,
+          "cost_usd": 0.437618,
+          "unpriced_models": [],
+          "skipped_lines": 0,
+          "by_type": {
+            "main": {
+              "agents": 1,
+              "turns": 5,
+              "input": 10,
+              "output": 1021,
+              "cache_read": 196628,
+              "cache_write": 47229,
+              "cost_usd": 0.437618
+            }
+          }
+        },
+        "pricing_date": "2026-11-21"
+      },
+      "tokens": {
+        "main": 244888,
+        "subagents": 0
+      },
+      "effort": "medium"
     }
   ]
 }
