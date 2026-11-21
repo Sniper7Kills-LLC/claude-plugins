@@ -27,7 +27,8 @@
       "issue": 5,
       "allow": [
         "inventory/items.py",
-        "tests/*"
+        "tests/*",
+        "README.md"
       ]
     },
     {

@@ -73,5 +73,11 @@ jobs:
       - name: Test the usage report
         run: python3 scripts/test-usage.py
 
+      - name: Test the eval compare script and its decision rules
+        run: python3 scripts/test-eval-compare.py
+
+      - name: Test the baseline preparation script
+        run: python3 scripts/test-eval-baseline.py
+
       - name: Validate manifests, frontmatter and links
         run: python3 scripts/validate-manifests.py

@@ -30,6 +30,7 @@ token counts per run. The operator decided on 2026-11-21 to use our own runner o
 | `evals/worker/_fixture/` | The project that the worker cases start from. |
 | `evals/results/` | Run results. Git ignores this directory. |
 | `evals/baselines/<version>/` | Committed baseline run records and summaries, for example `0.20.0/pm/`. |
+| `evals/BASELINE.md` | The numbers of the current baseline, for both suites. |
 | `evals/rule-inventory.json` | The rule inventory of the PM `SKILL.md` at 0.20.0. `python3 scripts/rule-coverage.py extract` makes it, and `check` verifies a skill tree against it (Sniper7Kills-LLC/claude-plugins#104). |
 
 ## How to run
@@ -291,7 +292,77 @@ can be compared with it. Each directory holds:
 - `summary.json`, with the means per case.
 - Any superseded runs, with the reason.
 
+`evals/BASELINE.md` gives the numbers of the current baseline, for both suites.
+
+### Make a baseline
+
+Run `scripts/eval-baseline.py` on the machine of the eval run. It needs the transcripts in
+`~/.claude/projects/`, so run it soon after the eval run.
+
+```bash
+python3 scripts/eval-baseline.py evals/results/<stamp> --out evals/baselines/<version>/<suite> \
+    --label "issue-flow (git worktree of tag issue-flow--v<version>)"
+```
+
+The script changes each record in three ways:
+
+- `agents` is the output of `issue-flow/scripts/usage.py --json` for the session: the
+  tokens, the turns and the estimated cost of each agent.
+- `tokens` is `{main, subagents}`, the sum of the four token counts of the main agent and
+  of every other agent. In a worker case, `subagents` is the worker.
+- `variant.plugin_dir` becomes the `--label` text, and `transcript` and `sandbox` become
+  null.
+
+It also writes `summary.json`. The exit code is 1 when a run has no transcript. Then that
+record has `agents: null`.
+
+### Compare a candidate with the baseline
+
+1. Make a worktree of the candidate, or use this checkout.
+2. Run the same suite on it, with the same number of runs as the baseline:
+
+   ```bash
+   python3 scripts/run-evals.py --plugin-dir issue-flow --suite worker --runs 3 --max-cost-usd 150
+   ```
+
+3. Compare the result with the baseline:
+
+   ```bash
+   python3 scripts/eval-compare.py evals/baselines/0.20.0/worker evals/results/<stamp>
+   ```
+
+`eval-compare.py` reads `suite` from both results and applies the decision rule of that
+suite (Sniper7Kills-LLC/claude-plugins#106). It uses only the cases that both sides ran,
+and names the others. Each threshold is inclusive.
+
+| Rule | The verdict is `ship` only when |
+|---|---|
+| `pm` | No deterministic grader has a lower pass rate on any case than in the baseline. |
+| | The mean score is not more than 0.05 below the baseline. A higher score passes. |
+| | The PM tokens per run are lower. These are the four counts of `usage`, the main loop only. |
+| `worker` | The hidden-test pass rate is not more than 5 points below the baseline. |
+| | The mean `cost_usd` per run is at least 40% lower. |
+
+If the worker rule fails, the script gives the numbers per tier (`easy`, `medium`, `hard`).
+It reads the tiers from the tags in `evals/worker/<case>/case.json`. Then it tries the
+hybrid: the baseline runs on the cases tagged `hard`, and the candidate runs on the rest. The
+verdict is `hybrid` only when the hybrid meets the same two checks. Otherwise it is
+`do not ship`. The hidden-test pass rate counts only the runs that have a `hidden_tests`
+grader, so `worker-hard-ambiguous-tax` is not in it.
+
+The exit code is 0 for `ship`, 1 for `do not ship`, 3 for `hybrid` and 2 for bad input.
+`--json` prints the full report. `--rule pm|worker` replaces the rule of the suite.
+
+The report also flags each run whose `agents` cost is more than 10% from its `cost_usd`.
+The `cost_usd` still governs.
+
+At 3 runs per case, a drop under about 15 points cannot be detected. The report says so.
+A `ship` verdict is not proof that no small regression exists.
+
 ### 0.20.0, PM suite
+
+`evals/BASELINE.md` has the full 0.20.0 numbers for both suites. This section keeps the
+PM run notes.
 
 The runs were on 2026-11-21, with Claude Code 2.1.330 and the default model
 (claude-opus-5-5): 6 cases, 3 runs each, at concurrency 1. Total cost: $10.00, judges
@@ -447,6 +518,10 @@ passes every case.
 
 `python3 scripts/test-worker-cases.py` tests the worker suite and its graders, as the
 reference check above describes.
+
+`python3 scripts/test-eval-compare.py` tests the decision rules on synthetic results, on
+both sides of each threshold. `python3 scripts/test-eval-baseline.py` tests
+`eval-baseline.py` on the recorded usage fixture.
 
 `python3 scripts/test-run-evals.py` tests the runner and the fake `gh` with a fake
 `claude` (set through `IFE_CLAUDE`). The tests cost nothing and use no network. They also
