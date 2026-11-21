@@ -327,6 +327,19 @@ the `GRADERS` table in `scripts/run-evals.py`.
 - Labels are names. An `issue edit` that adds a label not in `labels` fails, as on GitHub.
 - Issues and PRs share one number sequence. A new item gets the highest number plus 1.
 - A new comment gets the highest comment id plus 1.
+- `events` is optional. Each event adds a comment to the tracker after a call, as a person
+  would during a session. A later sweep can then find something new:
+
+  ```json
+  "events": [{"after": {"cmd": "pr merge", "args": "^53\\b"},
+              "comment": {"issue": 63, "author": "maintainer", "body": "Answer: ..."}}]
+  ```
+
+  The event fires once, after the first successful call whose `cmd` is equal to `after.cmd`
+  and whose arguments match the `after.args` regular expression. Without `args`, any
+  arguments match. The comment updates the issue's `updatedAt`. The fake then sets
+  `"fired": true` on the event. An event adds no line to the log. A refused call fires no
+  event.
 
 ## The fake `gh`
 
@@ -347,6 +360,9 @@ line comments on a diff, so `pulls/<n>/comments` always returns `[]`.
 `--jq` needs `jq` on `PATH`. `--search` is accepted but does not filter, so a search
 returns more items than GitHub would, never fewer. Any other subcommand, and any `api`
 call that writes, exits 1 with a message that names the fake.
+
+After a successful call, the fake fires the tracker `events` that the call triggers (see
+the schema above).
 
 Each call adds one line to `gh-log.jsonl`:
 
@@ -436,7 +452,7 @@ python3 scripts/eval-baseline.py evals/results/<stamp> --out evals/baselines/<ve
     --label "issue-flow (git worktree of tag issue-flow--v<version>)"
 ```
 
-The script changes each record in three ways:
+The script changes each record in these ways:
 
 - `agents` is the output of `issue-flow/scripts/usage.py --json` for the session: the
   tokens, the turns and the estimated cost of each agent.
@@ -447,8 +463,13 @@ The script changes each record in three ways:
 
 - A record with no `effort` takes the `effort` of `results.json`.
 
-It also writes `summary.json`. The exit code is 1 when a run has no transcript. Then that
-record has `agents: null`.
+- `tracker_calls` is `{total, read, write, error}`, the count of the lines in the run's
+  `gh-log.jsonl`. A run with no log gets `null`. The count is information only: no decision
+  rule reads it. Every PM run starts with 3 reads from the SessionStart preflight hook
+  (`label list`, `pr list` and `issue list`), so the lowest count is 3.
+
+It also writes `summary.json`, with `mean_tracker_calls` for each case. The exit code is 1
+when a run has no transcript. Then that record has `agents: null`.
 
 Before it writes, the script scans the whole output for a local path: `/Users/`,
 `/home/`, `/private/` or `/var/folders/`. When it finds one, it names the field, writes
@@ -545,6 +566,58 @@ The first 3 runs of `pm-triage` failed because of a grader error, not a PM error
 `4. How often …` in the body of the comment on #2. The fix: `args` now anchors at the
 start of the arguments only, and `body` still matches line by line. `pm-triage` then ran
 3 more times. `superseded-pm-triage.json` keeps the first 3 runs.
+
+## Session-level PM cases
+
+A single-decision PM case gives the PM one stage and stops. It cannot show what a change
+does over a long session: fewer re-reads, a tracker read in one pass, or less context
+growth from sweep to sweep. A session-level case runs one PM through several stages in
+order, against one tracker, so those effects add up in one run
+(Sniper7Kills-LLC/claude-plugins#116).
+
+Use a session-level case when the change that you measure pays off across stages, for
+example a change to how the PM reads the tracker, or to what it keeps in context between
+sweeps. Use the single-decision cases to test one rule. A session-level run costs about
+2.5 times as much as a single-decision run ($1.16 against $0.48 on 0.20.0), and its token count varies more from run to run.
+
+```bash
+python3 scripts/run-evals.py --plugin-dir issue-flow --suite pm --tag session --runs 3 --max-cost-usd 25
+```
+
+A session-level case carries the tag `session`. It is in the `pm` suite, so a full
+`--suite pm` run includes it.
+
+### `pm-session-batch`
+
+The prompt is in `evals/pm/pm-session-batch/prompt.md`. The PM does four steps:
+
+1. The Stage A0 sweep and the Stage A triage. The tracker holds 8 backlog issues: 3 clear
+   issues, 2 unclear issues, an epic without sub-issues, an issue with two `status:`
+   labels, and an issue that is already ready.
+2. Stage B step 1 and the plan comments (step 3, plan only): the PM forms batches from the
+   ready pool and plans each member. It claims and launches nothing.
+3. The Stage C1 gate on two given verdicts of the in-flight batch #50: #51 is good and
+   sub-merges, and #52 has a criterion with "implemented" as its evidence, so it goes back
+   to the worker.
+4. A second Stage A0 sweep and Stage A triage. The tracker `events` (see the schema
+   above) add a maintainer's answer to #63 when the PM merges #51's PR. The second sweep
+   must find that answer and make #63 ready.
+
+The deterministic graders read the gh log. They check the triage labels and comments,
+the epic decomposition, the split-status repair, a `type:batch` tracking issue, a plan
+comment on each loose ready issue, the squash merge with `[skip ci]`, the `status:batched`
+swap on #51, and #63 made ready after the merge. They forbid any claim, launch or merge
+of #52. A `file` grader reads the send-back message for #52. The `llm` grader judges the
+plans and the triage questions.
+
+In this test, `gh pr merge` changes only the tracker, and the remote holds no commits of
+the workers. The prompt tells the PM so, and tells it to skip the C1 step 4b check of the
+landed message.
+
+`evals/BASELINE.md` ("PM session case") gives the numbers on 0.20.0 and on the batch #115
+head. Use `tracker_calls` (see "Make a baseline") for the tracker calls of a run. In
+each of the 6 measured runs, Claude Code itself called `gh pr view <branch> --json url`
+12 times, and the fake refused each call. These calls count as `error` lines.
 
 ## The worker suite
 
@@ -765,7 +838,8 @@ with a golden PM, which must pass. Add a golden run to the test when you add a c
 1. Make `evals/<suite>/<name>/` with `case.json` and `tracker.json`.
 2. Give the case one decision to test. The prompt names the situation and the stage, and
    it says what to do instead of an action the sandbox cannot do, for example a worker
-   launch.
+   launch. A session-level case is the exception: it tests a sequence of stages (see
+   "Session-level PM cases").
 3. Give it at least one deterministic grader that fails when the agent does nothing.
 4. For a PM case, add its golden run to `GOLDEN` in `scripts/test-run-evals.py`. For a
    worker case, follow "Add a worker case" above.

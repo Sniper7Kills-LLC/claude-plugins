@@ -583,6 +583,29 @@ COMMANDS = {
 }
 
 
+def fire_events(tracker, cmd, args):
+    """Apply each unfired tracker event that the successful call `cmd args` triggers.
+
+    A session-level case needs the tracker to change while the PM runs, as a person would
+    change it, so that a later sweep has something new to find.
+    """
+    for event in tracker.state.get("events", []):
+        trigger = event.get("after", {})
+        if event.get("fired") or trigger.get("cmd") != cmd:
+            continue
+        if "args" in trigger and not re.search(trigger["args"], " ".join(map(str, args))):
+            continue
+        comment = event["comment"]
+        _, item = tracker.find(comment["issue"])
+        stamp = now()
+        item.setdefault("comments", []).append(
+            {"id": tracker.next_comment_id(), "author": comment.get("author", "maintainer"),
+             "body": comment["body"], "createdAt": stamp})
+        item["updatedAt"] = stamp
+        event["fired"] = True
+        tracker.changed = True
+
+
 def command_name(argv):
     words = [arg for arg in argv[:2] if not arg.startswith("-")]
     if words[:1] == ["api"]:
@@ -629,6 +652,7 @@ def main(argv):
             if cmd == "issue close" and "--comment" in flags:
                 entry["body"] = one(flags, "--comment")
             kind, output = handler(tracker, positionals, flags)
+            fire_events(tracker, cmd, argv[skip:])
         except Refused as refusal:
             entry.update(kind="error", exit=1, error=str(refusal))
             append_log(log_path, entry)

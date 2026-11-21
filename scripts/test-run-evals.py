@@ -485,6 +485,23 @@ GOLDEN = {
                                "--remove-label", "status:ready"],
                               ["issue", "comment", "41", "--body", "Reject or queue?"],
                               ["issue", "comment", "42", "--body", "Reject or queue?"]], {}),
+    "pm-session-batch": (
+        [["issue", "edit", "61", "62", "68", "--add-label", "status:ready"],
+         ["issue", "edit", "63", "64", "--add-label", "status:needs-feedback"],
+         ["issue", "comment", "63", "--body", "Which file gives the wrong count? Expected count against actual?"],
+         ["issue", "comment", "64", "--body", "Which part of the output should change, and to what?"],
+         ["issue", "create", "--title", "Read CSV stock files", "--body", "Part of #65", "--label", "status:ready"],
+         ["issue", "create", "--title", "Read JSON stock files", "--body", "Part of #65", "--label", "status:ready"],
+         ["issue", "edit", "65", "--add-label", "status:blocked"],
+         ["issue", "comment", "65", "--body", "Sub-issues: #69, #70."],
+         *repair(66, "status:in-review", "status:needs-feedback"),
+         ["issue", "create", "--title", "Batch: count errors and docs", "--label", "type:batch",
+          "--body", "- [ ] #61\n- [ ] #62\n- [ ] #67\n- [ ] #68"],
+         *[["issue", "comment", str(n), "--body", "## Plan (PM)\n\nwidgets.py; test first."] for n in (61, 62, 67, 68)],
+         ["pr", "merge", "53", "--squash", "--subject", "Add a --json flag (#53)", "--body", "[skip ci]"],
+         ["issue", "edit", "51", "--add-label", "status:batched", "--remove-label", "status:in-review"],
+         ["issue", "edit", "63", "--add-label", "status:ready", "--remove-label", "status:needs-feedback"]],
+        {".eval/send-back-52.md": "Criterion `widgets count --quiet` exits 1 when the count is 0 has no evidence."}),
 }
 
 
@@ -758,6 +775,50 @@ def test_judge_takes_a_majority_of_votes():
     check(passed is False and "judge failed" in detail, f"two failed judge calls fail the grader, got {detail!r}")
 
 
+def test_fake_gh_events():
+    work = fresh_gh_dir()
+    try:
+        tracker = read_tracker(work)
+        tracker["events"] = [{"after": {"cmd": "pr merge", "args": "^7\\b"},
+                              "comment": {"issue": 1, "author": "maintainer", "body": "Answer: use -v."}}]
+        with open(os.path.join(work, "tracker.json"), "w") as handle:
+            json.dump(tracker, handle)
+        gh(work, "issue", "comment", "1", "--body", "Which flag?")
+        check(len(read_tracker(work)["issues"][0]["comments"]) == 1, "a call that is not the trigger fires no event")
+        result = gh(work, "pr", "merge", "99")
+        check(result.returncode == 1 and len(read_tracker(work)["issues"][0]["comments"]) == 1,
+              "a refused call fires no event")
+        result = gh(work, "pr", "merge", "7", "--squash")
+        state = read_tracker(work)
+        comments = state["issues"][0]["comments"]
+        check(result.returncode == 0 and len(comments) == 2 and comments[-1]["author"] == "maintainer"
+              and comments[-1]["body"] == "Answer: use -v.", f"the trigger call adds the event comment, got {comments}")
+        check(state["issues"][0].get("updatedAt") == comments[-1]["createdAt"],
+              "the event comment updates the issue, so a sweep by update time finds it")
+        check(state["events"][0].get("fired") is True, "the event is marked fired")
+        check([e["cmd"] for e in read_log(work)] == ["issue comment", "pr merge", "pr merge"],
+              f"an event adds no log line, got {read_log(work)}")
+        gh(work, "pr", "edit", "7", "--title", "again")
+        check(len(read_tracker(work)["issues"][0]["comments"]) == 2, "an event fires once")
+    finally:
+        shutil.rmtree(work, ignore_errors=True)
+
+
+def test_session_case_events():
+    """The session case's event must fire on a call that its graders expect, on an issue that exists."""
+    with open(os.path.join(EVALS, "pm", "pm-session-batch", "tracker.json")) as handle:
+        tracker = json.load(handle)
+    with open(os.path.join(EVALS, "pm", "pm-session-batch", "case.json")) as handle:
+        case = json.load(handle)
+    numbers = {item["number"] for item in tracker["issues"] + tracker["prs"]}
+    expected = {spec["cmd"] for grader in case["graders"] for spec in grader.get("expect", [])}
+    check(tracker.get("events"), "the session case has an event for its second sweep")
+    for event in tracker.get("events", []):
+        check(event["after"]["cmd"] in expected, f"the event trigger is a call the graders expect, got {event['after']}")
+        check(event["comment"]["issue"] in numbers, f"the event names an issue of the tracker, got {event['comment']}")
+        check(not event.get("fired"), "the event starts unfired")
+
+
 def test_readme_names_the_environment():
     with open(os.path.join(EVALS, "README.md")) as handle:
         readme = handle.read()
@@ -774,7 +835,7 @@ for test in (test_fake_gh, test_runner_happy_path, test_runner_failures_and_ceil
              test_readme_names_the_environment, test_git_isolation_env, test_plugin_copy_protects_the_plugin,
              test_judge_takes_a_majority_of_votes,
              test_agent_repo_cannot_run_code_on_the_host, test_a_case_needs_a_deterministic_grader,
-             test_run_claude_timeout):
+             test_run_claude_timeout, test_fake_gh_events, test_session_case_events):
     try:
         test()
     except Exception as error:  # a crash in one test must not hide the others

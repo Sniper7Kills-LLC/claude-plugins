@@ -1,0 +1,401 @@
+{
+  "repo": {
+    "owner": "acme",
+    "name": "widgets",
+    "defaultBranch": "main"
+  },
+  "user": "eval-bot",
+  "labels": [
+    {
+      "name": "status:ready",
+      "color": "0E8A16",
+      "description": ""
+    },
+    {
+      "name": "status:in-progress",
+      "color": "1D76DB",
+      "description": ""
+    },
+    {
+      "name": "status:in-review",
+      "color": "5319E7",
+      "description": ""
+    },
+    {
+      "name": "status:batched",
+      "color": "BFD4F2",
+      "description": ""
+    },
+    {
+      "name": "status:deploying",
+      "color": "0052CC",
+      "description": ""
+    },
+    {
+      "name": "status:deploy-failed",
+      "color": "B60205",
+      "description": ""
+    },
+    {
+      "name": "status:awaiting-review",
+      "color": "FEF2C0",
+      "description": ""
+    },
+    {
+      "name": "status:blocked",
+      "color": "D93F0B",
+      "description": ""
+    },
+    {
+      "name": "status:needs-feedback",
+      "color": "FBCA04",
+      "description": ""
+    },
+    {
+      "name": "type:epic",
+      "color": "5319E7",
+      "description": ""
+    },
+    {
+      "name": "type:batch",
+      "color": "C5DEF5",
+      "description": ""
+    },
+    {
+      "name": "type:hotfix",
+      "color": "B60205",
+      "description": ""
+    },
+    {
+      "name": "review:finding",
+      "color": "F9D0C4",
+      "description": ""
+    },
+    {
+      "name": "type:spec-update",
+      "color": "D4C5F9",
+      "description": ""
+    },
+    {
+      "name": "flow:status",
+      "color": "EDEDED",
+      "description": ""
+    },
+    {
+      "name": "priority:high",
+      "color": "B60205",
+      "description": ""
+    },
+    {
+      "name": "priority:low",
+      "color": "C2E0C6",
+      "description": ""
+    }
+  ],
+  "issues": [
+    {
+      "number": 50,
+      "title": "Batch: count output flags",
+      "body": "Tracking issue for a loose batch.\n\nIntegration branch: `batch/50-count-output`\n\n- [ ] #51 Add a --json flag to `widgets count`\n- [ ] #52 Add a --quiet flag to `widgets count`\n",
+      "state": "open",
+      "labels": [
+        "type:batch"
+      ],
+      "assignees": [
+        "eval-bot"
+      ],
+      "author": "maintainer",
+      "createdAt": "2026-11-20T09:00:00Z",
+      "updatedAt": "2026-11-20T09:00:00Z",
+      "comments": [
+        {
+          "id": 5001,
+          "author": "eval-bot",
+          "body": "finding: batch cross-check, batch #50\n\nI compared the plans of #51 and #52. Both change the `count` parser in `widgets.py`, with disjoint intent (two new flags). Clean: no shared function, flag or output format.",
+          "createdAt": "2026-11-20T09:00:00Z"
+        }
+      ]
+    },
+    {
+      "number": 51,
+      "title": "Add a --json flag to `widgets count`",
+      "body": "`widgets count` prints a plain number. Scripts need a machine-readable form.\n\nPart of #50\n\n## Acceptance criteria\n- [ ] `widgets count --json` prints `{\"count\": N}` and exits 0\n- [ ] `widgets count --json` on an empty stock file prints `{\"count\": 0}`\n",
+      "state": "open",
+      "labels": [
+        "status:in-review"
+      ],
+      "assignees": [
+        "eval-bot"
+      ],
+      "author": "maintainer",
+      "createdAt": "2026-11-20T09:00:00Z",
+      "updatedAt": "2026-11-20T09:00:00Z",
+      "comments": [
+        {
+          "id": 5101,
+          "author": "eval-bot",
+          "body": "## Plan (PM)\n\nAdd `--json` to the `count` subcommand in `widgets.py`. Tests in `test_widgets.py`, written first: `test_count_json_prints_object`, `test_count_json_empty_file`. Document the flag in `README.md`.",
+          "createdAt": "2026-11-20T09:00:00Z"
+        },
+        {
+          "id": 5102,
+          "author": "eval-bot",
+          "body": "worker launched: w-51",
+          "createdAt": "2026-11-20T09:00:00Z"
+        }
+      ]
+    },
+    {
+      "number": 52,
+      "title": "Add a --quiet flag to `widgets count`",
+      "body": "Shell scripts only need to know whether a stock file is empty.\n\nPart of #50\n\n## Acceptance criteria\n- [ ] `widgets count --quiet` prints nothing\n- [ ] `widgets count --quiet` exits 1 when the count is 0, and 0 otherwise\n",
+      "state": "open",
+      "labels": [
+        "status:in-review"
+      ],
+      "assignees": [
+        "eval-bot"
+      ],
+      "author": "maintainer",
+      "createdAt": "2026-11-20T09:00:00Z",
+      "updatedAt": "2026-11-20T09:00:00Z",
+      "comments": [
+        {
+          "id": 5201,
+          "author": "eval-bot",
+          "body": "## Plan (PM)\n\nAdd `--quiet` to the `count` subcommand in `widgets.py`. Tests in `test_widgets.py`, written first: `test_quiet_prints_nothing`, `test_quiet_exit_code_for_empty_file`. Document the flag in `README.md`.",
+          "createdAt": "2026-11-20T09:00:00Z"
+        },
+        {
+          "id": 5202,
+          "author": "eval-bot",
+          "body": "worker launched: w-52",
+          "createdAt": "2026-11-20T09:00:00Z"
+        }
+      ]
+    },
+    {
+      "number": 61,
+      "title": "Exit with an error when the stock file is missing",
+      "body": "`widgets count missing.txt` prints a Python traceback.\n\n## Acceptance criteria\n- [ ] `widgets count missing.txt` prints `error: missing.txt: no such file` to stderr and exits 1\n- [ ] No traceback is printed\n",
+      "state": "open",
+      "labels": [],
+      "assignees": [],
+      "author": "maintainer",
+      "createdAt": "2026-11-20T09:00:00Z",
+      "updatedAt": "2026-11-20T09:00:00Z",
+      "comments": []
+    },
+    {
+      "number": 62,
+      "title": "Do not count comment lines in a stock file",
+      "body": "Stock files can hold notes on lines that start with `#`. `widgets count` counts them as widgets.\n\n## Acceptance criteria\n- [ ] A line whose first non-space character is `#` is not counted\n- [ ] A line with `#` after other text is still counted\n",
+      "state": "open",
+      "labels": [],
+      "assignees": [],
+      "author": "maintainer",
+      "createdAt": "2026-11-20T09:00:00Z",
+      "updatedAt": "2026-11-20T09:00:00Z",
+      "comments": []
+    },
+    {
+      "number": 63,
+      "title": "The count is wrong for some files",
+      "body": "For some of our stock files the number is off. Please fix it.",
+      "state": "open",
+      "labels": [],
+      "assignees": [],
+      "author": "maintainer",
+      "createdAt": "2026-11-20T09:00:00Z",
+      "updatedAt": "2026-11-20T09:00:00Z",
+      "comments": []
+    },
+    {
+      "number": 64,
+      "title": "Make the output nicer",
+      "body": "The output of `widgets` looks bad. Can it look better?",
+      "state": "open",
+      "labels": [],
+      "assignees": [],
+      "author": "maintainer",
+      "createdAt": "2026-11-20T09:00:00Z",
+      "updatedAt": "2026-11-20T09:00:00Z",
+      "comments": []
+    },
+    {
+      "number": 65,
+      "title": "Epic: read stock files in more formats",
+      "body": "Stock files now also come from two other tools, as CSV and as JSON.\n\n## Work\n- [ ] Read CSV stock files with `widgets count --format csv`: one widget per data row, and the header row is not counted\n- [ ] Read JSON stock files with `widgets count --format json`: the file is a JSON list, and each object in it is one widget\n\nWithout `--format`, the plain-text format stays the default.\n",
+      "state": "open",
+      "labels": [
+        "type:epic"
+      ],
+      "assignees": [],
+      "author": "maintainer",
+      "createdAt": "2026-11-20T09:00:00Z",
+      "updatedAt": "2026-11-20T09:00:00Z",
+      "comments": []
+    },
+    {
+      "number": 66,
+      "title": "Add a --limit flag to `widgets count`",
+      "body": "Stop counting after N widgets.\n\n## Acceptance criteria\n- [ ] `widgets count --limit 5` prints at most 5\n",
+      "state": "open",
+      "labels": [
+        "status:in-review",
+        "status:needs-feedback"
+      ],
+      "assignees": [
+        "eval-bot"
+      ],
+      "author": "maintainer",
+      "createdAt": "2026-11-20T09:00:00Z",
+      "updatedAt": "2026-11-20T09:00:00Z",
+      "comments": [
+        {
+          "id": 6601,
+          "author": "eval-bot",
+          "body": "Question from the worker: should `--limit 0` mean no limit, or print 0? The issue does not say, and the two readings give different output.",
+          "createdAt": "2026-11-20T09:00:00Z"
+        }
+      ]
+    },
+    {
+      "number": 67,
+      "title": "Add a --version flag",
+      "body": "Print the package version.\n\n## Acceptance criteria\n- [ ] `widgets --version` prints the version from `widgets.py` and exits 0\n",
+      "state": "open",
+      "labels": [
+        "status:ready",
+        "priority:low"
+      ],
+      "assignees": [],
+      "author": "maintainer",
+      "createdAt": "2026-11-20T09:00:00Z",
+      "updatedAt": "2026-11-20T09:00:00Z",
+      "comments": []
+    },
+    {
+      "number": 68,
+      "title": "Document the --verbose flag in the README",
+      "body": "The README shows only the plain form of `widgets count`.\n\n## Acceptance criteria\n- [ ] `README.md` shows `widgets count --verbose stock.txt` and its output, `3 widgets in stock.txt`\n",
+      "state": "open",
+      "labels": [],
+      "assignees": [],
+      "author": "maintainer",
+      "createdAt": "2026-11-20T09:00:00Z",
+      "updatedAt": "2026-11-20T09:00:00Z",
+      "comments": []
+    }
+  ],
+  "prs": [
+    {
+      "number": 53,
+      "title": "Add a --json flag to widgets count",
+      "body": "Refs #51\n\nAdds `--json` to `widgets count`. The plain output does not change. README documents the flag.\n\nTests: `python3 -m unittest` (16 passed).",
+      "state": "open",
+      "isDraft": true,
+      "headRefName": "issue/51-json-flag",
+      "baseRefName": "batch/50-count-output",
+      "labels": [],
+      "author": "eval-bot",
+      "assignees": [],
+      "comments": [],
+      "reviews": [],
+      "mergeable": "MERGEABLE",
+      "files": [
+        {
+          "path": "widgets.py",
+          "additions": 6,
+          "deletions": 1
+        },
+        {
+          "path": "test_widgets.py",
+          "additions": 18,
+          "deletions": 0
+        },
+        {
+          "path": "README.md",
+          "additions": 4,
+          "deletions": 0
+        }
+      ],
+      "commits": [
+        {
+          "oid": "a1b2c3d",
+          "messageHeadline": "test: cover widgets count --json (#51) [skip ci]"
+        },
+        {
+          "oid": "b2c3d4e",
+          "messageHeadline": "feat: add --json to widgets count (#51) [skip ci]"
+        },
+        {
+          "oid": "c3d4e5f",
+          "messageHeadline": "docs: document widgets count --json (#51) [skip ci]"
+        }
+      ],
+      "createdAt": "2026-11-20T09:00:00Z",
+      "updatedAt": "2026-11-20T09:00:00Z"
+    },
+    {
+      "number": 54,
+      "title": "Add a --quiet flag to widgets count",
+      "body": "Refs #52\n\nAdds `--quiet` to `widgets count`.\n\nTests: `python3 -m unittest` (15 passed).",
+      "state": "open",
+      "isDraft": true,
+      "headRefName": "issue/52-quiet-flag",
+      "baseRefName": "batch/50-count-output",
+      "labels": [],
+      "author": "eval-bot",
+      "assignees": [],
+      "comments": [],
+      "reviews": [],
+      "mergeable": "MERGEABLE",
+      "files": [
+        {
+          "path": "widgets.py",
+          "additions": 5,
+          "deletions": 1
+        },
+        {
+          "path": "test_widgets.py",
+          "additions": 12,
+          "deletions": 0
+        },
+        {
+          "path": "README.md",
+          "additions": 3,
+          "deletions": 0
+        }
+      ],
+      "commits": [
+        {
+          "oid": "d4e5f6a",
+          "messageHeadline": "test: cover widgets count --quiet output (#52) [skip ci]"
+        },
+        {
+          "oid": "e5f6a7b",
+          "messageHeadline": "feat: add --quiet to widgets count (#52) [skip ci]"
+        },
+        {
+          "oid": "f6a7b8c",
+          "messageHeadline": "docs: document widgets count --quiet (#52) [skip ci]"
+        }
+      ],
+      "createdAt": "2026-11-20T09:00:00Z",
+      "updatedAt": "2026-11-20T09:00:00Z"
+    }
+  ],
+  "events": [
+    {
+      "after": {
+        "cmd": "pr merge"
+      },
+      "comment": {
+        "issue": 63,
+        "author": "maintainer",
+        "body": "Answer: the files that the stock tool exports start with the header line `sku`, and `widgets count` counts that line as a widget. For a file with the header and 3 widgets, the expected count is 3 and the actual count is 4. Please do not count a first line that is exactly `sku`. Other files have no header and must not change."
+      }
+    }
+  ]
+}

@@ -17,6 +17,9 @@ The script does three things:
    `/home/`, `/private/`, `/var/folders/`). When it finds one, it writes nothing and
    exits 2.
 3. It writes summary.json, with the numbers per case and for the suite.
+4. It counts the lines of each run's fake-gh log, `<case>/run-<k>/gh-log.jsonl`, as
+   `tracker_calls` {total, read, write, error}. A run with no log gets null. The count
+   is information only: no decision rule reads it.
 
 The record's `cost_usd` stays the cost that governs. The `agents` cost is an estimate
 from pricing.json, kept only for the per-agent breakdown.
@@ -85,6 +88,22 @@ def mean(values):
     return round(sum(values) / len(values), 4) if values else None
 
 
+def tracker_calls(results_dir, record):
+    """Count the lines of a run's fake-gh log by kind, or return None when the run kept no log."""
+    path = os.path.join(results_dir, record["case"], f"run-{record['run']}", "gh-log.jsonl")
+    if not os.path.isfile(path):
+        return None
+    counts = {"total": 0, "read": 0, "write": 0, "error": 0}
+    with open(path, encoding="utf-8") as handle:
+        for line in handle:
+            if line.strip():
+                kind = json.loads(line).get("kind")
+                counts["total"] += 1
+                if kind in counts:
+                    counts[kind] += 1
+    return counts
+
+
 def summarize(records):
     """Return the summary of one case's records."""
     hidden = [grader["passed"] for r in records for grader in r.get("graders", []) if grader["type"] == "hidden_tests"]
@@ -109,6 +128,8 @@ def summarize(records):
         "mean_subagent_turns": mean(sum(a["turns"] for a in r["agents"]["agents"] if a["type"] != "main")
                                     for r in with_tokens),
         "mean_agent_cost_usd": mean((r.get("agents") or {}).get("totals", {}).get("cost_usd") for r in records),
+        # Information only: no decision rule reads it (Sniper7Kills-LLC/claude-plugins#108, #116).
+        "mean_tracker_calls": mean((r.get("tracker_calls") or {}).get("total") for r in records),
         "errors": sum(1 for r in records if r.get("error")),
     }
 
@@ -138,6 +159,7 @@ def main(argv=None):
         else:
             record["agents"] = agent_report(transcript)
             record["tokens"] = token_split(record["agents"])
+        record["tracker_calls"] = tracker_calls(args.results, record)
         record["transcript"] = None
         record["sandbox"] = None
         # The records of 0.20.0 predate the per-record effort; the top-level value is theirs too.

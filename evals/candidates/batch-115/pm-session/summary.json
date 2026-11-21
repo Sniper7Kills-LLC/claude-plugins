@@ -1,0 +1,73 @@
+{
+  "suite": "pm",
+  "variant": {
+    "plugin_dir": "issue-flow (git worktree of fork/batch/115-token-speed at 2ef9bd7)",
+    "git_sha": "2ef9bd7f194a810a5f9d72ba06da2dcb9ca14037",
+    "version": "0.20.0"
+  },
+  "effort": "medium",
+  "started": "20261121T231140Z",
+  "finished": "20261121T232222Z",
+  "partial": false,
+  "models": [
+    "claude-opus-5-5"
+  ],
+  "total_cost_usd": 3.943833,
+  "runs": 3,
+  "suite_means": {
+    "runs": 3,
+    "ok_rate": 1.0,
+    "mean_score": 1.0,
+    "score_range": [
+      1.0,
+      1.0
+    ],
+    "hidden_pass_rate": null,
+    "mean_cost_usd": 1.3117,
+    "cost_range": [
+      1.277,
+      1.3343
+    ],
+    "mean_turns": 26.6667,
+    "mean_duration_s": 204.3707,
+    "duration_range": [
+      194.1,
+      223.7
+    ],
+    "mean_main_tokens": 1691691.3333,
+    "mean_subagent_tokens": 0.0,
+    "mean_subagent_turns": 0.0,
+    "mean_agent_cost_usd": 1.3117,
+    "mean_tracker_calls": 77.3333,
+    "errors": 0
+  },
+  "cases": {
+    "pm-session-batch": {
+      "runs": 3,
+      "ok_rate": 1.0,
+      "mean_score": 1.0,
+      "score_range": [
+        1.0,
+        1.0
+      ],
+      "hidden_pass_rate": null,
+      "mean_cost_usd": 1.3117,
+      "cost_range": [
+        1.277,
+        1.3343
+      ],
+      "mean_turns": 26.6667,
+      "mean_duration_s": 204.3707,
+      "duration_range": [
+        194.1,
+        223.7
+      ],
+      "mean_main_tokens": 1691691.3333,
+      "mean_subagent_tokens": 0.0,
+      "mean_subagent_turns": 0.0,
+      "mean_agent_cost_usd": 1.3117,
+      "mean_tracker_calls": 77.3333,
+      "errors": 0
+    }
+  }
+}

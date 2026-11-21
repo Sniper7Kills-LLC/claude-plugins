@@ -146,6 +146,46 @@ the batch head against this baseline: the same pass rate, and a cost 66% lower.
 - A worker case does not load the PM skill, so the Sonnet worker is the likely cause of
   the batch head's gain. This measurement does not test the two changes apart.
 
+## PM session case
+
+`pm-session-batch` is a session-level PM case (Sniper7Kills-LLC/claude-plugins#116,
+`evals/README.md`, "Session-level PM cases"). The run records are in
+`evals/baselines/0.20.0/pm-session/`. The same case on the head of batch #115 is in
+`evals/candidates/batch-115/pm-session/`, for comparison. These are new baselines, not a
+ship decision.
+
+| Item | 0.20.0 | Batch #115 head |
+|---|---|---|
+| Plugin | a git worktree of the tag `issue-flow--v0.20.0` (`c3974fe`) | a git worktree of `batch/115-token-speed` at `2ef9bd7` |
+| Case, runner and fake `gh` | this repository at `0e4c65a` (case tree `c62b068`) | the same |
+| Date | 2026-11-21 (UTC) | 2026-11-21 (UTC) |
+| Runs | 3 | 3 |
+| Spent, judges included | $3.48, under the ceiling of $25 | $3.94, under the ceiling of $25 |
+
+The model is `claude-opus-5-5` and the effort is `medium` on both sides. The `llm` judge
+takes the majority of votes (Sniper7Kills-LLC/claude-plugins#117) on both sides.
+
+| Variant | ok | Mean score (range) | PM tokens | Tracker calls (range) | Turns | Mean cost (range) | Duration (range) |
+|---|---|---|---|---|---|---|---|
+| 0.20.0 | 3/3 | 0.92 (0.75–1.00) | 1,443k | 102.3 (96–114) | 21.3 | $1.16 ($1.07–$1.30) | 160 s (144–185) |
+| batch head | 3/3 | 1.00 (1.00–1.00) | 1,692k | 77.3 (69–83) | 26.7 | $1.31 ($1.28–$1.33) | 204 s (194–224) |
+
+- "PM tokens" is the sum of the four token counts of the main agent. No run spawned a
+  subagent.
+- "Tracker calls" is `tracker_calls.total`: every line of the run's gh log. It includes
+  the 3 reads of the SessionStart preflight hook and 12 refused `gh pr view <branch>`
+  calls from Claude Code itself in each run. Without them, the PM made 87.3 calls per
+  run on 0.20.0 and 62.3 on the batch head.
+- On this case, the batch head made 24% fewer tracker calls, but used 17% more PM tokens,
+  5.3 more turns and 13% more cost than 0.20.0. The split PM skill
+  (Sniper7Kills-LLC/claude-plugins#107) is the likely cause, because the session reads
+  several stage files. This measurement does not test that.
+- The one score below 1.00 is 0.20.0 run 2: the judge found the questions on #63 too
+  generic. The deterministic graders passed.
+- The first version of the case gave #51 weak evidence for one criterion. The 0.20.0 PM
+  correctly refused to merge #51 in 2 of 3 runs. The case was fixed, and all the runs above
+  were made after the fix. The runs from before the fix are not kept.
+
 ## What the baseline can and cannot show
 
 - **Sample size.** Each case has 3 runs. At this size, a drop under about 15 points cannot
