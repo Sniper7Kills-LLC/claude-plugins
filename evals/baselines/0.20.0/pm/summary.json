@@ -4,6 +4,7 @@
     "git_sha": "c3974fe577b7ce45383f564c3ed54b5a99080a9d",
     "version": "0.20.0"
   },
+  "effort": "medium",
   "total_cost_usd": 9.998784,
   "cases": {
     "pm-a0-split-status": {

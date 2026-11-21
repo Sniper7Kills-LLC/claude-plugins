@@ -51,7 +51,7 @@ def record(case, run, session_id, transcript=None, cost=0.25, hidden=True, wall=
 def write_input(records):
     directory = os.path.join(TMP, "in")
     os.makedirs(directory, exist_ok=True)
-    results = {"suite": "worker",
+    results = {"suite": "worker", "effort": "high",
                "variant": {"plugin_dir": "/Users/someone/wt/issue-flow", "git_sha": "abc", "version": "0.20.0"},
                "started": "20261121T000000Z", "finished": "20261121T010000Z", "max_cost_usd": 150.0,
                "total_cost_usd": sum(r["cost_usd"] for r in records), "partial": False, "records": records}
@@ -112,6 +112,7 @@ def test_annotate_strip_and_summary():
     check("summary: the models of the suite", summary["models"] == ["claude-haiku-5-5", "claude-opus-5-5"],
           summary.get("models"))
     check("summary: the total cost", abs(summary["total_cost_usd"] - 0.60) < 1e-9, summary)
+    check("summary: the effort of the run", summary.get("effort") == "high", summary.get("effort"))
 
 
 def test_missing_transcript():

@@ -131,6 +131,7 @@ def main(argv=None):
     summary = {
         "suite": results.get("suite"),
         "variant": results["variant"],
+        "effort": results.get("effort"),
         "started": results.get("started"),
         "finished": results.get("finished"),
         "partial": results.get("partial"),

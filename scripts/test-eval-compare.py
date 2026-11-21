@@ -53,11 +53,12 @@ def worker_record(case, run, hidden=True, cost=1.0):
     }
 
 
-def write_results(name, suite, records):
-    """Write a results directory in the runner's format."""
+def write_results(name, suite, records, effort="medium"):
+    """Write a results directory in the runner's format; effort None leaves the key out."""
     directory = os.path.join(TMP, name)
     os.makedirs(directory, exist_ok=True)
     results = {"suite": suite, "variant": {"plugin_dir": None, "git_sha": "abc", "version": name},
+               **({"effort": effort} if effort else {}),
                "started": "20261121T000000Z", "finished": "20261121T010000Z", "max_cost_usd": None,
                "total_cost_usd": sum(r["cost_usd"] for r in records), "partial": False,
                "records": records}
@@ -266,10 +267,32 @@ def test_output_and_input():
           not any("pm-a" in line for line in flagged), report)
 
 
+def test_effort():
+    print("effort")
+    base = pm_suite("e-base", tokens=1000)
+    records = [pm_record(case, run, tokens=900) for case in PM_CASES for run in (1, 2, 3)]
+    code, report = compare(base, write_results("e-high", "pm", records, effort="high"))
+    check("a different effort exits 5", code == 5, (code, report))
+    code, text = text_compare(base, write_results("e-high", "pm", records, effort="high"))
+    check("the refusal names both efforts", "medium" in text and "high" in text, text)
+    code, report = compare(base, write_results("e-none", "pm", records, effort=None))
+    check("a candidate with no effort exits 5", code == 5, (code, report))
+    code, report = compare(base, write_results("e-same", "pm", records))
+    check("the same effort compares", code == 0 and report.get("verdict") == "ship", (code, report))
+    # Both 0.20.0 baselines ran at medium, inherited from the host session.
+    baselines = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "evals", "baselines", "0.20.0")
+    for suite in ("pm", "worker"):
+        for name in ("results.json", "summary.json"):
+            with open(os.path.join(baselines, suite, name), encoding="utf-8") as handle:
+                effort = json.load(handle).get("effort")
+            check(f"the 0.20.0 {suite} {name} records effort medium", effort == "medium", effort)
+
+
 EVALS = make_evals_dir()
 try:
     test_pm_rule()
     test_worker_rule()
+    test_effort()
     test_output_and_input()
 finally:
     shutil.rmtree(TMP, ignore_errors=True)

@@ -3,7 +3,7 @@
 
     python3 scripts/run-evals.py --plugin-dir issue-flow --suite pm [--case <glob>]
         [--tag <tag>] [--runs N] [--out <dir>] [--max-cost-usd X] [--main-model <id>]
-        [--keep] [--evals-dir <dir>]
+        [--effort low|medium|high|xhigh|max] [--keep] [--evals-dir <dir>]
 
 Each run gets a temporary sandbox. The sandbox holds a git repo whose only
 remote is a local bare repo, and a tracker.json that the fake `gh` in
@@ -35,6 +35,28 @@ INSTALLED_PLUGIN = "issue-flow@sniper7kills"
 JUDGE_MODEL = "haiku"
 DEFAULT_TIMEOUT_S = 900
 FAKE_TOKEN = "ife-eval-fake-token-without-access"
+EFFORTS = ("low", "medium", "high", "xhigh", "max")
+# The effort of both 0.20.0 baselines; a run at another effort cannot be compared with them.
+DEFAULT_EFFORT = "medium"
+# The host variables a run takes: the system basics, and what `claude -p` reads to authenticate
+# and reach the API (https://code.claude.com/docs/en/env-vars). A run gets no other host variable.
+KEEP_ENV = frozenset({
+    "HOME", "USER", "LOGNAME", "SHELL", "PATH", "TMPDIR", "TERM", "TZ", "LANG",
+    "HTTP_PROXY", "HTTPS_PROXY", "NO_PROXY", "http_proxy", "https_proxy", "no_proxy",
+    "NODE_EXTRA_CA_CERTS", "CLAUDE_CODE_CERT_STORE", "CLAUDE_CODE_CLIENT_CERT",
+    "CLAUDE_CODE_CLIENT_KEY", "CLAUDE_CODE_CLIENT_KEY_PASSPHRASE",
+    "ANTHROPIC_API_KEY", "ANTHROPIC_AUTH_TOKEN", "ANTHROPIC_BASE_URL", "ANTHROPIC_CUSTOM_HEADERS",
+    "ANTHROPIC_PROFILE", "ANTHROPIC_FEDERATION_RULE_ID", "ANTHROPIC_ORGANIZATION_ID",
+    "ANTHROPIC_WORKSPACE_ID", "CLAUDE_CODE_OAUTH_TOKEN", "CLAUDE_CONFIG_DIR",
+    "CLAUDE_CODE_API_KEY_HELPER_TTL_MS",
+    "CLAUDE_CODE_USE_BEDROCK", "CLAUDE_CODE_USE_VERTEX", "CLAUDE_CODE_USE_FOUNDRY",
+    "CLAUDE_CODE_USE_MANTLE", "CLAUDE_CODE_USE_ANTHROPIC_AWS", "CLAUDE_CODE_USE_ANTHROPIC_GOOGLE_CLOUD",
+    "CLAUDE_CODE_SKIP_BEDROCK_AUTH", "CLAUDE_CODE_SKIP_VERTEX_AUTH", "CLAUDE_CODE_SKIP_FOUNDRY_AUTH",
+    "CLAUDE_CODE_SKIP_MANTLE_AUTH", "CLAUDE_CODE_SKIP_ANTHROPIC_AWS_AUTH",
+    "CLAUDE_CODE_SKIP_ANTHROPIC_GOOGLE_CLOUD_AUTH",
+})
+KEEP_ENV_PREFIXES = ("LC_", "AWS_", "ANTHROPIC_BEDROCK_", "ANTHROPIC_VERTEX_", "ANTHROPIC_FOUNDRY_",
+                     "ANTHROPIC_AWS_", "ANTHROPIC_GOOGLE_CLOUD_", "VERTEX_REGION_")
 SANDBOX_GIT = {"GIT_AUTHOR_NAME": "eval", "GIT_AUTHOR_EMAIL": "eval@example.invalid",
                "GIT_COMMITTER_NAME": "eval", "GIT_COMMITTER_EMAIL": "eval@example.invalid"}
 
@@ -125,9 +147,18 @@ def build_sandbox(case):
     return sandbox, repo
 
 
+def host_env_kept(name):
+    """True when a run takes this host variable; evals/README.md lists the rules."""
+    return name in KEEP_ENV or name.startswith(KEEP_ENV_PREFIXES)
+
+
 def sandbox_env(sandbox):
-    """The run's environment: the fake gh first on PATH, and no usable GitHub token."""
-    env = dict(os.environ)
+    """The run's environment: the allowed host variables, the fake gh first on PATH, no usable GitHub token.
+
+    The environment starts from an allowlist. A host Claude Code session sets CLAUDE_* variables
+    for its commands, and a run that got them would write to the host session's paths.
+    """
+    env = {name: value for name, value in os.environ.items() if host_env_kept(name)}
     env.update(
         PATH=FAKE_GH_DIR + os.pathsep + env.get("PATH", ""),
         IFE_TRACKER=os.path.join(sandbox, "tracker.json"),
@@ -477,7 +508,8 @@ def run_case(case, run_number, args, variant, budget_left, run_dir):
     # A worker brief names the plugin under test as its pluginRoot.
     prompt = case["prompt"].replace("{plugin_dir}", args.plugin_dir)
     claude_args = ["-p", prompt, "--plugin-dir", args.plugin_dir, *isolation_args(),
-                   "--permission-mode", "bypassPermissions", "--output-format", "json"]
+                   "--permission-mode", "bypassPermissions", "--output-format", "json",
+                   "--effort", args.effort]
     if model:
         claude_args += ["--model", model]
     if budget_left is not None:
@@ -530,7 +562,7 @@ def run_case(case, run_number, args, variant, budget_left, run_dir):
     deterministic = [g for g in graders if g["type"] != "llm"]
     judged = [g for g in graders if g["type"] == "llm"]
     record = {
-        "case": case["name"], "run": run_number, "variant": variant,
+        "case": case["name"], "run": run_number, "variant": variant, "effort": args.effort,
         "ok": error is None and all(g["passed"] for g in deterministic),
         "score": sum(g["passed"] for g in graders) / len(graders),
         "graders": graders,
@@ -589,6 +621,8 @@ def main(argv=None):
     parser.add_argument("--out", help="the results directory (default evals/results/<UTC time>)")
     parser.add_argument("--max-cost-usd", type=float, help="stop before a run once the total cost reaches this")
     parser.add_argument("--main-model", help="the model of the run; overrides the case's own model")
+    parser.add_argument("--effort", choices=EFFORTS, default=DEFAULT_EFFORT,
+                        help=f"the effort level of each run (default {DEFAULT_EFFORT}, the effort of the 0.20.0 baselines)")
     parser.add_argument("--keep", action="store_true", help="keep each sandbox for inspection")
     parser.add_argument("--evals-dir", default=os.path.join(ROOT, "evals"), help=argparse.SUPPRESS)
     args = parser.parse_args(argv)
@@ -610,7 +644,8 @@ def main(argv=None):
     out = os.path.abspath(args.out or os.path.join(args.evals_dir, "results", stamp))
     os.makedirs(out, exist_ok=True)
     variant = variant_of(args.plugin_dir)
-    results = {"suite": args.suite, "variant": variant, "started": stamp, "finished": None,
+    results = {"suite": args.suite, "variant": variant, "effort": args.effort,
+               "started": stamp, "finished": None,
                "max_cost_usd": args.max_cost_usd, "total_cost_usd": 0.0, "partial": False,
                "records": []}
     plan = [(case, k) for case in cases for k in range(1, (args.runs or case.get("runs", 1)) + 1)]

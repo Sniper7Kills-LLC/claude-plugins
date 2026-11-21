@@ -18,6 +18,7 @@ The run records are in `evals/baselines/0.20.0/pm/` and `evals/baselines/0.20.0/
 | Worker dispatcher model | `claude-haiku-5-5` (`"model": "haiku"` in each worker case) |
 | Worker model | `claude-opus-5-5` (`model: opus` in `agents/issue-worker.md` at 0.20.0) |
 | Judge model | `claude-haiku-5-5`, for the `llm` graders of the PM suite |
+| Effort | `medium`. The runner did not pass `--effort` yet. See "The runs inherited a Claude Code session". |
 
 The PM suite has 6 cases (18 runs) and the worker suite has 8 cases (24 runs).
 
@@ -108,7 +109,22 @@ keeps the first 3 runs.
 - **The runs inherited a Claude Code session.** The worker suite started from a Claude
   Code session, and the runner passes the environment of that session to each run,
   `CLAUDE_EFFORT=medium` included. The effect on the results is not measured.
-  The PM records do not say how their run started. Sniper7Kills-LLC/claude-plugins#113
-  tracks the fix. Start a candidate run the same way, or record how it started.
+  The PM records do not say how their run started. Since
+  Sniper7Kills-LLC/claude-plugins#113, the runner removes these variables from each run
+  (`evals/README.md`, "The environment of a run"). A candidate run is then not affected
+  by where it starts.
+- **Effort.** `results.json` and `summary.json` of both suites now record
+  `"effort": "medium"`. The records were made before the runner passed `--effort`, so this
+  value is added afterwards. The evidence for `medium`: the host session had
+  `CLAUDE_EFFORT=medium`, and `claude-opus-5-5` and `claude-haiku-5-5` default to `medium`
+  (https://code.claude.com/docs/en/model-config). `--setting-sources project,local` kept
+  the host's user settings out, and #113 found no `CLAUDE_CODE_EFFORT_LEVEL` in the host
+  session.
+  `scripts/eval-compare.py` refuses a candidate with another effort (exit 5). The default
+  `--effort medium` of the runner matches the baseline.
+- **Dispatcher wait.** The 908 s run of `worker-hard-ambiguous-tax` (see "Worker suite")
+  came from a dispatcher that ran `sleep`. The worker case prompts now tell the dispatcher
+  not to run `sleep` and not to poll. A candidate run then has no such outlier, and its
+  mean wall time for this case can be lower than the baseline's for that reason alone.
 - **Costs are estimates.** `total_cost_usd` is a client-side estimate at list prices, not
   billing data.

@@ -100,6 +100,9 @@ def test_suite_shape():
         for needle in ("issue-flow:issue-worker", '"worktree"', "{plugin_dir}", ".eval/verdict.json",
                        f"#{issue_of(case)}", "ci:           skip", "batch:        standalone"):
             check(needle in prompt, f"{name}: the prompt holds {needle!r}")
+        # A dispatcher that sleeps to hold its turn makes wall_s measure the sleep, not the worker.
+        check("Do not run `sleep`" in prompt and "Do not end your turn" not in prompt,
+              f"{name}: the prompt tells the dispatcher not to sleep or poll while it waits")
         check(acceptance_criteria(case), f"{name}: the tracker issue has acceptance criteria")
         check(graders_of(case, "verdict"), f"{name}: has a verdict grader")
         check(graders_of(case, "diff_scope"), f"{name}: has a diff_scope grader")
@@ -384,12 +387,15 @@ FAKE_CLAUDE = r'''#!/usr/bin/env python3
 """A stand-in for the dispatcher and its worker, driven by FAKE_WORKER."""
 import json, os, subprocess, sys
 
+# The runner gives a run only the variables it allows, so the test settings come from a file.
+with open(os.path.join(os.path.dirname(os.path.abspath(__file__)), "fake-env.json")) as handle:
+    conf = json.load(handle)
 argv = sys.argv[1:]
-capture = os.environ.get("FAKE_CAPTURE")
+capture = conf.get("FAKE_CAPTURE")
 if capture:
     with open(capture, "a") as handle:
         handle.write(json.dumps({"argv": argv}) + "\n")
-plan = json.loads(os.environ.get("FAKE_WORKER", "{}"))
+plan = json.loads(conf.get("FAKE_WORKER", "{}"))
 env = dict(os.environ, GIT_AUTHOR_NAME="w", GIT_AUTHOR_EMAIL="w@example.invalid",
            GIT_COMMITTER_NAME="w", GIT_COMMITTER_EMAIL="w@example.invalid")
 if plan.get("branch"):
@@ -421,7 +427,9 @@ def run_suite(extra_env, *args):
     with open(os.path.join(plugin, ".claude-plugin", "plugin.json"), "w") as handle:
         json.dump({"name": "issue-flow", "version": "9.9.9"}, handle)
     capture = os.path.join(root, "capture.jsonl")
-    env = dict(os.environ, IFE_CLAUDE=fake, FAKE_CAPTURE=capture, **extra_env)
+    with open(os.path.join(root, "fake-env.json"), "w") as handle:
+        json.dump(dict(extra_env, FAKE_CAPTURE=capture), handle)
+    env = dict(os.environ, IFE_CLAUDE=fake)
     out = os.path.join(root, "out")
     result = subprocess.run([sys.executable, RUNNER, "--plugin-dir", plugin, "--suite", "worker",
                              "--out", out, "--runs", "1", *args],

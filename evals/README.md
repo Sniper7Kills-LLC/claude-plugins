@@ -49,6 +49,7 @@ python3 scripts/run-evals.py --plugin-dir issue-flow --suite pm
 | `--out <dir>` | The results directory. The default is `evals/results/<UTC time>/`. |
 | `--max-cost-usd X` | The cost ceiling for the whole invocation (see "Cost"). |
 | `--main-model <id>` | The model of the run. It overrides the model of the case. |
+| `--effort low\|medium\|high\|xhigh\|max` | The effort level of each run. The default is `medium`, the effort of the 0.20.0 baselines. See "Effort". |
 | `--keep` | Keep each sandbox, and write its path into the run record. |
 
 To test an older version, make a worktree of its tag and point `--plugin-dir` at it:
@@ -83,6 +84,59 @@ The runner also isolates the run from the host's Claude Code setup:
   only because of the sandbox. Never point a run at a real checkout.
 
 After the run, the runner removes the sandbox, unless you give `--keep`.
+
+### The environment of a run
+
+The runner builds the environment of each run, and of each `llm` judge, from an
+allowlist (`KEEP_ENV` and `KEEP_ENV_PREFIXES` in `scripts/run-evals.py`). A host
+variable that is not on the allowlist does not get to the run. Thus the result of a run
+does not change when you start the runner from inside a Claude Code session.
+
+The run keeps these host variables:
+
+| Group | Variables |
+|---|---|
+| System | `HOME`, `USER`, `LOGNAME`, `SHELL`, `PATH` (with the fake `gh` first), `TMPDIR`, `TERM`, `TZ`, `LANG`, `LC_*` |
+| Proxy and certificates | `HTTP_PROXY`, `HTTPS_PROXY`, `NO_PROXY` (and the lowercase forms), `NODE_EXTRA_CA_CERTS`, `CLAUDE_CODE_CERT_STORE`, `CLAUDE_CODE_CLIENT_CERT`, `CLAUDE_CODE_CLIENT_KEY`, `CLAUDE_CODE_CLIENT_KEY_PASSPHRASE` |
+| Authentication | `ANTHROPIC_API_KEY`, `ANTHROPIC_AUTH_TOKEN`, `ANTHROPIC_BASE_URL`, `ANTHROPIC_CUSTOM_HEADERS`, `ANTHROPIC_PROFILE`, `ANTHROPIC_FEDERATION_RULE_ID`, `ANTHROPIC_ORGANIZATION_ID`, `ANTHROPIC_WORKSPACE_ID`, `CLAUDE_CODE_OAUTH_TOKEN`, `CLAUDE_CODE_API_KEY_HELPER_TTL_MS`, `CLAUDE_CONFIG_DIR` (the credentials can be in it) |
+| Cloud providers | `CLAUDE_CODE_USE_BEDROCK`, `_VERTEX`, `_FOUNDRY`, `_MANTLE`, `_ANTHROPIC_AWS`, `_ANTHROPIC_GOOGLE_CLOUD`, the matching `CLAUDE_CODE_SKIP_*_AUTH`, and `AWS_*`, `ANTHROPIC_BEDROCK_*`, `ANTHROPIC_VERTEX_*`, `ANTHROPIC_FOUNDRY_*`, `ANTHROPIC_AWS_*`, `ANTHROPIC_GOOGLE_CLOUD_*`, `VERTEX_REGION_*` |
+
+The list comes from https://code.claude.com/docs/en/env-vars. If your login needs a
+variable that is not in it, add the variable to `KEEP_ENV`. Google application-default
+credentials (`GOOGLE_APPLICATION_CREDENTIALS`) are not in the list.
+
+The runner then sets `IFE_TRACKER`, `IFE_GH_LOG`, `GH_TOKEN`, `GITHUB_TOKEN`,
+`GH_CONFIG_DIR` and `GH_PROMPT_DISABLED` for the fake `gh`.
+
+The run gets no other `CLAUDE*` or `ANTHROPIC_*` variable from the host. A Claude Code
+session sets these for its Bash commands and hooks, and they are the reason for the
+allowlist:
+
+- `CLAUDE_CODE_SESSION_ID`: the session of the host.
+- `CLAUDE_CODE_CHILD_NOTES_DIR`: the scratch directory of the host. In
+  `worker-hard-ambiguous-tax` run 2 of the 0.20.0 baseline, the eval worker made its
+  scratch directory there, outside the sandbox.
+- `CLAUDE_CODE_MESSAGING_SOCKET` and `CLAUDE_CODE_MESSAGING_TOKEN`: the inbox of the host.
+- `CLAUDE_EFFORT`: the effort of the host. The runner sets the effort with `--effort`.
+- `CLAUDECODE`, `CLAUDE_CODE_CHILD_SESSION`, `CLAUDE_CODE_SESSION_ATTENDED` and
+  `CLAUDE_CODE_ENTRYPOINT`.
+
+The run also gets no host setting that changes the run, for example `ANTHROPIC_MODEL` or
+`CLAUDE_CODE_EFFORT_LEVEL`. `CLAUDE_CODE_EFFORT_LEVEL` would override `--effort`.
+
+### Effort
+
+The runner gives each run `--effort <level>` (https://code.claude.com/docs/en/cli-reference).
+The default is `medium`. The run record and `results.json` keep the level as `effort`.
+`scripts/eval-compare.py` refuses to compare two results with different efforts, or a
+result with no effort, and exits 5.
+
+`--effort` sets the effort of the main session: the PM, or the dispatcher of a worker
+case. A subagent on another model does not take it
+(https://code.claude.com/docs/en/model-config). Thus the worker of a worker case runs at
+the `effort` of its agent definition or, when there is none, at the default of its model.
+`claude-opus-5-5`, `claude-sonnet-5-5` and `claude-haiku-5-5` default to `medium`.
+`agents/issue-worker.md` sets no `effort` at 0.20.0.
 
 ## The case format
 
@@ -240,6 +294,7 @@ partial, records}`. Each record:
 |---|---|
 | `case`, `run` | The case name and the run number, from 1. |
 | `variant` | `{plugin_dir, git_sha, version}` of the plugin under test. |
+| `effort` | The `--effort` level of the run. `results.json` also has it at the top level. |
 | `ok` | No error, and every deterministic grader passed. |
 | `score` | The fraction of graders that passed. |
 | `graders` | `[{type, passed, detail}]`, in case order. |
@@ -350,7 +405,12 @@ verdict is `hybrid` only when the hybrid meets the same two checks. Otherwise it
 `do not ship`. The hidden-test pass rate counts only the runs that have a `hidden_tests`
 grader, so `worker-hard-ambiguous-tax` is not in it.
 
-The exit code is 0 for `ship`, 1 for `do not ship`, 3 for `hybrid` and 2 for bad input.
+Before the rules, the script compares the `effort` of the two results. When they differ,
+or one result has no `effort`, it refuses and exits 5. Run the candidate with the
+`--effort` of the baseline. The 0.20.0 baselines are `medium`.
+
+The exit code is 0 for `ship`, 1 for `do not ship`, 3 for `hybrid`, 2 for bad input and 5
+for a different or unknown effort.
 `--json` prints the full report. `--rule pm|worker` replaces the rule of the suite.
 
 The report also flags each run whose `agents` cost is more than 10% from its `cost_usd`.
@@ -405,6 +465,8 @@ python3 scripts/run-evals.py --plugin-dir issue-flow --suite worker --tag easy -
 4. The worker reads the issue through the fake `gh`, commits on `issue/<n>-<slug>`, pushes
    to the sandbox `origin`, and opens a draft PR in the fake tracker.
 5. The dispatcher writes the worker's verdict to `.eval/verdict.json` in the sandbox repo.
+   The prompt tells it not to run `sleep` and not to poll while it waits. In the 0.20.0
+   baseline, one dispatcher ran `sleep 900`, and `wall_s` was 908 s for a 47 s worker.
 6. The runner grades the run. Then it removes the sandbox, with the worker's worktree in it.
 
 The record keeps `cost_usd`, which includes the worker. Use `wall_s` for the duration of a

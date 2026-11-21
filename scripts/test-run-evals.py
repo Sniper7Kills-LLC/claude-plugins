@@ -187,31 +187,35 @@ FAKE_CLAUDE = r'''#!/usr/bin/env python3
 """A stand-in for `claude -p` driven by environment variables."""
 import json, os, subprocess, sys
 
+# The runner gives a run only the variables it allows, so the test settings come from a file.
+with open(os.path.join(os.path.dirname(os.path.abspath(__file__)), "fake-env.json")) as handle:
+    conf = json.load(handle)
 argv = sys.argv[1:]
 judge = "--tools" in argv
-capture = os.environ.get("FAKE_CAPTURE")
+capture = conf.get("FAKE_CAPTURE")
 if capture:
     with open(capture, "a") as handle:
         handle.write(json.dumps({"argv": argv, "cwd": os.getcwd(), "judge": judge,
                                  "PATH": os.environ.get("PATH", ""),
                                  "GH_TOKEN": os.environ.get("GH_TOKEN"),
+                                 "env": dict(os.environ),
                                  "remotes": subprocess.run(["git", "remote", "-v"], capture_output=True,
                                                            text=True).stdout}) + "\n")
 if judge:
     print(json.dumps({"type": "result", "subtype": "success", "is_error": False,
-                      "result": os.environ.get("FAKE_JUDGE", "PASS: fine"),
+                      "result": conf.get("FAKE_JUDGE", "PASS: fine"),
                       "total_cost_usd": 0.01, "usage": {}, "num_turns": 1,
                       "duration_ms": 10, "session_id": "judge"}))
     sys.exit(0)
-for call in json.loads(os.environ.get("FAKE_PM_ACTIONS", "[]")):
+for call in json.loads(conf.get("FAKE_PM_ACTIONS", "[]")):
     subprocess.run(["gh", *call], stdout=subprocess.DEVNULL)
-for path, text in json.loads(os.environ.get("FAKE_PM_FILES", "{}")).items():
+for path, text in json.loads(conf.get("FAKE_PM_FILES", "{}")).items():
     os.makedirs(os.path.dirname(path) or ".", exist_ok=True)
     with open(path, "w") as handle:
         handle.write(text)
 print(json.dumps({
     "type": "result", "subtype": "success", "is_error": False, "result": "Done: triaged #1.",
-    "total_cost_usd": float(os.environ.get("FAKE_COST", "0.5")),
+    "total_cost_usd": float(conf.get("FAKE_COST", "0.5")),
     "usage": {"input_tokens": 10, "output_tokens": 20, "cache_read_input_tokens": 30,
               "cache_creation_input_tokens": 40},
     "modelUsage": {"claude-test-model": {"inputTokens": 10, "outputTokens": 20, "costUSD": 0.5}},
@@ -260,7 +264,11 @@ def run_runner(root, extra_env, *args):
     os.makedirs(os.path.join(plugin, ".claude-plugin"), exist_ok=True)
     with open(os.path.join(plugin, ".claude-plugin", "plugin.json"), "w") as handle:
         json.dump({"name": "issue-flow", "version": "9.9.9"}, handle)
-    env = dict(os.environ, IFE_CLAUDE=fake, FAKE_CAPTURE=os.path.join(root, "capture.jsonl"), **extra_env)
+    conf = {key: value for key, value in extra_env.items() if key.startswith("FAKE_")}
+    conf["FAKE_CAPTURE"] = os.path.join(root, "capture.jsonl")
+    with open(os.path.join(root, "fake-env.json"), "w") as handle:
+        json.dump(conf, handle)
+    env = dict(os.environ, IFE_CLAUDE=fake, **extra_env)
     out = os.path.join(root, "out")
     result = subprocess.run(
         [sys.executable, RUNNER, "--plugin-dir", plugin, "--suite", "pm", "--evals-dir",
@@ -489,9 +497,85 @@ def test_real_cases_can_pass():
             shutil.rmtree(root, ignore_errors=True)
 
 
+# The variables a host Claude Code session sets for its Bash commands and hooks.
+HOST_SESSION_ENV = {
+    "CLAUDE_CODE_SESSION_ID": "host-session", "CLAUDE_CODE_CHILD_NOTES_DIR": "/tmp/host-scratchpad",
+    "CLAUDE_CODE_MESSAGING_SOCKET": "/tmp/host.sock", "CLAUDE_CODE_MESSAGING_TOKEN": "host-token",
+    "CLAUDE_EFFORT": "low", "CLAUDECODE": "1", "CLAUDE_CODE_CHILD_SESSION": "1",
+    "CLAUDE_CODE_SESSION_ATTENDED": "1", "CLAUDE_CODE_EFFORT_LEVEL": "max",
+    "CLAUDE_CODE_ENTRYPOINT": "cli", "ANTHROPIC_MODEL": "host-model",
+}
+# The variables that authenticate claude or reach the network; a run keeps them.
+HOST_KEPT_ENV = {"ANTHROPIC_API_KEY": "sk-host", "CLAUDE_CODE_OAUTH_TOKEN": "oauth-host",
+                 "CLAUDE_CONFIG_DIR": "/tmp/host-config", "HTTPS_PROXY": "http://proxy.invalid:3128",
+                 "CLAUDE_CODE_USE_BEDROCK": "1", "AWS_PROFILE": "host-profile", "LANG": "en_US.UTF-8"}
+
+
+def test_host_session_env_is_dropped():
+    root = tempfile.mkdtemp(prefix="run-evals-test-")
+    try:
+        build_evals(root)
+        result, _, captures = run_runner(
+            root, {"FAKE_PM_ACTIONS": GOOD_ACTIONS, "FAKE_PM_FILES": GOOD_FILES,
+                   **HOST_SESSION_ENV, **HOST_KEPT_ENV})
+        check(len(captures) == 2, f"the case and its judge both run, got {len(captures)}: {result.stderr}")
+        for capture in captures:
+            env = capture.get("env", {})
+            who = "the judge" if capture["judge"] else "the run"
+            leaked = sorted(name for name in HOST_SESSION_ENV if name in env)
+            check(not leaked, f"{who} gets none of the host session variables, got {leaked}")
+            # The host session can set more CLAUDE* variables than the test sets.
+            other = sorted(name for name in env if name.startswith(("CLAUDE", "ANTHROPIC_"))
+                           and name not in HOST_KEPT_ENV)
+            check(not other, f"{who} gets no other CLAUDE* or ANTHROPIC_* variable, got {other}")
+            missing = sorted(name for name, value in HOST_KEPT_ENV.items() if env.get(name) != value)
+            check(not missing, f"{who} keeps the auth, provider, proxy and locale variables, missing {missing}")
+            check(env.get("HOME") == os.environ.get("HOME"), f"{who} keeps HOME, got {env.get('HOME')}")
+    finally:
+        shutil.rmtree(root, ignore_errors=True)
+
+
+def test_effort_is_passed_and_recorded():
+    for args, expected in (((), "medium"), (("--effort", "high"), "high")):
+        root = tempfile.mkdtemp(prefix="run-evals-test-")
+        try:
+            build_evals(root)
+            result, results, captures = run_runner(
+                root, {"FAKE_PM_ACTIONS": GOOD_ACTIONS, "FAKE_PM_FILES": GOOD_FILES}, *args)
+            main = [c for c in captures if not c["judge"]]
+            argv = main[0]["argv"] if main else []
+            check("--effort" in argv and argv[argv.index("--effort") + 1] == expected,
+                  f"{args or 'no flag'}: the run gets --effort {expected}, got {argv}: {result.stderr}")
+            records = (results or {}).get("records", [])
+            check(records and records[0].get("effort") == expected,
+                  f"{args or 'no flag'}: the record names effort {expected}, got {records[:1]}")
+            check((results or {}).get("effort") == expected,
+                  f"{args or 'no flag'}: results.json names effort {expected}, got {(results or {}).get('effort')}")
+        finally:
+            shutil.rmtree(root, ignore_errors=True)
+    root = tempfile.mkdtemp(prefix="run-evals-test-")
+    try:
+        build_evals(root)
+        result, _, captures = run_runner(root, {}, "--effort", "extreme")
+        check(result.returncode == 2 and not captures,
+              f"an unknown effort stops the runner before any run, got exit {result.returncode}, {len(captures)} runs")
+    finally:
+        shutil.rmtree(root, ignore_errors=True)
+
+
+def test_readme_names_the_environment():
+    with open(os.path.join(EVALS, "README.md")) as handle:
+        readme = handle.read()
+    for name in ("CLAUDE_CODE_SESSION_ID", "CLAUDE_CODE_CHILD_NOTES_DIR", "CLAUDE_CODE_MESSAGING_",
+                 "CLAUDE_EFFORT", "CLAUDE_CODE_EFFORT_LEVEL", "CLAUDECODE", "ANTHROPIC_API_KEY",
+                 "CLAUDE_CODE_OAUTH_TOKEN", "CLAUDE_CONFIG_DIR", "HTTPS_PROXY", "--effort"):
+        check(f"`{name}" in readme, f"evals/README.md names {name}")
+
+
 for test in (test_fake_gh, test_runner_happy_path, test_runner_failures_and_ceiling,
              test_args_anchor_ignores_body_lines, test_ordered_and_model, test_real_pm_suite,
-             test_real_cases_can_pass):
+             test_real_cases_can_pass, test_host_session_env_is_dropped, test_effort_is_passed_and_recorded,
+             test_readme_names_the_environment):
     try:
         test()
     except Exception as error:  # a crash in one test must not hide the others

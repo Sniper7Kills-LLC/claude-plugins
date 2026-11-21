@@ -23,7 +23,10 @@ those of Sniper7Kills-LLC/claude-plugins#106:
   same two checks.
 
 Each threshold is inclusive. The script compares only the cases that both sides ran.
-Exit codes: 0 ship, 1 do not ship, 3 hybrid, 2 bad input.
+The two results must name the same `effort`. A result that names no effort, or names
+another effort, makes the script refuse: effort changes cost and quality, so the rules
+would measure the effort and not the plugin.
+Exit codes: 0 ship, 1 do not ship, 3 hybrid, 2 bad input, 5 different or unknown effort.
 """
 
 import argparse
@@ -45,6 +48,17 @@ TIERS = ("easy", "medium", "hard")
 
 class InputError(Exception):
     """A results file that cannot be compared."""
+
+
+class EffortError(Exception):
+    """Two results that ran at different efforts, or a result with no effort."""
+
+
+def check_effort(baseline, candidate):
+    base, cand = baseline.get("effort"), candidate.get("effort")
+    if base is None or cand is None or base != cand:
+        raise EffortError(f"the efforts differ or are unknown: baseline {base!r}, candidate {cand!r}; "
+                          "run the candidate with --effort set to the baseline's effort")
 
 
 def load(path):
@@ -244,6 +258,7 @@ def compare(baseline, candidate, rule=None, evals_dir=None):
     base_runs, cand_runs = runs_per_case(base_groups, cases), runs_per_case(cand_groups, cases)
     report.update({
         "rule": rule,
+        "effort": baseline.get("effort"),
         "baseline_variant": baseline.get("variant"),
         "candidate_variant": candidate.get("variant"),
         "cases": {case: {"baseline": case_row(base_groups[case]), "candidate": case_row(cand_groups[case])}
@@ -273,7 +288,7 @@ def span(values, unit=""):
 
 def render(report):
     """Return the report as text for a person."""
-    lines = [f"rule: {report['rule']}"]
+    lines = [f"rule: {report['rule']}", f"effort: {report.get('effort')}"]
     for side in ("baseline", "candidate"):
         variant = report.get(f"{side}_variant") or {}
         lines.append(f"{side}: version {variant.get('version')} at {str(variant.get('git_sha'))[:12]}")
@@ -334,10 +349,15 @@ def main(argv=None):
                         help="the cases directory, for the tier tags (default: evals/)")
     args = parser.parse_args(argv)
     try:
-        report = compare(load(args.baseline), load(args.candidate), args.rule, args.evals_dir)
+        baseline, candidate = load(args.baseline), load(args.candidate)
+        check_effort(baseline, candidate)
+        report = compare(baseline, candidate, args.rule, args.evals_dir)
     except InputError as error:
         print(f"error: {error}", file=sys.stderr)
         return 2
+    except EffortError as error:
+        print(f"error: {error}", file=sys.stderr)
+        return 5
     print(json.dumps(report, indent=2) if args.json else render(report))
     return EXIT_CODES[report["verdict"]]
 
