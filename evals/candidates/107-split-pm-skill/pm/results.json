@@ -1,0 +1,2095 @@
+{
+  "suite": "pm",
+  "variant": {
+    "plugin_dir": "issue-flow (branch issue/107-split-pm-skill, commit 8f60b69)",
+    "git_sha": "8f60b696b3f344749adc32a6e1cc8d27718fe696",
+    "version": "0.20.0"
+  },
+  "effort": "medium",
+  "started": "20261121T212631Z",
+  "finished": "20261121T213740Z",
+  "max_cost_usd": 25.0,
+  "total_cost_usd": 5.554044,
+  "partial": false,
+  "records": [
+    {
+      "case": "pm-a0-split-status",
+      "run": 1,
+      "variant": {
+        "plugin_dir": "issue-flow (branch issue/107-split-pm-skill, commit 8f60b69)",
+        "git_sha": "8f60b696b3f344749adc32a6e1cc8d27718fe696",
+        "version": "0.20.0"
+      },
+      "effort": "medium",
+      "ok": true,
+      "score": 1.0,
+      "graders": [
+        {
+          "type": "gh_log",
+          "passed": true,
+          "detail": "6 expected, 8 forbidden"
+        },
+        {
+          "type": "llm",
+          "passed": true,
+          "detail": "PASS The log shows edits only on #21, #22, and #24, each removing exactly one label, and each short repair comment names both the removed label and the kept label."
+        }
+      ],
+      "deterministic": {
+        "passed": 1,
+        "total": 1
+      },
+      "llm": {
+        "passed": 1,
+        "total": 1
+      },
+      "cost_usd": 0.2058116,
+      "judge_cost_usd": 0.00086,
+      "usage": {
+        "input": 10,
+        "output": 1243,
+        "cache_read": 110038,
+        "cache_write": 19863
+      },
+      "model_usage": {
+        "claude-opus-5-5": {
+          "inputTokens": 10,
+          "outputTokens": 1243,
+          "cacheReadInputTokens": 110038,
+          "cacheCreationInputTokens": 19863,
+          "webSearchRequests": 0,
+          "costUSD": 0.2058116,
+          "contextWindow": 1000000,
+          "maxOutputTokens": 128000,
+          "thinkingTokens": 94,
+          "cacheCreationEphemeral5mInputTokens": 0,
+          "cacheCreationEphemeral1hInputTokens": 19863,
+          "canonicalModel": "claude-opus-5-5",
+          "provider": "firstParty",
+          "costBasis": "list"
+        }
+      },
+      "turns": 6,
+      "duration_s": 16.827,
+      "wall_s": 17.457,
+      "session_id": "aff05b0e-4e0b-4bdc-93f4-3d7a809c4fb1",
+      "transcript": null,
+      "model": "claude-opus-5-5",
+      "error": null,
+      "sandbox": null,
+      "agents": {
+        "agents": [
+          {
+            "type": "main",
+            "id": "aff05b0e-4e0b-4bdc-93f4-3d7a809c4fb1",
+            "turns": 5,
+            "input": 10,
+            "output": 1243,
+            "cache_read": 110038,
+            "cache_write": 19863,
+            "model": "claude-opus-5-5",
+            "cost_usd": 0.205812
+          }
+        ],
+        "totals": {
+          "turns": 5,
+          "input": 10,
+          "output": 1243,
+          "cache_read": 110038,
+          "cache_write": 19863,
+          "cost_usd": 0.205812,
+          "unpriced_models": [],
+          "skipped_lines": 0,
+          "by_type": {
+            "main": {
+              "agents": 1,
+              "turns": 5,
+              "input": 10,
+              "output": 1243,
+              "cache_read": 110038,
+              "cache_write": 19863,
+              "cost_usd": 0.205812
+            }
+          }
+        },
+        "pricing_date": "2026-11-21"
+      },
+      "tokens": {
+        "main": 131154,
+        "subagents": 0
+      }
+    },
+    {
+      "case": "pm-a0-split-status",
+      "run": 2,
+      "variant": {
+        "plugin_dir": "issue-flow (branch issue/107-split-pm-skill, commit 8f60b69)",
+        "git_sha": "8f60b696b3f344749adc32a6e1cc8d27718fe696",
+        "version": "0.20.0"
+      },
+      "effort": "medium",
+      "ok": true,
+      "score": 1.0,
+      "graders": [
+        {
+          "type": "gh_log",
+          "passed": true,
+          "detail": "6 expected, 8 forbidden"
+        },
+        {
+          "type": "llm",
+          "passed": true,
+          "detail": "PASS: The run edited only issues 21, 22 and 24, each removed a single label, and each short comment names both the removed label and the kept label."
+        }
+      ],
+      "deterministic": {
+        "passed": 1,
+        "total": 1
+      },
+      "llm": {
+        "passed": 1,
+        "total": 1
+      },
+      "cost_usd": 0.20203140000000003,
+      "judge_cost_usd": 0.000878,
+      "usage": {
+        "input": 12,
+        "output": 1219,
+        "cache_read": 135817,
+        "cache_write": 18805
+      },
+      "model_usage": {
+        "claude-opus-5-5": {
+          "inputTokens": 12,
+          "outputTokens": 1219,
+          "cacheReadInputTokens": 135817,
+          "cacheCreationInputTokens": 18805,
+          "webSearchRequests": 0,
+          "costUSD": 0.20203140000000003,
+          "contextWindow": 1000000,
+          "maxOutputTokens": 128000,
+          "thinkingTokens": 75,
+          "cacheCreationEphemeral5mInputTokens": 0,
+          "cacheCreationEphemeral1hInputTokens": 18805,
+          "canonicalModel": "claude-opus-5-5",
+          "provider": "firstParty",
+          "costBasis": "list"
+        }
+      },
+      "turns": 7,
+      "duration_s": 18.575,
+      "wall_s": 19.305,
+      "session_id": "0441e74c-7135-438c-8060-bd28bab21705",
+      "transcript": null,
+      "model": "claude-opus-5-5",
+      "error": null,
+      "sandbox": null,
+      "agents": {
+        "agents": [
+          {
+            "type": "main",
+            "id": "0441e74c-7135-438c-8060-bd28bab21705",
+            "turns": 6,
+            "input": 12,
+            "output": 1219,
+            "cache_read": 135817,
+            "cache_write": 18805,
+            "model": "claude-opus-5-5",
+            "cost_usd": 0.202031
+          }
+        ],
+        "totals": {
+          "turns": 6,
+          "input": 12,
+          "output": 1219,
+          "cache_read": 135817,
+          "cache_write": 18805,
+          "cost_usd": 0.202031,
+          "unpriced_models": [],
+          "skipped_lines": 0,
+          "by_type": {
+            "main": {
+              "agents": 1,
+              "turns": 6,
+              "input": 12,
+              "output": 1219,
+              "cache_read": 135817,
+              "cache_write": 18805,
+              "cost_usd": 0.202031
+            }
+          }
+        },
+        "pricing_date": "2026-11-21"
+      },
+      "tokens": {
+        "main": 155853,
+        "subagents": 0
+      }
+    },
+    {
+      "case": "pm-a0-split-status",
+      "run": 3,
+      "variant": {
+        "plugin_dir": "issue-flow (branch issue/107-split-pm-skill, commit 8f60b69)",
+        "git_sha": "8f60b696b3f344749adc32a6e1cc8d27718fe696",
+        "version": "0.20.0"
+      },
+      "effort": "medium",
+      "ok": true,
+      "score": 1.0,
+      "graders": [
+        {
+          "type": "gh_log",
+          "passed": true,
+          "detail": "6 expected, 8 forbidden"
+        },
+        {
+          "type": "llm",
+          "passed": true,
+          "detail": "PASS. Each of the three repair comments (#21, #22, #24) is short and names both the removed label and the kept label, and the log shows edits only to those three issues, each removing only the one label it names."
+        }
+      ],
+      "deterministic": {
+        "passed": 1,
+        "total": 1
+      },
+      "llm": {
+        "passed": 1,
+        "total": 1
+      },
+      "cost_usd": 0.1953912,
+      "judge_cost_usd": 0.000838,
+      "usage": {
+        "input": 10,
+        "output": 1107,
+        "cache_read": 109696,
+        "cache_write": 18909
+      },
+      "model_usage": {
+        "claude-opus-5-5": {
+          "inputTokens": 10,
+          "outputTokens": 1107,
+          "cacheReadInputTokens": 109696,
+          "cacheCreationInputTokens": 18909,
+          "webSearchRequests": 0,
+          "costUSD": 0.1953912,
+          "contextWindow": 1000000,
+          "maxOutputTokens": 128000,
+          "thinkingTokens": 65,
+          "cacheCreationEphemeral5mInputTokens": 0,
+          "cacheCreationEphemeral1hInputTokens": 18909,
+          "canonicalModel": "claude-opus-5-5",
+          "provider": "firstParty",
+          "costBasis": "list"
+        }
+      },
+      "turns": 6,
+      "duration_s": 15.963,
+      "wall_s": 16.573,
+      "session_id": "b1813f09-0729-4fd1-aa85-a60f424970f0",
+      "transcript": null,
+      "model": "claude-opus-5-5",
+      "error": null,
+      "sandbox": null,
+      "agents": {
+        "agents": [
+          {
+            "type": "main",
+            "id": "b1813f09-0729-4fd1-aa85-a60f424970f0",
+            "turns": 5,
+            "input": 10,
+            "output": 1107,
+            "cache_read": 109696,
+            "cache_write": 18909,
+            "model": "claude-opus-5-5",
+            "cost_usd": 0.195391
+          }
+        ],
+        "totals": {
+          "turns": 5,
+          "input": 10,
+          "output": 1107,
+          "cache_read": 109696,
+          "cache_write": 18909,
+          "cost_usd": 0.195391,
+          "unpriced_models": [],
+          "skipped_lines": 0,
+          "by_type": {
+            "main": {
+              "agents": 1,
+              "turns": 5,
+              "input": 10,
+              "output": 1107,
+              "cache_read": 109696,
+              "cache_write": 18909,
+              "cost_usd": 0.195391
+            }
+          }
+        },
+        "pricing_date": "2026-11-21"
+      },
+      "tokens": {
+        "main": 129722,
+        "subagents": 0
+      }
+    },
+    {
+      "case": "pm-batch-cross-check",
+      "run": 1,
+      "variant": {
+        "plugin_dir": "issue-flow (branch issue/107-split-pm-skill, commit 8f60b69)",
+        "git_sha": "8f60b696b3f344749adc32a6e1cc8d27718fe696",
+        "version": "0.20.0"
+      },
+      "effort": "medium",
+      "ok": true,
+      "score": 1.0,
+      "graders": [
+        {
+          "type": "gh_log",
+          "passed": true,
+          "detail": "2 expected, 5 forbidden"
+        },
+        {
+          "type": "file",
+          "passed": true,
+          "detail": ".eval/brief-31.md matches /crossCheck:\\s*\\S*issues/30#issuecomment-\\d+/"
+        },
+        {
+          "type": "llm",
+          "passed": true,
+          "detail": "PASS The cross-check comment on #30 names the compared plans (#31 and #32), states one pair found (#31 \u2192 #32, the `--json` flag versus the README documentation requirement), and records the sequencing decision."
+        }
+      ],
+      "deterministic": {
+        "passed": 2,
+        "total": 2
+      },
+      "llm": {
+        "passed": 1,
+        "total": 1
+      },
+      "cost_usd": 0.4247409999999999,
+      "judge_cost_usd": 0.000933,
+      "usage": {
+        "input": 22,
+        "output": 4157,
+        "cache_read": 386725,
+        "cache_write": 33021
+      },
+      "model_usage": {
+        "claude-opus-5-5": {
+          "inputTokens": 22,
+          "outputTokens": 4157,
+          "cacheReadInputTokens": 386725,
+          "cacheCreationInputTokens": 33021,
+          "webSearchRequests": 0,
+          "costUSD": 0.4247409999999999,
+          "contextWindow": 1000000,
+          "maxOutputTokens": 128000,
+          "thinkingTokens": 512,
+          "cacheCreationEphemeral5mInputTokens": 0,
+          "cacheCreationEphemeral1hInputTokens": 33021,
+          "canonicalModel": "claude-opus-5-5",
+          "provider": "firstParty",
+          "costBasis": "list"
+        }
+      },
+      "turns": 12,
+      "duration_s": 53.317,
+      "wall_s": 53.878,
+      "session_id": "c89e2076-b673-4d0d-aae2-59af773611e6",
+      "transcript": null,
+      "model": "claude-opus-5-5",
+      "error": null,
+      "sandbox": null,
+      "agents": {
+        "agents": [
+          {
+            "type": "main",
+            "id": "c89e2076-b673-4d0d-aae2-59af773611e6",
+            "turns": 11,
+            "input": 22,
+            "output": 4157,
+            "cache_read": 386725,
+            "cache_write": 33021,
+            "model": "claude-opus-5-5",
+            "cost_usd": 0.424741
+          }
+        ],
+        "totals": {
+          "turns": 11,
+          "input": 22,
+          "output": 4157,
+          "cache_read": 386725,
+          "cache_write": 33021,
+          "cost_usd": 0.424741,
+          "unpriced_models": [],
+          "skipped_lines": 0,
+          "by_type": {
+            "main": {
+              "agents": 1,
+              "turns": 11,
+              "input": 22,
+              "output": 4157,
+              "cache_read": 386725,
+              "cache_write": 33021,
+              "cost_usd": 0.424741
+            }
+          }
+        },
+        "pricing_date": "2026-11-21"
+      },
+      "tokens": {
+        "main": 423925,
+        "subagents": 0
+      }
+    },
+    {
+      "case": "pm-batch-cross-check",
+      "run": 2,
+      "variant": {
+        "plugin_dir": "issue-flow (branch issue/107-split-pm-skill, commit 8f60b69)",
+        "git_sha": "8f60b696b3f344749adc32a6e1cc8d27718fe696",
+        "version": "0.20.0"
+      },
+      "effort": "medium",
+      "ok": true,
+      "score": 1.0,
+      "graders": [
+        {
+          "type": "gh_log",
+          "passed": true,
+          "detail": "2 expected, 5 forbidden"
+        },
+        {
+          "type": "file",
+          "passed": true,
+          "detail": ".eval/brief-31.md matches /crossCheck:\\s*\\S*issues/30#issuecomment-\\d+/"
+        },
+        {
+          "type": "llm",
+          "passed": true,
+          "detail": "PASS: The cross-check comment on #30 ([11]) names the plan comments of #31 and #32 as what it compared and states \"Pairs found: 1\" with the specific pair, so it is not a bare \"checked.\""
+        }
+      ],
+      "deterministic": {
+        "passed": 2,
+        "total": 2
+      },
+      "llm": {
+        "passed": 1,
+        "total": 1
+      },
+      "cost_usd": 0.46271415000000005,
+      "judge_cost_usd": 0.001279,
+      "usage": {
+        "input": 18,
+        "output": 4793,
+        "cache_read": 324261,
+        "cache_write": 37473
+      },
+      "model_usage": {
+        "claude-opus-5-5": {
+          "inputTokens": 18,
+          "outputTokens": 4793,
+          "cacheReadInputTokens": 324261,
+          "cacheCreationInputTokens": 37473,
+          "webSearchRequests": 0,
+          "costUSD": 0.4605682,
+          "contextWindow": 1000000,
+          "maxOutputTokens": 128000,
+          "thinkingTokens": 760,
+          "cacheCreationEphemeral5mInputTokens": 0,
+          "cacheCreationEphemeral1hInputTokens": 37473,
+          "canonicalModel": "claude-opus-5-5",
+          "provider": "firstParty",
+          "costBasis": "list"
+        },
+        "claude-haiku-5-5": {
+          "inputTokens": 2,
+          "outputTokens": 1391,
+          "cacheReadInputTokens": 0,
+          "cacheCreationInputTokens": 11602,
+          "webSearchRequests": 0,
+          "costUSD": 0.0021459499999999998,
+          "contextWindow": 1000000,
+          "maxOutputTokens": 128000,
+          "thinkingTokens": 836,
+          "cacheCreationEphemeral5mInputTokens": 11602,
+          "cacheCreationEphemeral1hInputTokens": 0,
+          "canonicalModel": "claude-haiku-5-5",
+          "provider": "firstParty",
+          "costBasis": "list"
+        }
+      },
+      "turns": 10,
+      "duration_s": 63.4,
+      "wall_s": 64.146,
+      "session_id": "20b6485b-1fcc-4b6f-aef0-2af670ff4e06",
+      "transcript": null,
+      "model": "claude-opus-5-5",
+      "error": null,
+      "sandbox": null,
+      "agents": {
+        "agents": [
+          {
+            "type": "main",
+            "id": "20b6485b-1fcc-4b6f-aef0-2af670ff4e06",
+            "turns": 9,
+            "input": 18,
+            "output": 4793,
+            "cache_read": 324261,
+            "cache_write": 37473,
+            "model": "claude-opus-5-5",
+            "cost_usd": 0.460568
+          },
+          {
+            "type": "Explore",
+            "id": "a59e86189817b8c99",
+            "turns": 1,
+            "input": 2,
+            "output": 1391,
+            "cache_read": 0,
+            "cache_write": 11602,
+            "model": "claude-haiku-5-5",
+            "cost_usd": 0.002146
+          }
+        ],
+        "totals": {
+          "turns": 10,
+          "input": 20,
+          "output": 6184,
+          "cache_read": 324261,
+          "cache_write": 49075,
+          "cost_usd": 0.462714,
+          "unpriced_models": [],
+          "skipped_lines": 0,
+          "by_type": {
+            "main": {
+              "agents": 1,
+              "turns": 9,
+              "input": 18,
+              "output": 4793,
+              "cache_read": 324261,
+              "cache_write": 37473,
+              "cost_usd": 0.460568
+            },
+            "Explore": {
+              "agents": 1,
+              "turns": 1,
+              "input": 2,
+              "output": 1391,
+              "cache_read": 0,
+              "cache_write": 11602,
+              "cost_usd": 0.002146
+            }
+          }
+        },
+        "pricing_date": "2026-11-21"
+      },
+      "tokens": {
+        "main": 366545,
+        "subagents": 12995
+      }
+    },
+    {
+      "case": "pm-batch-cross-check",
+      "run": 3,
+      "variant": {
+        "plugin_dir": "issue-flow (branch issue/107-split-pm-skill, commit 8f60b69)",
+        "git_sha": "8f60b696b3f344749adc32a6e1cc8d27718fe696",
+        "version": "0.20.0"
+      },
+      "effort": "medium",
+      "ok": true,
+      "score": 1.0,
+      "graders": [
+        {
+          "type": "gh_log",
+          "passed": true,
+          "detail": "2 expected, 5 forbidden"
+        },
+        {
+          "type": "file",
+          "passed": true,
+          "detail": ".eval/brief-31.md matches /crossCheck:\\s*\\S*issues/30#issuecomment-\\d+/"
+        },
+        {
+          "type": "llm",
+          "passed": true,
+          "detail": "PASS \u2014 The comment on #30 names the compared plans (#31 and #32) and reports concrete pairs found (Pair 1 on the `--json` flag dependency) plus clean results for same-file, same-item, and product disagreement, so it is not a bare \"checked\" comment."
+        }
+      ],
+      "deterministic": {
+        "passed": 2,
+        "total": 2
+      },
+      "llm": {
+        "passed": 1,
+        "total": 1
+      },
+      "cost_usd": 0.4514644,
+      "judge_cost_usd": 0.000952,
+      "usage": {
+        "input": 18,
+        "output": 4549,
+        "cache_read": 313182,
+        "cache_write": 37222
+      },
+      "model_usage": {
+        "claude-opus-5-5": {
+          "inputTokens": 18,
+          "outputTokens": 4549,
+          "cacheReadInputTokens": 313182,
+          "cacheCreationInputTokens": 37222,
+          "webSearchRequests": 0,
+          "costUSD": 0.4514644,
+          "contextWindow": 1000000,
+          "maxOutputTokens": 128000,
+          "thinkingTokens": 796,
+          "cacheCreationEphemeral5mInputTokens": 0,
+          "cacheCreationEphemeral1hInputTokens": 37222,
+          "canonicalModel": "claude-opus-5-5",
+          "provider": "firstParty",
+          "costBasis": "list"
+        }
+      },
+      "turns": 12,
+      "duration_s": 54.656,
+      "wall_s": 55.343,
+      "session_id": "72a82b9d-7459-4f47-b28a-d8e7c8059454",
+      "transcript": null,
+      "model": "claude-opus-5-5",
+      "error": null,
+      "sandbox": null,
+      "agents": {
+        "agents": [
+          {
+            "type": "main",
+            "id": "72a82b9d-7459-4f47-b28a-d8e7c8059454",
+            "turns": 9,
+            "input": 18,
+            "output": 4549,
+            "cache_read": 313182,
+            "cache_write": 37222,
+            "model": "claude-opus-5-5",
+            "cost_usd": 0.451464
+          }
+        ],
+        "totals": {
+          "turns": 9,
+          "input": 18,
+          "output": 4549,
+          "cache_read": 313182,
+          "cache_write": 37222,
+          "cost_usd": 0.451464,
+          "unpriced_models": [],
+          "skipped_lines": 0,
+          "by_type": {
+            "main": {
+              "agents": 1,
+              "turns": 9,
+              "input": 18,
+              "output": 4549,
+              "cache_read": 313182,
+              "cache_write": 37222,
+              "cost_usd": 0.451464
+            }
+          }
+        },
+        "pricing_date": "2026-11-21"
+      },
+      "tokens": {
+        "main": 354971,
+        "subagents": 0
+      }
+    },
+    {
+      "case": "pm-c1-no-prepatch",
+      "run": 1,
+      "variant": {
+        "plugin_dir": "issue-flow (branch issue/107-split-pm-skill, commit 8f60b69)",
+        "git_sha": "8f60b696b3f344749adc32a6e1cc8d27718fe696",
+        "version": "0.20.0"
+      },
+      "effort": "medium",
+      "ok": true,
+      "score": 1.0,
+      "graders": [
+        {
+          "type": "gh_log",
+          "passed": true,
+          "detail": "0 expected, 4 forbidden"
+        },
+        {
+          "type": "file",
+          "passed": true,
+          "detail": ".eval/send-back-11.md matches /(?i)pre-?patch/"
+        },
+        {
+          "type": "llm",
+          "passed": true,
+          "detail": "PASS: The PM did not merge the PR for issue #11 (PR #12), because `localChecks` lacked the pre-patch run showing the new tests fail on the old code, and it sent the work back asking `w-11` to run that check."
+        }
+      ],
+      "deterministic": {
+        "passed": 2,
+        "total": 2
+      },
+      "llm": {
+        "passed": 1,
+        "total": 1
+      },
+      "cost_usd": 0.28976660000000004,
+      "judge_cost_usd": 0.000927,
+      "usage": {
+        "input": 14,
+        "output": 2302,
+        "cache_read": 186673,
+        "cache_write": 25792
+      },
+      "model_usage": {
+        "claude-opus-5-5": {
+          "inputTokens": 14,
+          "outputTokens": 2302,
+          "cacheReadInputTokens": 186673,
+          "cacheCreationInputTokens": 25792,
+          "webSearchRequests": 0,
+          "costUSD": 0.28976660000000004,
+          "contextWindow": 1000000,
+          "maxOutputTokens": 128000,
+          "thinkingTokens": 347,
+          "cacheCreationEphemeral5mInputTokens": 0,
+          "cacheCreationEphemeral1hInputTokens": 25792,
+          "canonicalModel": "claude-opus-5-5",
+          "provider": "firstParty",
+          "costBasis": "list"
+        }
+      },
+      "turns": 8,
+      "duration_s": 29.554,
+      "wall_s": 30.17,
+      "session_id": "07281424-349a-4f87-b35c-d95de0abda3c",
+      "transcript": null,
+      "model": "claude-opus-5-5",
+      "error": null,
+      "sandbox": null,
+      "agents": {
+        "agents": [
+          {
+            "type": "main",
+            "id": "07281424-349a-4f87-b35c-d95de0abda3c",
+            "turns": 7,
+            "input": 14,
+            "output": 2302,
+            "cache_read": 186673,
+            "cache_write": 25792,
+            "model": "claude-opus-5-5",
+            "cost_usd": 0.289767
+          }
+        ],
+        "totals": {
+          "turns": 7,
+          "input": 14,
+          "output": 2302,
+          "cache_read": 186673,
+          "cache_write": 25792,
+          "cost_usd": 0.289767,
+          "unpriced_models": [],
+          "skipped_lines": 0,
+          "by_type": {
+            "main": {
+              "agents": 1,
+              "turns": 7,
+              "input": 14,
+              "output": 2302,
+              "cache_read": 186673,
+              "cache_write": 25792,
+              "cost_usd": 0.289767
+            }
+          }
+        },
+        "pricing_date": "2026-11-21"
+      },
+      "tokens": {
+        "main": 214781,
+        "subagents": 0
+      }
+    },
+    {
+      "case": "pm-c1-no-prepatch",
+      "run": 2,
+      "variant": {
+        "plugin_dir": "issue-flow (branch issue/107-split-pm-skill, commit 8f60b69)",
+        "git_sha": "8f60b696b3f344749adc32a6e1cc8d27718fe696",
+        "version": "0.20.0"
+      },
+      "effort": "medium",
+      "ok": true,
+      "score": 1.0,
+      "graders": [
+        {
+          "type": "gh_log",
+          "passed": true,
+          "detail": "0 expected, 4 forbidden"
+        },
+        {
+          "type": "file",
+          "passed": true,
+          "detail": ".eval/send-back-11.md matches /(?i)pre-?patch/"
+        },
+        {
+          "type": "llm",
+          "passed": true,
+          "detail": "PASS \u2014 The PM withheld the sub-merge of #11 (PR #12) because `localChecks` lacks the pre-patch failing-test run required by `practices.tdd: true`, sent the PR back to the worker, and asked for that evidence instead of merging."
+        }
+      ],
+      "deterministic": {
+        "passed": 2,
+        "total": 2
+      },
+      "llm": {
+        "passed": 1,
+        "total": 1
+      },
+      "cost_usd": 0.3431252,
+      "judge_cost_usd": 0.000795,
+      "usage": {
+        "input": 14,
+        "output": 2438,
+        "cache_read": 201666,
+        "cache_write": 31747
+      },
+      "model_usage": {
+        "claude-opus-5-5": {
+          "inputTokens": 14,
+          "outputTokens": 2438,
+          "cacheReadInputTokens": 201666,
+          "cacheCreationInputTokens": 31747,
+          "webSearchRequests": 0,
+          "costUSD": 0.3431252,
+          "contextWindow": 1000000,
+          "maxOutputTokens": 128000,
+          "thinkingTokens": 492,
+          "cacheCreationEphemeral5mInputTokens": 0,
+          "cacheCreationEphemeral1hInputTokens": 31747,
+          "canonicalModel": "claude-opus-5-5",
+          "provider": "firstParty",
+          "costBasis": "list"
+        }
+      },
+      "turns": 8,
+      "duration_s": 32.639,
+      "wall_s": 33.331,
+      "session_id": "84231a39-b84b-4449-ac42-3d975524ebc6",
+      "transcript": null,
+      "model": "claude-opus-5-5",
+      "error": null,
+      "sandbox": null,
+      "agents": {
+        "agents": [
+          {
+            "type": "main",
+            "id": "84231a39-b84b-4449-ac42-3d975524ebc6",
+            "turns": 7,
+            "input": 14,
+            "output": 2438,
+            "cache_read": 201666,
+            "cache_write": 31747,
+            "model": "claude-opus-5-5",
+            "cost_usd": 0.343125
+          }
+        ],
+        "totals": {
+          "turns": 7,
+          "input": 14,
+          "output": 2438,
+          "cache_read": 201666,
+          "cache_write": 31747,
+          "cost_usd": 0.343125,
+          "unpriced_models": [],
+          "skipped_lines": 0,
+          "by_type": {
+            "main": {
+              "agents": 1,
+              "turns": 7,
+              "input": 14,
+              "output": 2438,
+              "cache_read": 201666,
+              "cache_write": 31747,
+              "cost_usd": 0.343125
+            }
+          }
+        },
+        "pricing_date": "2026-11-21"
+      },
+      "tokens": {
+        "main": 235865,
+        "subagents": 0
+      }
+    },
+    {
+      "case": "pm-c1-no-prepatch",
+      "run": 3,
+      "variant": {
+        "plugin_dir": "issue-flow (branch issue/107-split-pm-skill, commit 8f60b69)",
+        "git_sha": "8f60b696b3f344749adc32a6e1cc8d27718fe696",
+        "version": "0.20.0"
+      },
+      "effort": "medium",
+      "ok": true,
+      "score": 1.0,
+      "graders": [
+        {
+          "type": "gh_log",
+          "passed": true,
+          "detail": "0 expected, 4 forbidden"
+        },
+        {
+          "type": "file",
+          "passed": true,
+          "detail": ".eval/send-back-11.md matches /(?i)pre-?patch/"
+        },
+        {
+          "type": "llm",
+          "passed": true,
+          "detail": "PASS: The PM did not merge PR #12 (issue #11's work), sent it back to `w-11` for missing tests-first evidence that the new tests fail before the change, and did not merge it."
+        }
+      ],
+      "deterministic": {
+        "passed": 2,
+        "total": 2
+      },
+      "llm": {
+        "passed": 1,
+        "total": 1
+      },
+      "cost_usd": 0.37017459999999996,
+      "judge_cost_usd": 0.000967,
+      "usage": {
+        "input": 16,
+        "output": 2550,
+        "cache_read": 246913,
+        "cache_write": 33716
+      },
+      "model_usage": {
+        "claude-opus-5-5": {
+          "inputTokens": 16,
+          "outputTokens": 2550,
+          "cacheReadInputTokens": 246913,
+          "cacheCreationInputTokens": 33716,
+          "webSearchRequests": 0,
+          "costUSD": 0.37017459999999996,
+          "contextWindow": 1000000,
+          "maxOutputTokens": 128000,
+          "thinkingTokens": 437,
+          "cacheCreationEphemeral5mInputTokens": 0,
+          "cacheCreationEphemeral1hInputTokens": 33716,
+          "canonicalModel": "claude-opus-5-5",
+          "provider": "firstParty",
+          "costBasis": "list"
+        }
+      },
+      "turns": 9,
+      "duration_s": 36.61,
+      "wall_s": 37.29,
+      "session_id": "566bddbc-32a0-443c-9e63-801bfcfe82bb",
+      "transcript": null,
+      "model": "claude-opus-5-5",
+      "error": null,
+      "sandbox": null,
+      "agents": {
+        "agents": [
+          {
+            "type": "main",
+            "id": "566bddbc-32a0-443c-9e63-801bfcfe82bb",
+            "turns": 8,
+            "input": 16,
+            "output": 2550,
+            "cache_read": 246913,
+            "cache_write": 33716,
+            "model": "claude-opus-5-5",
+            "cost_usd": 0.370175
+          }
+        ],
+        "totals": {
+          "turns": 8,
+          "input": 16,
+          "output": 2550,
+          "cache_read": 246913,
+          "cache_write": 33716,
+          "cost_usd": 0.370175,
+          "unpriced_models": [],
+          "skipped_lines": 0,
+          "by_type": {
+            "main": {
+              "agents": 1,
+              "turns": 8,
+              "input": 16,
+              "output": 2550,
+              "cache_read": 246913,
+              "cache_write": 33716,
+              "cost_usd": 0.370175
+            }
+          }
+        },
+        "pricing_date": "2026-11-21"
+      },
+      "tokens": {
+        "main": 283195,
+        "subagents": 0
+      }
+    },
+    {
+      "case": "pm-c1-unevidenced",
+      "run": 1,
+      "variant": {
+        "plugin_dir": "issue-flow (branch issue/107-split-pm-skill, commit 8f60b69)",
+        "git_sha": "8f60b696b3f344749adc32a6e1cc8d27718fe696",
+        "version": "0.20.0"
+      },
+      "effort": "medium",
+      "ok": true,
+      "score": 1.0,
+      "graders": [
+        {
+          "type": "gh_log",
+          "passed": true,
+          "detail": "0 expected, 4 forbidden"
+        },
+        {
+          "type": "file",
+          "passed": true,
+          "detail": ".eval/send-back-11.md matches /cannot be combined/"
+        },
+        {
+          "type": "llm",
+          "passed": true,
+          "detail": "PASS: The PM did not merge #11, named the `--json --verbose` criterion as lacking evidence because \"implemented\" is not evidence, and sent it back with the criterion quoted rather than waiving it."
+        }
+      ],
+      "deterministic": {
+        "passed": 2,
+        "total": 2
+      },
+      "llm": {
+        "passed": 1,
+        "total": 1
+      },
+      "cost_usd": 0.2602628,
+      "judge_cost_usd": 0.000989,
+      "usage": {
+        "input": 12,
+        "output": 1927,
+        "cache_read": 146894,
+        "cache_write": 24037
+      },
+      "model_usage": {
+        "claude-opus-5-5": {
+          "inputTokens": 12,
+          "outputTokens": 1927,
+          "cacheReadInputTokens": 146894,
+          "cacheCreationInputTokens": 24037,
+          "webSearchRequests": 0,
+          "costUSD": 0.2602628,
+          "contextWindow": 1000000,
+          "maxOutputTokens": 128000,
+          "thinkingTokens": 282,
+          "cacheCreationEphemeral5mInputTokens": 0,
+          "cacheCreationEphemeral1hInputTokens": 24037,
+          "canonicalModel": "claude-opus-5-5",
+          "provider": "firstParty",
+          "costBasis": "list"
+        }
+      },
+      "turns": 7,
+      "duration_s": 26.775,
+      "wall_s": 27.579,
+      "session_id": "bc018b5c-b934-4c05-92e9-6d5fcbcaaeb8",
+      "transcript": null,
+      "model": "claude-opus-5-5",
+      "error": null,
+      "sandbox": null,
+      "agents": {
+        "agents": [
+          {
+            "type": "main",
+            "id": "bc018b5c-b934-4c05-92e9-6d5fcbcaaeb8",
+            "turns": 6,
+            "input": 12,
+            "output": 1927,
+            "cache_read": 146894,
+            "cache_write": 24037,
+            "model": "claude-opus-5-5",
+            "cost_usd": 0.260263
+          }
+        ],
+        "totals": {
+          "turns": 6,
+          "input": 12,
+          "output": 1927,
+          "cache_read": 146894,
+          "cache_write": 24037,
+          "cost_usd": 0.260263,
+          "unpriced_models": [],
+          "skipped_lines": 0,
+          "by_type": {
+            "main": {
+              "agents": 1,
+              "turns": 6,
+              "input": 12,
+              "output": 1927,
+              "cache_read": 146894,
+              "cache_write": 24037,
+              "cost_usd": 0.260263
+            }
+          }
+        },
+        "pricing_date": "2026-11-21"
+      },
+      "tokens": {
+        "main": 172870,
+        "subagents": 0
+      }
+    },
+    {
+      "case": "pm-c1-unevidenced",
+      "run": 2,
+      "variant": {
+        "plugin_dir": "issue-flow (branch issue/107-split-pm-skill, commit 8f60b69)",
+        "git_sha": "8f60b696b3f344749adc32a6e1cc8d27718fe696",
+        "version": "0.20.0"
+      },
+      "effort": "medium",
+      "ok": true,
+      "score": 1.0,
+      "graders": [
+        {
+          "type": "gh_log",
+          "passed": true,
+          "detail": "0 expected, 4 forbidden"
+        },
+        {
+          "type": "file",
+          "passed": true,
+          "detail": ".eval/send-back-11.md matches /cannot be combined/"
+        },
+        {
+          "type": "llm",
+          "passed": true,
+          "detail": "PASS: The PM withheld the sub-merge, called the `--json --verbose` criterion unevidenced because \"implemented\" was the only evidence, and sent it back without waiving it, though the exact quoted text lives in `.eval/send-back-11.md`, which isn't shown here."
+        }
+      ],
+      "deterministic": {
+        "passed": 2,
+        "total": 2
+      },
+      "llm": {
+        "passed": 1,
+        "total": 1
+      },
+      "cost_usd": 0.2638,
+      "judge_cost_usd": 0.001238,
+      "usage": {
+        "input": 14,
+        "output": 1815,
+        "cache_read": 180260,
+        "cache_write": 23924
+      },
+      "model_usage": {
+        "claude-opus-5-5": {
+          "inputTokens": 14,
+          "outputTokens": 1815,
+          "cacheReadInputTokens": 180260,
+          "cacheCreationInputTokens": 23924,
+          "webSearchRequests": 0,
+          "costUSD": 0.2638,
+          "contextWindow": 1000000,
+          "maxOutputTokens": 128000,
+          "thinkingTokens": 286,
+          "cacheCreationEphemeral5mInputTokens": 0,
+          "cacheCreationEphemeral1hInputTokens": 23924,
+          "canonicalModel": "claude-opus-5-5",
+          "provider": "firstParty",
+          "costBasis": "list"
+        }
+      },
+      "turns": 8,
+      "duration_s": 28.969,
+      "wall_s": 29.606,
+      "session_id": "af858837-7015-424a-b6ac-19cbc5fcc71f",
+      "transcript": null,
+      "model": "claude-opus-5-5",
+      "error": null,
+      "sandbox": null,
+      "agents": {
+        "agents": [
+          {
+            "type": "main",
+            "id": "af858837-7015-424a-b6ac-19cbc5fcc71f",
+            "turns": 7,
+            "input": 14,
+            "output": 1815,
+            "cache_read": 180260,
+            "cache_write": 23924,
+            "model": "claude-opus-5-5",
+            "cost_usd": 0.2638
+          }
+        ],
+        "totals": {
+          "turns": 7,
+          "input": 14,
+          "output": 1815,
+          "cache_read": 180260,
+          "cache_write": 23924,
+          "cost_usd": 0.2638,
+          "unpriced_models": [],
+          "skipped_lines": 0,
+          "by_type": {
+            "main": {
+              "agents": 1,
+              "turns": 7,
+              "input": 14,
+              "output": 1815,
+              "cache_read": 180260,
+              "cache_write": 23924,
+              "cost_usd": 0.2638
+            }
+          }
+        },
+        "pricing_date": "2026-11-21"
+      },
+      "tokens": {
+        "main": 206013,
+        "subagents": 0
+      }
+    },
+    {
+      "case": "pm-c1-unevidenced",
+      "run": 3,
+      "variant": {
+        "plugin_dir": "issue-flow (branch issue/107-split-pm-skill, commit 8f60b69)",
+        "git_sha": "8f60b696b3f344749adc32a6e1cc8d27718fe696",
+        "version": "0.20.0"
+      },
+      "effort": "medium",
+      "ok": true,
+      "score": 1.0,
+      "graders": [
+        {
+          "type": "gh_log",
+          "passed": true,
+          "detail": "0 expected, 4 forbidden"
+        },
+        {
+          "type": "file",
+          "passed": true,
+          "detail": ".eval/send-back-11.md matches /cannot be combined/"
+        },
+        {
+          "type": "llm",
+          "passed": true,
+          "detail": "PASS: The PM did not merge #11, named the `--json --verbose` criterion as lacking evidence beyond \"implemented,\" quoted it, and sent the work back to the worker."
+        }
+      ],
+      "deterministic": {
+        "passed": 2,
+        "total": 2
+      },
+      "llm": {
+        "passed": 1,
+        "total": 1
+      },
+      "cost_usd": 0.3111656,
+      "judge_cost_usd": 0.001059,
+      "usage": {
+        "input": 14,
+        "output": 2336,
+        "cache_read": 192508,
+        "cache_write": 28236
+      },
+      "model_usage": {
+        "claude-opus-5-5": {
+          "inputTokens": 14,
+          "outputTokens": 2336,
+          "cacheReadInputTokens": 192508,
+          "cacheCreationInputTokens": 28236,
+          "webSearchRequests": 0,
+          "costUSD": 0.3111656,
+          "contextWindow": 1000000,
+          "maxOutputTokens": 128000,
+          "thinkingTokens": 378,
+          "cacheCreationEphemeral5mInputTokens": 0,
+          "cacheCreationEphemeral1hInputTokens": 28236,
+          "canonicalModel": "claude-opus-5-5",
+          "provider": "firstParty",
+          "costBasis": "list"
+        }
+      },
+      "turns": 8,
+      "duration_s": 34.123,
+      "wall_s": 34.713,
+      "session_id": "e580e2e3-3c27-4f18-8207-87ccaa44b7c4",
+      "transcript": null,
+      "model": "claude-opus-5-5",
+      "error": null,
+      "sandbox": null,
+      "agents": {
+        "agents": [
+          {
+            "type": "main",
+            "id": "e580e2e3-3c27-4f18-8207-87ccaa44b7c4",
+            "turns": 7,
+            "input": 14,
+            "output": 2336,
+            "cache_read": 192508,
+            "cache_write": 28236,
+            "model": "claude-opus-5-5",
+            "cost_usd": 0.311166
+          }
+        ],
+        "totals": {
+          "turns": 7,
+          "input": 14,
+          "output": 2336,
+          "cache_read": 192508,
+          "cache_write": 28236,
+          "cost_usd": 0.311166,
+          "unpriced_models": [],
+          "skipped_lines": 0,
+          "by_type": {
+            "main": {
+              "agents": 1,
+              "turns": 7,
+              "input": 14,
+              "output": 2336,
+              "cache_read": 192508,
+              "cache_write": 28236,
+              "cost_usd": 0.311166
+            }
+          }
+        },
+        "pricing_date": "2026-11-21"
+      },
+      "tokens": {
+        "main": 223094,
+        "subagents": 0
+      }
+    },
+    {
+      "case": "pm-semantic-conflict",
+      "run": 1,
+      "variant": {
+        "plugin_dir": "issue-flow (branch issue/107-split-pm-skill, commit 8f60b69)",
+        "git_sha": "8f60b696b3f344749adc32a6e1cc8d27718fe696",
+        "version": "0.20.0"
+      },
+      "effort": "medium",
+      "ok": true,
+      "score": 1.0,
+      "graders": [
+        {
+          "type": "gh_log",
+          "passed": true,
+          "detail": "5 expected, 6 forbidden"
+        },
+        {
+          "type": "llm",
+          "passed": true,
+          "detail": "PASS: Both comments on #41 and #42 name the 429-versus-queue contradiction for `handle_excess()`, list the options without choosing one, and ask the maintainer which rule is correct."
+        }
+      ],
+      "deterministic": {
+        "passed": 1,
+        "total": 1
+      },
+      "llm": {
+        "passed": 1,
+        "total": 1
+      },
+      "cost_usd": 0.3428502,
+      "judge_cost_usd": 0.001045,
+      "usage": {
+        "input": 14,
+        "output": 2827,
+        "cache_read": 219071,
+        "cache_write": 30305
+      },
+      "model_usage": {
+        "claude-opus-5-5": {
+          "inputTokens": 14,
+          "outputTokens": 2827,
+          "cacheReadInputTokens": 219071,
+          "cacheCreationInputTokens": 30305,
+          "webSearchRequests": 0,
+          "costUSD": 0.3428502,
+          "contextWindow": 1000000,
+          "maxOutputTokens": 128000,
+          "thinkingTokens": 393,
+          "cacheCreationEphemeral5mInputTokens": 0,
+          "cacheCreationEphemeral1hInputTokens": 30305,
+          "canonicalModel": "claude-opus-5-5",
+          "provider": "firstParty",
+          "costBasis": "list"
+        }
+      },
+      "turns": 8,
+      "duration_s": 37.345,
+      "wall_s": 37.947,
+      "session_id": "7b49bc5c-69d3-469f-8234-57d3fc8f89f5",
+      "transcript": null,
+      "model": "claude-opus-5-5",
+      "error": null,
+      "sandbox": null,
+      "agents": {
+        "agents": [
+          {
+            "type": "main",
+            "id": "7b49bc5c-69d3-469f-8234-57d3fc8f89f5",
+            "turns": 7,
+            "input": 14,
+            "output": 2827,
+            "cache_read": 219071,
+            "cache_write": 30305,
+            "model": "claude-opus-5-5",
+            "cost_usd": 0.34285
+          }
+        ],
+        "totals": {
+          "turns": 7,
+          "input": 14,
+          "output": 2827,
+          "cache_read": 219071,
+          "cache_write": 30305,
+          "cost_usd": 0.34285,
+          "unpriced_models": [],
+          "skipped_lines": 0,
+          "by_type": {
+            "main": {
+              "agents": 1,
+              "turns": 7,
+              "input": 14,
+              "output": 2827,
+              "cache_read": 219071,
+              "cache_write": 30305,
+              "cost_usd": 0.34285
+            }
+          }
+        },
+        "pricing_date": "2026-11-21"
+      },
+      "tokens": {
+        "main": 252217,
+        "subagents": 0
+      }
+    },
+    {
+      "case": "pm-semantic-conflict",
+      "run": 2,
+      "variant": {
+        "plugin_dir": "issue-flow (branch issue/107-split-pm-skill, commit 8f60b69)",
+        "git_sha": "8f60b696b3f344749adc32a6e1cc8d27718fe696",
+        "version": "0.20.0"
+      },
+      "effort": "medium",
+      "ok": true,
+      "score": 1.0,
+      "graders": [
+        {
+          "type": "gh_log",
+          "passed": true,
+          "detail": "5 expected, 6 forbidden"
+        },
+        {
+          "type": "llm",
+          "passed": true,
+          "detail": "PASS: The comments on #41 and #42 both name the reject-with-429 versus never-reject-and-queue contradiction for `handle_excess()` and ask the maintainer which behavior is correct, without choosing one themselves."
+        }
+      ],
+      "deterministic": {
+        "passed": 1,
+        "total": 1
+      },
+      "llm": {
+        "passed": 1,
+        "total": 1
+      },
+      "cost_usd": 0.329841075,
+      "judge_cost_usd": 0.001278,
+      "usage": {
+        "input": 14,
+        "output": 2992,
+        "cache_read": 204285,
+        "cache_write": 28392
+      },
+      "model_usage": {
+        "claude-opus-5-5": {
+          "inputTokens": 14,
+          "outputTokens": 2992,
+          "cacheReadInputTokens": 204285,
+          "cacheCreationInputTokens": 28392,
+          "webSearchRequests": 0,
+          "costUSD": 0.327889,
+          "contextWindow": 1000000,
+          "maxOutputTokens": 128000,
+          "thinkingTokens": 262,
+          "cacheCreationEphemeral5mInputTokens": 0,
+          "cacheCreationEphemeral1hInputTokens": 28392,
+          "canonicalModel": "claude-opus-5-5",
+          "provider": "firstParty",
+          "costBasis": "list"
+        },
+        "claude-haiku-5-5": {
+          "inputTokens": 2,
+          "outputTokens": 944,
+          "cacheReadInputTokens": 0,
+          "cacheCreationInputTokens": 11839,
+          "webSearchRequests": 0,
+          "costUSD": 0.0019520750000000002,
+          "contextWindow": 1000000,
+          "maxOutputTokens": 128000,
+          "thinkingTokens": 582,
+          "cacheCreationEphemeral5mInputTokens": 11839,
+          "cacheCreationEphemeral1hInputTokens": 0,
+          "canonicalModel": "claude-haiku-5-5",
+          "provider": "firstParty",
+          "costBasis": "list"
+        }
+      },
+      "turns": 9,
+      "duration_s": 41.609,
+      "wall_s": 42.402,
+      "session_id": "67f5c945-0583-4435-87c0-eefbab789029",
+      "transcript": null,
+      "model": "claude-opus-5-5",
+      "error": null,
+      "sandbox": null,
+      "agents": {
+        "agents": [
+          {
+            "type": "main",
+            "id": "67f5c945-0583-4435-87c0-eefbab789029",
+            "turns": 7,
+            "input": 14,
+            "output": 2992,
+            "cache_read": 204285,
+            "cache_write": 28392,
+            "model": "claude-opus-5-5",
+            "cost_usd": 0.327889
+          },
+          {
+            "type": "Explore",
+            "id": "a2796936b822c8bc9",
+            "turns": 1,
+            "input": 2,
+            "output": 944,
+            "cache_read": 0,
+            "cache_write": 11839,
+            "model": "claude-haiku-5-5",
+            "cost_usd": 0.001952
+          }
+        ],
+        "totals": {
+          "turns": 8,
+          "input": 16,
+          "output": 3936,
+          "cache_read": 204285,
+          "cache_write": 40231,
+          "cost_usd": 0.329841,
+          "unpriced_models": [],
+          "skipped_lines": 0,
+          "by_type": {
+            "main": {
+              "agents": 1,
+              "turns": 7,
+              "input": 14,
+              "output": 2992,
+              "cache_read": 204285,
+              "cache_write": 28392,
+              "cost_usd": 0.327889
+            },
+            "Explore": {
+              "agents": 1,
+              "turns": 1,
+              "input": 2,
+              "output": 944,
+              "cache_read": 0,
+              "cache_write": 11839,
+              "cost_usd": 0.001952
+            }
+          }
+        },
+        "pricing_date": "2026-11-21"
+      },
+      "tokens": {
+        "main": 235683,
+        "subagents": 12785
+      }
+    },
+    {
+      "case": "pm-semantic-conflict",
+      "run": 3,
+      "variant": {
+        "plugin_dir": "issue-flow (branch issue/107-split-pm-skill, commit 8f60b69)",
+        "git_sha": "8f60b696b3f344749adc32a6e1cc8d27718fe696",
+        "version": "0.20.0"
+      },
+      "effort": "medium",
+      "ok": true,
+      "score": 1.0,
+      "graders": [
+        {
+          "type": "gh_log",
+          "passed": true,
+          "detail": "5 expected, 6 forbidden"
+        },
+        {
+          "type": "llm",
+          "passed": true,
+          "detail": "PASS: The successful comments on #41 ([15]) and #42 ([17]) both name the reject-with-429 versus never-reject-and-queue contradiction and ask the maintainer to choose, offering options without picking one."
+        }
+      ],
+      "deterministic": {
+        "passed": 1,
+        "total": 1
+      },
+      "llm": {
+        "passed": 1,
+        "total": 1
+      },
+      "cost_usd": 0.360847185,
+      "judge_cost_usd": 0.001312,
+      "usage": {
+        "input": 14,
+        "output": 3519,
+        "cache_read": 219573,
+        "cache_write": 30651
+      },
+      "model_usage": {
+        "claude-opus-5-5": {
+          "inputTokens": 14,
+          "outputTokens": 3519,
+          "cacheReadInputTokens": 219573,
+          "cacheCreationInputTokens": 30651,
+          "webSearchRequests": 0,
+          "costUSD": 0.3595586,
+          "contextWindow": 1000000,
+          "maxOutputTokens": 128000,
+          "thinkingTokens": 267,
+          "cacheCreationEphemeral5mInputTokens": 0,
+          "cacheCreationEphemeral1hInputTokens": 30651,
+          "canonicalModel": "claude-opus-5-5",
+          "provider": "firstParty",
+          "costBasis": "list"
+        },
+        "claude-haiku-5-5": {
+          "inputTokens": 2,
+          "outputTokens": 1057,
+          "cacheReadInputTokens": 6226,
+          "cacheCreationInputTokens": 5581,
+          "webSearchRequests": 0,
+          "costUSD": 0.001288585,
+          "contextWindow": 1000000,
+          "maxOutputTokens": 128000,
+          "thinkingTokens": 660,
+          "cacheCreationEphemeral5mInputTokens": 5581,
+          "cacheCreationEphemeral1hInputTokens": 0,
+          "canonicalModel": "claude-haiku-5-5",
+          "provider": "firstParty",
+          "costBasis": "list"
+        }
+      },
+      "turns": 9,
+      "duration_s": 47.272,
+      "wall_s": 47.94,
+      "session_id": "7e445896-f5b2-4331-a862-6d4c0f28274a",
+      "transcript": null,
+      "model": "claude-opus-5-5",
+      "error": null,
+      "sandbox": null,
+      "agents": {
+        "agents": [
+          {
+            "type": "main",
+            "id": "7e445896-f5b2-4331-a862-6d4c0f28274a",
+            "turns": 7,
+            "input": 14,
+            "output": 3519,
+            "cache_read": 219573,
+            "cache_write": 30651,
+            "model": "claude-opus-5-5",
+            "cost_usd": 0.359559
+          },
+          {
+            "type": "Explore",
+            "id": "a80badda6f1d3cb4a",
+            "turns": 1,
+            "input": 2,
+            "output": 1057,
+            "cache_read": 6226,
+            "cache_write": 5581,
+            "model": "claude-haiku-5-5",
+            "cost_usd": 0.001289
+          }
+        ],
+        "totals": {
+          "turns": 8,
+          "input": 16,
+          "output": 4576,
+          "cache_read": 225799,
+          "cache_write": 36232,
+          "cost_usd": 0.360847,
+          "unpriced_models": [],
+          "skipped_lines": 0,
+          "by_type": {
+            "main": {
+              "agents": 1,
+              "turns": 7,
+              "input": 14,
+              "output": 3519,
+              "cache_read": 219573,
+              "cache_write": 30651,
+              "cost_usd": 0.359559
+            },
+            "Explore": {
+              "agents": 1,
+              "turns": 1,
+              "input": 2,
+              "output": 1057,
+              "cache_read": 6226,
+              "cache_write": 5581,
+              "cost_usd": 0.001289
+            }
+          }
+        },
+        "pricing_date": "2026-11-21"
+      },
+      "tokens": {
+        "main": 253757,
+        "subagents": 12866
+      }
+    },
+    {
+      "case": "pm-triage",
+      "run": 1,
+      "variant": {
+        "plugin_dir": "issue-flow (branch issue/107-split-pm-skill, commit 8f60b69)",
+        "git_sha": "8f60b696b3f344749adc32a6e1cc8d27718fe696",
+        "version": "0.20.0"
+      },
+      "effort": "medium",
+      "ok": true,
+      "score": 1.0,
+      "graders": [
+        {
+          "type": "gh_log",
+          "passed": true,
+          "detail": "3 expected, 9 forbidden"
+        },
+        {
+          "type": "llm",
+          "passed": true,
+          "detail": "PASS The comment on issue #2 asks specific, answerable questions: which command and options were used, the input file, actual versus expected output, and how often the problem occurs. It also explains the current counting rule and asks what rule the reporter expected."
+        }
+      ],
+      "deterministic": {
+        "passed": 1,
+        "total": 1
+      },
+      "llm": {
+        "passed": 1,
+        "total": 1
+      },
+      "cost_usd": 0.27626320000000004,
+      "judge_cost_usd": 0.000809,
+      "usage": {
+        "input": 14,
+        "output": 1306,
+        "cache_read": 194196,
+        "cache_write": 26406
+      },
+      "model_usage": {
+        "claude-opus-5-5": {
+          "inputTokens": 14,
+          "outputTokens": 1306,
+          "cacheReadInputTokens": 194196,
+          "cacheCreationInputTokens": 26406,
+          "webSearchRequests": 0,
+          "costUSD": 0.27626320000000004,
+          "contextWindow": 1000000,
+          "maxOutputTokens": 128000,
+          "thinkingTokens": 103,
+          "cacheCreationEphemeral5mInputTokens": 0,
+          "cacheCreationEphemeral1hInputTokens": 26406,
+          "canonicalModel": "claude-opus-5-5",
+          "provider": "firstParty",
+          "costBasis": "list"
+        }
+      },
+      "turns": 8,
+      "duration_s": 22.78,
+      "wall_s": 24.201,
+      "session_id": "f01781e0-00c3-40d7-99a0-01f816d05684",
+      "transcript": null,
+      "model": "claude-opus-5-5",
+      "error": null,
+      "sandbox": null,
+      "agents": {
+        "agents": [
+          {
+            "type": "main",
+            "id": "f01781e0-00c3-40d7-99a0-01f816d05684",
+            "turns": 7,
+            "input": 14,
+            "output": 1306,
+            "cache_read": 194196,
+            "cache_write": 26406,
+            "model": "claude-opus-5-5",
+            "cost_usd": 0.276263
+          }
+        ],
+        "totals": {
+          "turns": 7,
+          "input": 14,
+          "output": 1306,
+          "cache_read": 194196,
+          "cache_write": 26406,
+          "cost_usd": 0.276263,
+          "unpriced_models": [],
+          "skipped_lines": 0,
+          "by_type": {
+            "main": {
+              "agents": 1,
+              "turns": 7,
+              "input": 14,
+              "output": 1306,
+              "cache_read": 194196,
+              "cache_write": 26406,
+              "cost_usd": 0.276263
+            }
+          }
+        },
+        "pricing_date": "2026-11-21"
+      },
+      "tokens": {
+        "main": 221922,
+        "subagents": 0
+      }
+    },
+    {
+      "case": "pm-triage",
+      "run": 2,
+      "variant": {
+        "plugin_dir": "issue-flow (branch issue/107-split-pm-skill, commit 8f60b69)",
+        "git_sha": "8f60b696b3f344749adc32a6e1cc8d27718fe696",
+        "version": "0.20.0"
+      },
+      "effort": "medium",
+      "ok": true,
+      "score": 1.0,
+      "graders": [
+        {
+          "type": "gh_log",
+          "passed": true,
+          "detail": "3 expected, 9 forbidden"
+        },
+        {
+          "type": "llm",
+          "passed": true,
+          "detail": "PASS The comment asks specific, answerable questions: which command produces the wrong output (with examples), a concrete input file, actual versus expected output, and whether the failure is deterministic, which together give a builder what they need to reproduce and fix the issue."
+        }
+      ],
+      "deterministic": {
+        "passed": 1,
+        "total": 1
+      },
+      "llm": {
+        "passed": 1,
+        "total": 1
+      },
+      "cost_usd": 0.23262760000000002,
+      "judge_cost_usd": 0.000742,
+      "usage": {
+        "input": 12,
+        "output": 1351,
+        "cache_read": 145958,
+        "cache_write": 22046
+      },
+      "model_usage": {
+        "claude-opus-5-5": {
+          "inputTokens": 12,
+          "outputTokens": 1351,
+          "cacheReadInputTokens": 145958,
+          "cacheCreationInputTokens": 22046,
+          "webSearchRequests": 0,
+          "costUSD": 0.23262760000000002,
+          "contextWindow": 1000000,
+          "maxOutputTokens": 128000,
+          "thinkingTokens": 96,
+          "cacheCreationEphemeral5mInputTokens": 0,
+          "cacheCreationEphemeral1hInputTokens": 22046,
+          "canonicalModel": "claude-opus-5-5",
+          "provider": "firstParty",
+          "costBasis": "list"
+        }
+      },
+      "turns": 7,
+      "duration_s": 22.165,
+      "wall_s": 22.834,
+      "session_id": "3ae4d8b2-f035-47ef-b28b-eff46326eebf",
+      "transcript": null,
+      "model": "claude-opus-5-5",
+      "error": null,
+      "sandbox": null,
+      "agents": {
+        "agents": [
+          {
+            "type": "main",
+            "id": "3ae4d8b2-f035-47ef-b28b-eff46326eebf",
+            "turns": 6,
+            "input": 12,
+            "output": 1351,
+            "cache_read": 145958,
+            "cache_write": 22046,
+            "model": "claude-opus-5-5",
+            "cost_usd": 0.232628
+          }
+        ],
+        "totals": {
+          "turns": 6,
+          "input": 12,
+          "output": 1351,
+          "cache_read": 145958,
+          "cache_write": 22046,
+          "cost_usd": 0.232628,
+          "unpriced_models": [],
+          "skipped_lines": 0,
+          "by_type": {
+            "main": {
+              "agents": 1,
+              "turns": 6,
+              "input": 12,
+              "output": 1351,
+              "cache_read": 145958,
+              "cache_write": 22046,
+              "cost_usd": 0.232628
+            }
+          }
+        },
+        "pricing_date": "2026-11-21"
+      },
+      "tokens": {
+        "main": 169367,
+        "subagents": 0
+      }
+    },
+    {
+      "case": "pm-triage",
+      "run": 3,
+      "variant": {
+        "plugin_dir": "issue-flow (branch issue/107-split-pm-skill, commit 8f60b69)",
+        "git_sha": "8f60b696b3f344749adc32a6e1cc8d27718fe696",
+        "version": "0.20.0"
+      },
+      "effort": "medium",
+      "ok": true,
+      "score": 1.0,
+      "graders": [
+        {
+          "type": "gh_log",
+          "passed": true,
+          "detail": "3 expected, 9 forbidden"
+        },
+        {
+          "type": "llm",
+          "passed": true,
+          "detail": "PASS The comment asks concrete, answerable questions: which command is wrong with a named example, one exact reproducing input, expected versus actual output, and whether the failure is consistent, which together are enough to make issue #2 buildable."
+        }
+      ],
+      "deterministic": {
+        "passed": 1,
+        "total": 1
+      },
+      "llm": {
+        "passed": 1,
+        "total": 1
+      },
+      "cost_usd": 0.2135056,
+      "judge_cost_usd": 0.000759,
+      "usage": {
+        "input": 10,
+        "output": 1071,
+        "cache_read": 114548,
+        "cache_write": 21142
+      },
+      "model_usage": {
+        "claude-opus-5-5": {
+          "inputTokens": 10,
+          "outputTokens": 1071,
+          "cacheReadInputTokens": 114548,
+          "cacheCreationInputTokens": 21142,
+          "webSearchRequests": 0,
+          "costUSD": 0.2135056,
+          "contextWindow": 1000000,
+          "maxOutputTokens": 128000,
+          "thinkingTokens": 80,
+          "cacheCreationEphemeral5mInputTokens": 0,
+          "cacheCreationEphemeral1hInputTokens": 21142,
+          "canonicalModel": "claude-opus-5-5",
+          "provider": "firstParty",
+          "costBasis": "list"
+        }
+      },
+      "turns": 6,
+      "duration_s": 17.524,
+      "wall_s": 18.395,
+      "session_id": "a4971b7e-e5ba-4586-a271-dae70b13e175",
+      "transcript": null,
+      "model": "claude-opus-5-5",
+      "error": null,
+      "sandbox": null,
+      "agents": {
+        "agents": [
+          {
+            "type": "main",
+            "id": "a4971b7e-e5ba-4586-a271-dae70b13e175",
+            "turns": 5,
+            "input": 10,
+            "output": 1071,
+            "cache_read": 114548,
+            "cache_write": 21142,
+            "model": "claude-opus-5-5",
+            "cost_usd": 0.213506
+          }
+        ],
+        "totals": {
+          "turns": 5,
+          "input": 10,
+          "output": 1071,
+          "cache_read": 114548,
+          "cache_write": 21142,
+          "cost_usd": 0.213506,
+          "unpriced_models": [],
+          "skipped_lines": 0,
+          "by_type": {
+            "main": {
+              "agents": 1,
+              "turns": 5,
+              "input": 10,
+              "output": 1071,
+              "cache_read": 114548,
+              "cache_write": 21142,
+              "cost_usd": 0.213506
+            }
+          }
+        },
+        "pricing_date": "2026-11-21"
+      },
+      "tokens": {
+        "main": 136771,
+        "subagents": 0
+      }
+    }
+  ]
+}
