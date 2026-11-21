@@ -153,7 +153,7 @@ FORK_REASON = (
     "**Dispatch the build to `issue-flow:issue-worker` instead**, with "
     "`isolation: \"worktree\"` (plus `name: \"worker-<issue>\"` where the tool offers it), "
     "passing the same brief "
-    "(SKILL.md Stage B step 5). A worker starts with no PM context and does only what "
+    "(stage-b-schedule.md, Stage B step 5). A worker starts with no PM context and does only what "
     "the brief says.\n"
     "\n"
     "Not a build? The prompt matched the handoff-brief layout. Reword it, or turn this "

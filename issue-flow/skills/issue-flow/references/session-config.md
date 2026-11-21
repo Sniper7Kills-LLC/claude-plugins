@@ -195,7 +195,7 @@ Hotfixes are `per-issue` regardless of this setting.
 Off by default. When `true`, the PM holds each multi-member batch after the Stage B
 cross-check and presents the member plans to the operator — one line per member with the
 plan-comment link — via `AskUserQuestion`: approve, revise named plans, or proceed
-without review this batch (SKILL.md Stage B step 4b).
+without review this batch (stage-b-schedule.md, Stage B step 4b).
 
 Why it exists: under the default `batch-review`, the human's first contact with a batch
 is the finished multi-issue diff — the most expensive possible review point. The plans
@@ -221,7 +221,7 @@ hold under `batch-review`) or **any member** does (the C1 per-PR holds under
 permanently at zero there, since no batch ever reaches C2 while its members are held).
 At or above it, the PM forms no new batches: it keeps filling worker slots for batches
 already in flight, works parked questions, and notifies the operator once that reviews
-are the constraint, naming the setting and value (SKILL.md Stage B step 1). An approval
+are the constraint, naming the setting and value (stage-b-schedule.md, Stage B step 1). An approval
 or merge frees the cap.
 
 Why: "the PM moves on rather than block" is correct per batch and wrong in aggregate —

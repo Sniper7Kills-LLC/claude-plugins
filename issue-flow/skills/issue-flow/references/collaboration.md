@@ -138,7 +138,7 @@ detector across operators:
 1. Re-read labels **and** assignees immediately before swapping labels.
 2. Assigned to anyone other than `<me>` → abandon, pick the next issue.
 3. Otherwise `forge.issue.assign` **first** — the assignee is the lock, and it is what a
-   multi-member batch holds while the status swap is deferred (SKILL.md Stage B step 3) —
+   multi-member batch holds while the status swap is deferred (stage-b-schedule.md, Stage B step 3) —
    then `forge.issue.status.set <n> status:in-progress` (one operation — it removes
    `status:ready`; deferred to launch time on a multi-member batch), then **re-read once
    more**. If someone else's assignee also landed, the earlier `createdAt` on the claim

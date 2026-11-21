@@ -19,7 +19,7 @@ sub-merges. The PM is notified when each finishes — it does **not** sit and wa
 (Fallback if the type won't resolve: spawn `general-purpose` and prepend the brief with
 "You are a decision-free issue-worker; never merge; return the verdict JSON.")
 
-The worker is an **independent Opus engineer**: it may research (web), use available MCP
+The worker is an **independent engineer** (Sonnet, from its agent definition): it may research (web), use available MCP
 servers (via `ToolSearch`), and spawn its own child agents/Workflows — all on the
 **Sonnet** tier, all **confined to that issue's worktree** and its own scratch directory,
 and all finished before it returns its verdict. The PM sets none of this;
@@ -28,7 +28,7 @@ for out-of-scope discoveries — but only those that pass the filing gate (behav
 user-visible output, a guard that guards nothing, a blocked epic, a maintainer ruling).
 Every other discovery it repairs in its own PR, within the files its change already
 touches, and reports in `notesForPM` when the repair would reach wider. Filed issues are
-picked up by the **next scheduled sweep** (SKILL.md, Stage A0/A: on load, before a merge
+picked up by the **next scheduled sweep** (stage-a-sweep-triage.md, Stage A0/A: on load, before a merge
 gate, or when the ready pool empties) — a routine worker completion does *not* trigger a
 full re-triage. `notesForPM` is the exception: read it on every verdict, because a note
 the PM never routes is a finding lost.
@@ -49,10 +49,10 @@ members:      <count of members in the batch; 1 for standalone/hotfix>
               (how the worker knows whether a crossCheck is owed — never omit it)
 crossCheck:   <URL of the batch cross-check comment on the tracking issue>
               (required whenever `members` > 1; `n/a` for standalone/hotfix and for a
-               single-member batch — SKILL.md Stage B step 4 skips the check there.
+               single-member batch — stage-b-schedule.md, Stage B step 4 skips the check there.
                The worker validates this as its first action and returns `blocked`
                without doing any work if it is absent, empty, "pending", or
-               unresolvable — see SKILL.md Stage B step 5.)
+               unresolvable — see stage-b-schedule.md, Stage B step 5.)
 remote:       <remote>
 forge:        the run configuration's forge block, passed verbatim: {type, host, owner,
               repo, interface}. The worker uses it to pick gh or tea. Never omit it; a worker

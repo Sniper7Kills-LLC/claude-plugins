@@ -70,7 +70,7 @@ Launched by the PM at Stage D, after each merge to the deploy branch, with
 the deploy takes (the same ceiling reasoning as the CI watch in
 [../../../references/forge.md](../../../references/forge.md)). Anchor it to **the head
 SHA of the deploy branch after the merge** — normally the merge commit, or the recovery
-commit whenever one was pushed on top (SKILL.md Stage C2 step 5). The deployment carries
+commit whenever one was pushed on top (stage-c-integrate.md, Stage C2 step 5). The deployment carries
 the SHA it built; correlating against a superseded commit finds nothing and reads as a
 missing deploy.
 
@@ -144,7 +144,7 @@ removes it when the fix deploys and verifies.
 | `failed` (cause `config`/`secret`/`quota`/`infra`) | `forge.issue.status.set <n> status:deploy-failed` (removes `status:deploying`), then route for **human input as a comment** — `needs human input: <what>` naming the cause — and surface it to the user per the feedback policy. **No second `status:` label:** `deploy-failed` stays the only one, so no park is added here for Stage A0 step 3b to destroy. The cost is that the issue is not in the Stage A step 4 `status:needs-feedback` gather; the surfacing is what reaches the user. Do not guess at infra/secret changes. |
 | `timed-out` | A deployment was observed but never reached a terminal state in the budget. Re-query once (run the status command directly). Still not terminal → surface to the user with the job id/link — never assume success. Leave `status:deploying` in place. |
 | `superseded` | The branch's newest deployment is a different commit — ours was replaced before it was observed (typically a hotfix landing right behind the batch). Confirm the newer SHA contains ours (`git merge-base --is-ancestor $SHA <newestSha>`), then watch the **newest** SHA instead — its verdict covers both commits. If the newer SHA does *not* contain ours, the branch was force-moved: surface that to the user. Never push a recovery commit on this verdict. |
-| `no-deployment-observed` | Nothing deployed at all during the watch. First run the status command **once, directly**: a newer deployment now in flight means this is really `superseded` — follow that row, push nothing. Then re-run the merged-head token check (SKILL.md Stage C2 step 5): a suppressed head starts no deploy — push the clean recovery commit and watch the new SHA, **once**; a second `no-deployment-observed` on the recovery SHA is a wiring problem (webhook, platform config) — surface it, do not push again. Never a pass. |
+| `no-deployment-observed` | Nothing deployed at all during the watch. First run the status command **once, directly**: a newer deployment now in flight means this is really `superseded` — follow that row, push nothing. Then re-run the merged-head token check (stage-c-integrate.md, Stage C2 step 5): a suppressed head starts no deploy — push the clean recovery commit and watch the new SHA, **once**; a second `no-deployment-observed` on the recovery SHA is a wiring problem (webhook, platform config) — surface it, do not push again. Never a pass. |
 | `watch-error` | The status command itself failed — usually a permission refusal or an auth problem. Fix the cause (allow-list the exact command, re-authenticate) and relaunch the watch. Never a pass. |
 
 **Classify the cause before routing a failure.** Delegate the log read to a short-lived
@@ -166,7 +166,7 @@ user.
 ## Starting a deploy that never started
 
 Everything else here **reads** status. Once — when the merge commit's message suppressed
-the push run (see the merged-into-branch check in SKILL.md Stage C2 step 5) — nothing is
+the push run (see the merged-into-branch check in stage-c-integrate.md, Stage C2 step 5) — nothing is
 building because nothing began, and the PM has to start it.
 
 **Preferred, and provider-independent: one clean empty commit on the deploy branch,

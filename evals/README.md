@@ -30,6 +30,7 @@ token counts per run. The operator decided on 2026-11-21 to use our own runner o
 | `evals/worker/_fixture/` | The project that the worker cases start from. |
 | `evals/results/` | Run results. Git ignores this directory. |
 | `evals/baselines/<version>/` | Committed baseline run records and summaries, for example `0.20.0/pm/`. |
+| `evals/candidates/<issue>-<slug>/<suite>/` | Committed results of a candidate change, measured against a baseline, for example `109-sonnet-worker/worker/`. |
 | `evals/BASELINE.md` | The numbers of the current baseline, for both suites. |
 | `evals/rule-inventory.json` | The rule inventory of the PM `SKILL.md` at 0.20.0. `python3 scripts/rule-coverage.py extract` makes it, and `check` verifies a skill tree against it (Sniper7Kills-LLC/claude-plugins#104). |
 

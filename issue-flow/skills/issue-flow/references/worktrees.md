@@ -177,7 +177,7 @@ Two consequences the PM should treat as load-bearing:
    (exporting it from a tool call does nothing). `ask` exists but is interactive-only —
    a background agent hangs on the prompt, which is worse than the refusal. The same
    hook also denies a `subagent_type: "fork"` spawn that carries the handoff brief
-   (SKILL.md Stage B step 5), under its own switch, `ISSUE_FLOW_FORK_GUARD`, so turning
+   (stage-b-schedule.md, Stage B step 5), under its own switch, `ISSUE_FLOW_FORK_GUARD`, so turning
    named peers back on does not turn fork dispatch back on.
 2. **Unnamed un-isolated helpers are reachable and do notify.** `code-auditor`,
    `ux-explorer` and `deploy-verifier` are spawned without isolation and

@@ -98,7 +98,7 @@ how the batch's knowledge outlives it.
 **The PM relays the urgent ones.** A worker reads the log when it starts, so the log only
 ever reaches workers that start *after* a finding lands. For anyone already running, the
 push is the only channel — and the PM decides on the **targeted tracking-issue read that follows every worker completion**
-(SKILL.md, Stage A) whether a live sibling needs it now.
+(stage-a-sweep-triage.md, Stage A) whether a live sibling needs it now.
 
 Push it if either is true:
 
@@ -202,7 +202,7 @@ unchanged.
    and re-anchor the watch **when this is the last member**, and otherwise leave the branch
    CI-free and let the gate (step 2 of the batch checklist) re-trigger once on the final
    head — a trigger per late member burns one full run each, which is the cost the batch
-   model exists to avoid (SKILL.md Stage C1 step 4b).
+   model exists to avoid (stage-c-integrate.md, Stage C1 step 4b).
 4. Member → `forge.issue.status.set <m> status:batched`, which **removes `status:in-review`
    in the same operation** (at most one `status:` label per issue — a bare
    `forge.issue.label.add` leaves it in two states and breaks status queries); tick the
