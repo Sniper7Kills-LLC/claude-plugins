@@ -12,21 +12,31 @@ those of Sniper7Kills-LLC/claude-plugins#106:
   1. No deterministic grader regresses on any case: its pass rate on the case is not
      lower than in the baseline.
   2. The mean score is not more than 0.05 below the baseline.
-  3. The PM tokens per session are lower. The PM tokens are the four token counts of
-     the record's `usage`, which counts only the main loop.
+  3. The mean PM tokens per run are at least 10% lower. The PM tokens are the four
+     token counts of the record's `usage`, which counts only the main loop. Both sides
+     need at least 3 runs per case, because one run varies by more than 10%.
 - Worker rule. Ship only when both checks pass:
   1. The hidden-test pass rate is not more than 5 points below the baseline.
   2. The mean cost per run (`cost_usd`) is at least 40% lower.
+  A run with no result (a timeout, or output that is not a result object) counts as a
+  failed run in the hidden-test pass rate. Its cost is not known, so the cost mean
+  leaves it out.
   When the worker rule fails, the report gives the numbers per tier (easy, medium,
   hard). The hybrid keeps the baseline runs on the cases tagged `hard` and takes the
   candidate runs on the rest. The verdict is `hybrid` only when the hybrid meets the
   same two checks.
 
-Each threshold is inclusive. The script compares only the cases that both sides ran.
-The two results must name the same `effort`. A result that names no effort, or names
-another effort, makes the script refuse: effort changes cost and quality, so the rules
-would measure the effort and not the plugin.
-Exit codes: 0 ship, 1 do not ship, 3 hybrid, 2 bad input, 5 different or unknown effort.
+Each threshold is inclusive. The two results must name the same `effort`. A result that
+names no effort, or names another effort, makes the script refuse: effort changes cost
+and quality, so the rules would measure the effort and not the plugin.
+
+The script also refuses an incomplete candidate: a case of the baseline that the
+candidate did not run, `partial: true`, or fewer runs per case than the baseline. Such
+a run is a smoke test only, not a decision. A case that only the candidate ran is left
+out and named. The worker rule refuses when `--evals-dir` has no case.json for a case,
+because the tiers come from its tags.
+Exit codes: 0 ship, 1 do not ship, 3 hybrid, 2 bad input, 5 a refusal (different or
+unknown effort, an incomplete candidate, or a missing case file).
 """
 
 import argparse
@@ -41,6 +51,10 @@ EPSILON = 1e-9
 SCORE_DROP_MAX = 0.05
 HIDDEN_DROP_MAX = 0.05
 COST_CUT_MIN = 0.40
+# The operator's margin of 2026-11-21: one PM run varies by more than 10% from the 3-run mean.
+PM_TOKEN_CUT_MIN = 0.10
+PM_MIN_RUNS = 3
+SMOKE = "smoke test only, not a decision"
 COST_DISAGREEMENT = 0.10
 DETECTION_LIMIT = "15 points"
 TIERS = ("easy", "medium", "hard")
@@ -50,8 +64,16 @@ class InputError(Exception):
     """A results file that cannot be compared."""
 
 
-class EffortError(Exception):
+class RefusalError(Exception):
+    """Two results that the rules must not decide on: exit 5."""
+
+
+class EffortError(RefusalError):
     """Two results that ran at different efforts, or a result with no effort."""
+
+
+class IncompleteError(RefusalError):
+    """A candidate that does not cover the baseline, or too few runs for the rule."""
 
 
 def check_effort(baseline, candidate):
@@ -89,15 +111,27 @@ def mean(values):
     return sum(values) / len(values) if values else None
 
 
+def has_result(record):
+    """False for a run whose `claude -p` gave no result object: a timeout or a parse failure.
+
+    Such a run has an error and no session id. Its cost of 0 is not a real cost.
+    """
+    return not (record.get("error") and not record.get("session_id"))
+
+
+def costs(records):
+    return [r["cost_usd"] for r in records if has_result(r)]
+
+
 def tokens(record):
     usage = record.get("usage") or {}
     return sum(usage.get(field) or 0 for field in ("input", "output", "cache_read", "cache_write"))
 
 
 def hidden_runs(records):
-    """Return one bool per run that has a hidden_tests grader."""
-    return [grader["passed"] for record in records for grader in record.get("graders", [])
-            if grader["type"] == "hidden_tests"]
+    """Return one bool per run that has a hidden_tests grader; a run with no result fails."""
+    return [grader["passed"] and has_result(record) for record in records
+            for grader in record.get("graders", []) if grader["type"] == "hidden_tests"]
 
 
 def deterministic_rates(records):
@@ -128,8 +162,9 @@ def case_row(records):
         "mean_score": round(mean(r["score"] for r in records), 4),
         "score_spread": spread(r["score"] for r in records),
         "hidden_pass_rate": round(mean(hidden), 4) if hidden else None,
-        "mean_cost_usd": round(mean(r["cost_usd"] for r in records), 4),
-        "cost_spread": spread(r["cost_usd"] for r in records),
+        "mean_cost_usd": round(mean(costs(records)), 4) if costs(records) else None,
+        "cost_spread": spread(costs(records)),
+        "no_result_runs": sum(not has_result(r) for r in records),
         "mean_main_tokens": round(mean(tokens(r) for r in records)),
     }
 
@@ -137,7 +172,8 @@ def case_row(records):
 def case_tags(evals_dir, suite, case):
     path = os.path.join(evals_dir, suite, case, "case.json")
     if not os.path.isfile(path):
-        return []
+        raise RefusalError(f"{path} does not exist; the worker rule reads the tiers from it. "
+                           "Give --evals-dir the directory that holds the cases")
     with open(path, encoding="utf-8") as handle:
         return json.load(handle).get("tags") or []
 
@@ -146,16 +182,17 @@ def worker_numbers(groups, cases):
     records = [record for case in cases for record in groups[case]]
     hidden = hidden_runs(records)
     return {"hidden_pass_rate": mean(hidden) if hidden else None,
-            "cost_usd": mean(r["cost_usd"] for r in records) if records else None,
-            "runs": len(records)}
+            "cost_usd": mean(costs(records)),
+            "runs": len(records), "no_result_runs": sum(not has_result(r) for r in records)}
 
 
 def worker_checks(base, cand):
     """Return the two checks of the worker rule for two {hidden_pass_rate, cost_usd} dicts."""
     hidden_ok = (base["hidden_pass_rate"] is not None and cand["hidden_pass_rate"] is not None
                  and cand["hidden_pass_rate"] >= base["hidden_pass_rate"] - HIDDEN_DROP_MAX - EPSILON)
-    cost_ok = (base["cost_usd"] or 0) > 0 and cand["cost_usd"] <= base["cost_usd"] * (1 - COST_CUT_MIN) + EPSILON
-    cut = 1 - cand["cost_usd"] / base["cost_usd"] if base["cost_usd"] else None
+    cost_ok = ((base["cost_usd"] or 0) > 0 and cand["cost_usd"] is not None
+               and cand["cost_usd"] <= base["cost_usd"] * (1 - COST_CUT_MIN) + EPSILON)
+    cut = 1 - cand["cost_usd"] / base["cost_usd"] if base["cost_usd"] and cand["cost_usd"] is not None else None
     return [
         {"name": "hidden_pass_within_5_points", "passed": hidden_ok,
          "baseline": base["hidden_pass_rate"], "candidate": cand["hidden_pass_rate"]},
@@ -185,19 +222,22 @@ def pm_rule(base_groups, cand_groups, cases):
         # A higher score passes: the rule guards against a drop.
         {"name": "mean_score_within_0.05", "passed": cand_score >= base_score - SCORE_DROP_MAX - EPSILON,
          "baseline": round(base_score, 4), "candidate": round(cand_score, 4)},
-        {"name": "pm_tokens_lower", "passed": cand_tokens < base_tokens,
-         "baseline": round(base_tokens), "candidate": round(cand_tokens)},
+        {"name": "pm_tokens_at_least_10pct_lower",
+         "passed": base_tokens > 0 and cand_tokens <= base_tokens * (1 - PM_TOKEN_CUT_MIN) + EPSILON,
+         "baseline": round(base_tokens), "candidate": round(cand_tokens),
+         "cut": round(1 - cand_tokens / base_tokens, 4) if base_tokens else None},
     ]
     verdict = "ship" if all(c["passed"] for c in checks) else "do not ship"
     return {"verdict": verdict, "checks": checks, "regressions": regressions}
 
 
 def worker_rule(base_groups, cand_groups, cases, evals_dir):
+    # Read the tags first, so a missing case file is refused whatever the verdict would be.
+    tags = {case: case_tags(evals_dir, "worker", case) for case in cases}
     checks = worker_checks(worker_numbers(base_groups, cases), worker_numbers(cand_groups, cases))
     report = {"verdict": "ship", "checks": checks, "by_tier": None, "hybrid": None}
     if all(c["passed"] for c in checks):
         return report
-    tags = {case: case_tags(evals_dir, "worker", case) for case in cases}
     report["by_tier"] = {}
     for tier in TIERS:
         tier_cases = [case for case in cases if tier in tags[case]]
@@ -239,6 +279,28 @@ def runs_per_case(groups, cases):
     return counts[0] if len(counts) == 1 else counts
 
 
+def check_complete(baseline, candidate, base_groups, cand_groups, rule):
+    """Raise IncompleteError when the candidate cannot give a decision against the baseline."""
+    problems = []
+    absent = sorted(set(base_groups) - set(cand_groups))
+    if absent:
+        problems.append(f"the candidate did not run {len(absent)} baseline case(s): {', '.join(absent)}")
+    if candidate.get("partial"):
+        problems.append("the candidate is partial: the cost ceiling stopped it")
+    fewer = sorted(case for case in base_groups if case in cand_groups
+                   and len(cand_groups[case]) < len(base_groups[case]))
+    for case in fewer:
+        problems.append(f"{case}: {len(cand_groups[case])} candidate run(s), {len(base_groups[case])} in the baseline")
+    if rule == "pm":
+        short = sorted(case for case in set(base_groups) & set(cand_groups)
+                       if min(len(base_groups[case]), len(cand_groups[case])) < PM_MIN_RUNS)
+        if short:
+            problems.append(f"the PM rule compares {PM_MIN_RUNS}-run means and needs at least {PM_MIN_RUNS} runs "
+                            f"per case on both sides; too few in: {', '.join(short)}")
+    if problems:
+        raise IncompleteError(f"{SMOKE}: " + "; ".join(problems))
+
+
 def compare(baseline, candidate, rule=None, evals_dir=None):
     suite = baseline.get("suite")
     if suite != candidate.get("suite"):
@@ -250,7 +312,9 @@ def compare(baseline, candidate, rule=None, evals_dir=None):
     cases = sorted(set(base_groups) & set(cand_groups))
     if not cases:
         raise InputError("the two results have no case in common")
-    missing = sorted(set(base_groups) ^ set(cand_groups))
+    check_complete(baseline, candidate, base_groups, cand_groups, rule)
+    # After check_complete, only the candidate can have a case that the other side lacks.
+    missing = sorted(set(cand_groups) - set(base_groups))
     if rule == "pm":
         report = pm_rule(base_groups, cand_groups, cases)
     else:
@@ -269,6 +333,8 @@ def compare(baseline, candidate, rule=None, evals_dir=None):
         "caveat": (f"At this sample size a drop under about {DETECTION_LIMIT} cannot be detected. "
                    "A pass here is not proof that no small regression exists."),
         "cost_disagreements": cost_disagreements(baseline["records"]) + cost_disagreements(candidate["records"]),
+        "no_result_runs": {side: sum(not has_result(r) for case in cases for r in groups[case])
+                           for side, groups in (("baseline", base_groups), ("candidate", cand_groups))},
     })
     report.setdefault("regressions", [])
     return report
@@ -283,7 +349,7 @@ def rate(value):
 
 
 def span(values, unit=""):
-    return f"{unit}{values['min']:.2f}-{unit}{values['max']:.2f}"
+    return "n/a" if values is None else f"{unit}{values['min']:.2f}-{unit}{values['max']:.2f}"
 
 
 def render(report):
@@ -327,7 +393,11 @@ def render(report):
         for check in hybrid["checks"]:
             lines.append(f"  {'PASS' if check['passed'] else 'FAIL'}  {check['name']}")
     if report["missing_cases"]:
-        lines.append(f"left out (only one side ran them): {', '.join(report['missing_cases'])}")
+        lines.append(f"left out (only the candidate ran them): {', '.join(report['missing_cases'])}")
+    if any(report["no_result_runs"].values()):
+        lines.append(f"runs with no result (failed runs, left out of the cost mean): "
+                     f"baseline {report['no_result_runs']['baseline']}, "
+                     f"candidate {report['no_result_runs']['candidate']}")
     for line in report["cost_disagreements"]:
         lines.append(f"cost check: {line}")
     lines.append("")
@@ -355,7 +425,7 @@ def main(argv=None):
     except InputError as error:
         print(f"error: {error}", file=sys.stderr)
         return 2
-    except EffortError as error:
+    except RefusalError as error:
         print(f"error: {error}", file=sys.stderr)
         return 5
     print(json.dumps(report, indent=2) if args.json else render(report))
