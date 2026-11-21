@@ -27,7 +27,8 @@ token counts per run. The operator decided on 2026-11-21 to use our own runner o
 | `evals/worker/<case>/tracker.json` | The tracker state for that case: one issue, with its acceptance criteria. |
 | `evals/worker/<case>/hidden/` | The hidden tests of that case. The agent never sees them. |
 | `evals/worker/<case>/reference.patch` | A reference solution. A test proves that the hidden tests pass with it. |
-| `evals/worker/_fixture/` | The project that the worker cases start from. |
+| `evals/worker/_fixture/` | The small project that the cases tagged `small` start from. |
+| `evals/worker/_fixture_large/` | The large project that the cases tagged `large` start from (Sniper7Kills-LLC/claude-plugins#117). |
 | `evals/results/` | Run results. Git ignores this directory. |
 | `evals/baselines/<version>/` | Committed baseline run records and summaries, for example `0.20.0/pm/`. |
 | `evals/candidates/<issue>-<slug>/<suite>/` | Committed results of a candidate change, measured against a baseline, for example `109-sonnet-worker/worker/`. |
@@ -238,6 +239,7 @@ the `effort` of its agent definition or, when there is none, at the default of i
 | `branches` | no | Branches to create at `main` and push to `origin`. |
 | `disallowed_tools` | no | Tools the run cannot use, passed to `--disallowedTools`. |
 | `model` | no | The model of the run, when `--main-model` is not given. |
+| `docs_paths` | no | Globs of the documentation files that the brief's `docs` practice lets the worker change. `diff_scope` always allows them. |
 
 ### Graders
 
@@ -275,14 +277,24 @@ regular expression.
 A case uses a `file` grader where the agent would do something the sandbox cannot show.
 For example, a PM gate that sends work back to a worker writes the message to a file.
 
-**`llm`** (judged) asks a cheap judge: `claude -p` on Haiku, with no tools, one vote.
+**`llm`** (judged) asks a cheap judge: `claude -p` on Haiku, with no tools. The majority of
+3 votes decides.
 
 ```json
 {"type": "llm", "target": "gh_log", "rubric": "The comment on #2 asks specific questions."}
 ```
 
 `target` is `final` (the last message of the run) or `gh_log` (every tracker write, with
-its body). The judge answers PASS or FAIL and gives one sentence of reason.
+its body). Each vote answers PASS or FAIL and gives one sentence of reason. A judge call
+that fails is a FAIL vote. The judge stops when 2 votes agree, so a clear run costs 2 calls
+and a split run costs 3. The `detail` gives the vote count and the reason of the first
+vote on the winning side, for example `2/3 votes: PASS: ...`.
+
+One vote was not enough. In the candidate of Sniper7Kills-LLC/claude-plugins#111, `pm-c1-no-prepatch` run 1 got a FAIL vote
+whose reason said that the PM met the rubric. A new judgment of that run, with 3 votes, gave
+`2/2 votes: PASS`. The cost of the votes is small: the judges of the 0.20.0 PM suite cost
+$0.016 for 18 runs with one vote each, so 2 or 3 votes cost about $0.03 to $0.05 for the
+suite. The judge cost still counts against `--max-cost-usd`, as before.
 
 The worker suite adds three deterministic graders: `hidden_tests`, `verdict` and
 `diff_scope`. The worker suite section below describes them. A suite adds a grader type to
@@ -544,6 +556,9 @@ decide whether the issue is done.
 python3 scripts/run-evals.py --plugin-dir issue-flow --suite worker --tag easy --runs 1 --max-cost-usd 5
 ```
 
+`--tag small` runs the 8 cases of the 0.20.0 worker baseline, and `--tag large` runs the 3
+cases on the large fixture. Without a tag, the suite runs all 11.
+
 ### How a worker case runs
 
 1. The main session is a dispatcher on Haiku (`"model": "haiku"` in the case). It does no
@@ -565,26 +580,40 @@ worker case, not `duration_s`. `model_usage` gives the tokens and
 the cost per model, so the worker's share is the entry of its model. `usage` counts only the
 dispatcher.
 
-### The fixture
+### The fixtures
 
 `evals/worker/_fixture/` is `inventory`, a small command-line tool on the Python standard
-library. Its test command is `python3 -m unittest`, and its 11 tests pass. Each case starts
-from an untouched copy. The fixture holds no hidden test.
+library. Its test command is `python3 -m unittest`, and its 11 tests pass. It has 4 source
+files, so a worker finds the file of a bug at once.
+
+`evals/worker/_fixture_large/` is `shop`, an order service on the Python standard library:
+40 files. The `shop` package has 5 subpackages (`api`, `services`, `models`, `storage` and
+`util`), and there are tests, sample data in `data/` and `docs/api.md`. A
+request goes from `App.handle` through the router and a handler to a service, a repository
+and a model, and the command line sends each command through `App.handle` too. Its test
+command is `python3 -m unittest`, and its 27 tests pass. On this fixture, a change that
+saves locating work can show a gain (Sniper7Kills-LLC/claude-plugins#117).
+
+Each case starts from an untouched copy of its fixture. No fixture holds a hidden test.
 
 ### The cases
 
 | Case | Tags | What the worker must do |
 |---|---|---|
-| `worker-easy-low-stock-boundary` | `easy` | A one-line fix: `low` leaves out an item at the threshold. |
-| `worker-easy-negative-qty` | `easy` | A small validation: reject a negative quantity. |
-| `worker-medium-csv-format` | `medium` | A feature across 2 files: `list --format csv`. |
-| `worker-medium-money-refactor` | `medium` | A refactor with existing tests: one `format_money` function. |
-| `worker-medium-price-parse` | `medium` | A bug whose cause is not in the file the report names. |
-| `worker-hard-location` | `hard` | A change to the shared `Item` type, used in every module. |
-| `worker-hard-error-lines` | `hard` | A new error type across the loader and the command line. |
-| `worker-hard-ambiguous-tax` | `hard` | An issue with no tax rate: the worker must ask, not guess. |
+| `worker-easy-low-stock-boundary` | `small`, `easy` | A one-line fix: `low` leaves out an item at the threshold. |
+| `worker-easy-negative-qty` | `small`, `easy` | A small validation: reject a negative quantity. |
+| `worker-medium-csv-format` | `small`, `medium` | A feature across 2 files: `list --format csv`. |
+| `worker-medium-money-refactor` | `small`, `medium` | A refactor with existing tests: one `format_money` function. |
+| `worker-medium-price-parse` | `small`, `medium` | A bug whose cause is not in the file the report names. |
+| `worker-hard-location` | `small`, `hard` | A change to the shared `Item` type, used in every module. |
+| `worker-hard-error-lines` | `small`, `hard` | A new error type across the loader and the command line. |
+| `worker-hard-ambiguous-tax` | `small`, `hard` | An issue with no tax rate: the worker must ask, not guess. |
+| `worker-large-medium-report-midnight` | `large`, `medium` | The issue names the daily report. The cause is the day check in `shop/util/dates.py`, which the order list also uses. |
+| `worker-large-hard-one-discount` | `large`, `hard` | A rule across 4 layers: refuse a second discount code with a new 409 error, in the service, the API errors, the command line and `docs/api.md`. |
+| `worker-large-locate-repeated-sku` | `large`, `medium`, `locate` | The issue names the handler `get_order`. The cause is `merge_lines` in `shop/models/order.py`, below the service, the repository and `Order.from_dict`. |
 
-Every case carries the tag `worker` and one of `easy`, `medium` or `hard`.
+Every case carries the tag `worker`, one of `small` or `large` (its fixture), and one of
+`easy`, `medium` or `hard`. `scripts/eval-compare.py` reads only the tier tags.
 
 ### The worker graders
 
@@ -617,7 +646,15 @@ Every case carries the tag `worker` and one of `easy`, `medium` or `hard`.
   issue. Each entry needs `met: true` and evidence. The grader reads the criteria from the
   `## Acceptance criteria` list of the issue in the case's `tracker.json`.
 - For `needs-feedback`, `question` must not be empty.
-- With `"prepatch": true`, `localChecks` must name a pre-patch run that failed.
+- With `"prepatch": true`, `localChecks` must name a pre-patch run that failed: a word that
+  starts with `fail`, and one of these names for the run. `agents/issue-worker.md` gives no
+  fixed field for it, so a worker uses its own words.
+  - `pre-patch`, `prepatch`, `pre-fix` or `pre-change`, or `unpatched`.
+  - `before` or `without`, then `the`, `my`, `this` or `any`, then `fix`, `change`, `patch`
+    or `implementation`. For example: "the new test failed before the fix".
+
+  Before Sniper7Kills-LLC/claude-plugins#117, only `pre-patch` counted. The grader then
+  failed a worker that wrote "failed before the fix".
 
 **`diff_scope`** (deterministic) checks what the worker committed.
 
@@ -628,7 +665,14 @@ Every case carries the tag `worker` and one of `easy`, `medium` or `hard`.
 
 - `main` must stay at the fixture commit, in the repo and in `origin`.
 - With `allow`, every path that the branch `issue/<issue>-*` changes must match one of the
-  globs (`fnmatch`, so `*` also matches `/`). A branch that changes nothing fails.
+  globs (`fnmatch`, so `*` also matches `/`), or one of the case's `docs_paths`. A branch
+  that changes nothing fails.
+- Each worker brief sets `docs: public-interfaces`, so a correct worker can update the
+  docs of an interface that it changes. Every case with an allowlist has `docs_paths`:
+  `README.md` on the small fixture, and `README.md` and `docs/*` on the large one. Before
+  Sniper7Kills-LLC/claude-plugins#117, `README.md` was not allowed, and `diff_scope` failed
+  correct runs in 3 cases: `worker-medium-price-parse` (0.20.0),
+  `worker-easy-low-stock-boundary` and `worker-medium-money-refactor`.
 - With `no_commits`, no ref in the repo or in `origin` may hold a commit after the fixture
   commit. Worktree `HEAD`s count. The ambiguous case uses this.
 
@@ -641,10 +685,12 @@ The ambiguous case has no hidden tests. Its graders are `verdict` with
 `python3 scripts/test-worker-cases.py` proves that each case can tell a good result from a
 bad one. It costs nothing. For each case that has hidden tests, it checks these:
 
-1. The hidden tests fail on the untouched fixture.
+1. The hidden tests fail on the untouched fixture of the case.
 2. `reference.patch` applies, and then the hidden tests pass.
 3. The fixture's own tests still pass with the patch.
-4. The patch stays inside the `diff_scope` allowlist.
+4. The patch stays inside the `diff_scope` allowlist and the `docs_paths`.
+
+It also checks that the large fixture holds 20 to 40 files in at least 5 packages.
 
 The test also runs the whole suite on a fake `claude`. A worker that does nothing fails
 every case. A golden worker, which commits `reference.patch` and writes a correct verdict,
@@ -652,9 +698,11 @@ passes every case.
 
 ### Add a worker case
 
-1. Choose the issue and its tier. Write the acceptance criteria as observable results.
+1. Choose the fixture, the issue and its tier. Write the acceptance criteria as observable
+   results.
 2. Make `evals/worker/<name>/` with `case.json` and `tracker.json`. Copy both from a case
-   of the same kind. Give the issue a number that no other case uses.
+   of the same kind and the same fixture. Give the issue a number that no other case uses.
+   Tag the case `small` or `large`, and set `docs_paths` to the docs of that fixture.
 3. Change the brief in the prompt: the issue number, the title and the branch slug.
 4. Write `hidden/hidden_test_<slug>.py`. Test the acceptance criteria through the public
    interface (the command line, or the functions that the issue names). Do not test the
@@ -662,8 +710,8 @@ passes every case.
 5. Make `reference.patch` with `git diff` from a copy of the fixture. Add tests for the
    change to the patch, as a worker would.
 6. Set the `diff_scope` allowlist to the paths that a correct change can touch.
-7. Run `python3 scripts/test-worker-cases.py`. It must pass. Change the tier counts in it
-   when you add a case.
+7. Run `python3 scripts/test-worker-cases.py`. It must pass. Change the case, tier and
+   fixture counts in it when you add a case.
 8. Run the case once on the current release, with a cost ceiling. A case that the current
    release fails in 2 of 3 runs is a bad case: fix the case, not the finding.
 

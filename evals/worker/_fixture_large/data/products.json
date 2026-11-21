@@ -1,0 +1,7 @@
+[
+  {"sku": "MUG-1", "name": "Stoneware mug", "category": "Kitchen", "price": "12.50", "stock": 40},
+  {"sku": "TEA-2", "name": "Green tea, 100 g", "category": "Food", "price": "6.75", "stock": 120},
+  {"sku": "KET-3", "name": "Kettle", "category": "Kitchen", "price": "39.00", "stock": 8},
+  {"sku": "NB-4", "name": "Notebook", "category": "Office Supplies", "price": "4.20", "stock": 200},
+  {"sku": "PEN-5", "name": "Fountain pen", "category": "Office Supplies", "price": "24.99", "stock": 15}
+]

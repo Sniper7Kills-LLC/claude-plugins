@@ -1,0 +1,79 @@
+{
+  "repo": {
+    "owner": "acme",
+    "name": "shop",
+    "defaultBranch": "main"
+  },
+  "user": "eval-bot",
+  "labels": [
+    {
+      "name": "status:ready",
+      "color": "EDEDED",
+      "description": ""
+    },
+    {
+      "name": "status:in-progress",
+      "color": "EDEDED",
+      "description": ""
+    },
+    {
+      "name": "status:in-review",
+      "color": "EDEDED",
+      "description": ""
+    },
+    {
+      "name": "status:needs-feedback",
+      "color": "EDEDED",
+      "description": ""
+    },
+    {
+      "name": "status:blocked",
+      "color": "EDEDED",
+      "description": ""
+    },
+    {
+      "name": "type:hotfix",
+      "color": "EDEDED",
+      "description": ""
+    },
+    {
+      "name": "type:batch",
+      "color": "EDEDED",
+      "description": ""
+    },
+    {
+      "name": "type:epic",
+      "color": "EDEDED",
+      "description": ""
+    },
+    {
+      "name": "priority:high",
+      "color": "EDEDED",
+      "description": ""
+    },
+    {
+      "name": "priority:low",
+      "color": "EDEDED",
+      "description": ""
+    }
+  ],
+  "issues": [
+    {
+      "number": 23,
+      "title": "`GET /orders/1004` gives the wrong total",
+      "body": "The customer of order 1004 paid $83.37 for 3 fountain pens and 2 notebooks. `GET /orders/1004` gives `total_cents` 5838 (`$58.38`), and `python3 -m shop order show 1004` prints `PEN-5 x2` and `total $58.38`. The lines in `data/orders.json` are correct. The handler `get_order` in `shop/api/handlers.py` gives the wrong total.\n\n## Acceptance criteria\n- [ ] `GET /orders/1004` on the sample data gives `total_cents` 8337 and `total` `\"$83.37\"`.\n- [ ] When an order has more than one line of the same product, the quantities of those lines add up: the lines of order 1004 give a quantity of 3 for `PEN-5`.\n- [ ] An order placed through `POST /orders` with two lines of the same product has the total of both lines, also when it is read again.\n- [ ] The daily report counts such an order at its full total.\n",
+      "state": "open",
+      "labels": [
+        "status:in-progress"
+      ],
+      "assignees": [
+        "eval-bot"
+      ],
+      "author": "maintainer",
+      "createdAt": "2026-11-20T09:00:00Z",
+      "updatedAt": "2026-11-20T09:00:00Z",
+      "comments": []
+    }
+  ],
+  "prs": []
+}

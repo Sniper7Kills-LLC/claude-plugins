@@ -1,0 +1,15 @@
+[
+  {"id": 1001, "placed_at": "2026-11-20T09:15:00Z", "status": "placed",
+   "lines": [{"sku": "MUG-1", "qty": 2, "unit_price": "12.50"}], "discounts": []},
+  {"id": 1002, "placed_at": "2026-11-20T17:40:00Z", "status": "placed",
+   "lines": [{"sku": "KET-3", "qty": 1, "unit_price": "39.00"}, {"sku": "TEA-2", "qty": 1, "unit_price": "6.75"}],
+   "discounts": ["SAVE10"]},
+  {"id": 1003, "placed_at": "2026-11-21T00:00:00Z", "status": "placed",
+   "lines": [{"sku": "NB-4", "qty": 5, "unit_price": "4.20"}], "discounts": []},
+  {"id": 1004, "placed_at": "2026-11-21T11:05:00Z", "status": "placed",
+   "lines": [{"sku": "PEN-5", "qty": 1, "unit_price": "24.99"}, {"sku": "NB-4", "qty": 2, "unit_price": "4.20"},
+             {"sku": "PEN-5", "qty": 2, "unit_price": "24.99"}],
+   "discounts": []},
+  {"id": 1005, "placed_at": "2026-11-21T15:30:00Z", "status": "cancelled",
+   "lines": [{"sku": "TEA-2", "qty": 3, "unit_price": "6.75"}], "discounts": []}
+]

@@ -1,0 +1,79 @@
+{
+  "repo": {
+    "owner": "acme",
+    "name": "shop",
+    "defaultBranch": "main"
+  },
+  "user": "eval-bot",
+  "labels": [
+    {
+      "name": "status:ready",
+      "color": "EDEDED",
+      "description": ""
+    },
+    {
+      "name": "status:in-progress",
+      "color": "EDEDED",
+      "description": ""
+    },
+    {
+      "name": "status:in-review",
+      "color": "EDEDED",
+      "description": ""
+    },
+    {
+      "name": "status:needs-feedback",
+      "color": "EDEDED",
+      "description": ""
+    },
+    {
+      "name": "status:blocked",
+      "color": "EDEDED",
+      "description": ""
+    },
+    {
+      "name": "type:hotfix",
+      "color": "EDEDED",
+      "description": ""
+    },
+    {
+      "name": "type:batch",
+      "color": "EDEDED",
+      "description": ""
+    },
+    {
+      "name": "type:epic",
+      "color": "EDEDED",
+      "description": ""
+    },
+    {
+      "name": "priority:high",
+      "color": "EDEDED",
+      "description": ""
+    },
+    {
+      "name": "priority:low",
+      "color": "EDEDED",
+      "description": ""
+    }
+  ],
+  "issues": [
+    {
+      "number": 21,
+      "title": "`shop report daily` counts an order of the next day",
+      "body": "`python3 -m shop report daily 2026-11-20` on the sample data prints `2026-11-20: 3 orders, revenue $87.17`. Only orders 1001 and 1002 were placed on 2026-11-20. Order 1003 was placed at `2026-11-21T00:00:00Z`, and the report of 2026-11-21 counts it too. I think the daily report in `shop/services/reports.py` selects the wrong orders.\n\n## Acceptance criteria\n- [ ] `python3 -m shop report daily 2026-11-20` on the sample data prints `2026-11-20: 2 orders, revenue $66.17`.\n- [ ] An order placed at exactly `00:00:00Z` counts only in the report of the day that starts at that time.\n- [ ] `GET /orders?date=<day>` lists only the orders placed on that UTC day, with the same rule at midnight.\n",
+      "state": "open",
+      "labels": [
+        "status:in-progress"
+      ],
+      "assignees": [
+        "eval-bot"
+      ],
+      "author": "maintainer",
+      "createdAt": "2026-11-20T09:00:00Z",
+      "updatedAt": "2026-11-20T09:00:00Z",
+      "comments": []
+    }
+  ],
+  "prs": []
+}

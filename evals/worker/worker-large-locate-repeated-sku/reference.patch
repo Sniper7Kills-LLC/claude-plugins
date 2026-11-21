@@ -1,0 +1,37 @@
+diff --git a/shop/models/order.py b/shop/models/order.py
+index 68a5866..b132dad 100644
+--- a/shop/models/order.py
++++ b/shop/models/order.py
+@@ -44,8 +44,13 @@ class Order:
+ 
+ 
+ def merge_lines(lines):
+-    """Return one line per product, in the order the products first appear."""
++    """Return one line per product, in the order the products first appear.
++
++    The lines of one product add their quantities; the first line gives the unit price.
++    """
+     merged = {}
+     for line in lines:
+-        merged[line.sku] = line
++        previous = merged.get(line.sku)
++        merged[line.sku] = line if previous is None else Line(line.sku, previous.qty + line.qty,
++                                                              previous.unit_cents)
+     return list(merged.values())
+diff --git a/tests/test_pricing.py b/tests/test_pricing.py
+index 66c4bb4..3033b8c 100644
+--- a/tests/test_pricing.py
++++ b/tests/test_pricing.py
+@@ -17,6 +17,12 @@ class PricingTest(unittest.TestCase):
+         self.assertEqual(pricing.discount(item, CODES), 250)
+         self.assertEqual(pricing.total(item, CODES), 2250)
+ 
++    def test_lines_of_one_product_add_their_quantities(self):
++        item = Order.from_dict(order(1, "2026-11-20T10:00:00Z",
++                                     [("MUG-1", 1, "12.50"), ("NB-4", 1, "4.20"), ("MUG-1", 2, "12.50")]))
++        self.assertEqual([(line.sku, line.qty) for line in item.lines], [("MUG-1", 3), ("NB-4", 1)])
++        self.assertEqual(pricing.subtotal(item), 4170)
++
+     def test_an_unknown_code_gives_no_discount(self):
+         item = Order.from_dict(order(1, "2026-11-20T10:00:00Z", [("MUG-1", 1, "12.50")], ["GONE"]))
+         self.assertEqual(pricing.total(item, CODES), 1250)

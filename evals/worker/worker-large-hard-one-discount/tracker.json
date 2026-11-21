@@ -1,0 +1,79 @@
+{
+  "repo": {
+    "owner": "acme",
+    "name": "shop",
+    "defaultBranch": "main"
+  },
+  "user": "eval-bot",
+  "labels": [
+    {
+      "name": "status:ready",
+      "color": "EDEDED",
+      "description": ""
+    },
+    {
+      "name": "status:in-progress",
+      "color": "EDEDED",
+      "description": ""
+    },
+    {
+      "name": "status:in-review",
+      "color": "EDEDED",
+      "description": ""
+    },
+    {
+      "name": "status:needs-feedback",
+      "color": "EDEDED",
+      "description": ""
+    },
+    {
+      "name": "status:blocked",
+      "color": "EDEDED",
+      "description": ""
+    },
+    {
+      "name": "type:hotfix",
+      "color": "EDEDED",
+      "description": ""
+    },
+    {
+      "name": "type:batch",
+      "color": "EDEDED",
+      "description": ""
+    },
+    {
+      "name": "type:epic",
+      "color": "EDEDED",
+      "description": ""
+    },
+    {
+      "name": "priority:high",
+      "color": "EDEDED",
+      "description": ""
+    },
+    {
+      "name": "priority:low",
+      "color": "EDEDED",
+      "description": ""
+    }
+  ],
+  "issues": [
+    {
+      "number": 22,
+      "title": "Allow only one discount code per order",
+      "body": "Today an order takes any number of discount codes, and their percents add up: `SAVE10` and `STAFF20` give 30% off. The shop allows one code per order. Refuse a second code in the request API and in the command line, and tell the customer which code the order already has.\n\n## Acceptance criteria\n- [ ] `POST /orders/<id>/discounts` with a code, on an order that already has a different code, returns status 409 and `{\"error\": \"discount_already_applied\", \"message\": ...}`. The message names the code that the order already has.\n- [ ] After that refusal, the order keeps only its first code, and its total does not change. This is also true when the data is read again.\n- [ ] Adding the code that the order already has, in any case, still returns 200 and changes nothing.\n- [ ] `python3 -m shop order discount <id> <code>` with a second code exits 1, and prints one line on stderr that starts with `error:` and names the code that the order already has.\n- [ ] `docs/api.md` lists the new error.\n",
+      "state": "open",
+      "labels": [
+        "status:in-progress"
+      ],
+      "assignees": [
+        "eval-bot"
+      ],
+      "author": "maintainer",
+      "createdAt": "2026-11-20T09:00:00Z",
+      "updatedAt": "2026-11-20T09:00:00Z",
+      "comments": []
+    }
+  ],
+  "prs": []
+}

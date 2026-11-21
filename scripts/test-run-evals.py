@@ -321,10 +321,10 @@ def test_runner_happy_path():
         check(record["session_id"] == "sess-123", f"session_id, got {record.get('session_id')}")
         check(record["model"] == "claude-test-model", f"model comes from modelUsage when none is asked, got {record.get('model')}")
         check(record["error"] is None, f"no error, got {record.get('error')}")
-        check(record.get("judge_cost_usd") == 0.01, f"the judge cost is recorded apart, got {record.get('judge_cost_usd')}")
+        check(record.get("judge_cost_usd") == 0.02, f"the judge cost of both agreeing votes is recorded apart, got {record.get('judge_cost_usd')}")
         check(record["variant"].get("version") == "9.9.9", f"the variant names the plugin version, got {record.get('variant')}")
         check([g["type"] for g in record["graders"]] == ["gh_log", "file", "llm"], f"grader order, got {record.get('graders')}")
-        check(results.get("total_cost_usd") == 0.51, f"the total adds the judge cost, got {results.get('total_cost_usd')}")
+        check(results.get("total_cost_usd") == 0.52, f"the total adds the judge cost, got {results.get('total_cost_usd')}")
 
         main = [c for c in captures if not c["judge"]]
         check(len(main) == 1, f"claude runs once for the case, got {len(main)}")
@@ -525,7 +525,7 @@ def test_host_session_env_is_dropped():
         result, _, captures = run_runner(
             root, {"FAKE_PM_ACTIONS": GOOD_ACTIONS, "FAKE_PM_FILES": GOOD_FILES,
                    **HOST_SESSION_ENV, **HOST_KEPT_ENV})
-        check(len(captures) == 2, f"the case and its judge both run, got {len(captures)}: {result.stderr}")
+        check(len(captures) == 3, f"the case and its 2 agreeing judge votes run, got {len(captures)}: {result.stderr}")
         for capture in captures:
             env = capture.get("env", {})
             who = "the judge" if capture["judge"] else "the run"
@@ -579,7 +579,7 @@ def test_git_isolation_env():
     try:
         build_evals(root)
         result, _, captures = run_runner(root, {"FAKE_PM_ACTIONS": GOOD_ACTIONS, "FAKE_PM_FILES": GOOD_FILES})
-        check(len(captures) == 2, f"the case and its judge both run, got {len(captures)}: {result.stderr}")
+        check(len(captures) == 3, f"the case and its 2 agreeing judge votes run, got {len(captures)}: {result.stderr}")
         for capture in captures:
             env = capture.get("env", {})
             who = "the judge" if capture["judge"] else "the run"
@@ -716,6 +716,48 @@ def test_run_claude_timeout():
         shutil.rmtree(root, ignore_errors=True)
 
 
+# The judge answer of pm-c1-no-prepatch run 1 in #111's candidate: FAIL, with a reason that passes.
+CONTRADICTORY_FAIL = ("FAIL The PM sent #11 back for a missing pre-patch run, which is the outcome the rubric "
+                      "requires, but the rubric also says the PM \"asks for that run,\" and the material shows it "
+                      "did: the send-back message requests \"the pre-patch test result.\" So the PM's decision "
+                      "matches the rubric.")
+
+
+def judge_with(answers):
+    """Grade one llm grader on a fake judge that gives these answers in order; return (result, calls)."""
+    runner = load_runner()
+    queue, calls = list(answers), []
+
+    def fake_run_claude(args, cwd, env, timeout_s):
+        calls.append(args)
+        answer = queue.pop(0)
+        if answer is None:
+            return 1, "", "judge crashed", False
+        return 0, json.dumps({"type": "result", "subtype": "success", "result": answer,
+                              "total_cost_usd": 0.01}), "", False
+
+    runner.run_claude = fake_run_claude
+    ctx = {"final": "Sent #11 back.", "gh_log": [], "sandbox": tempfile.gettempdir(), "judge_env": {}}
+    return runner.grade_llm({"type": "llm", "target": "final", "rubric": "x"}, ctx), calls
+
+
+def test_judge_takes_a_majority_of_votes():
+    (passed, detail, cost), calls = judge_with([CONTRADICTORY_FAIL, "PASS: it sent #11 back.", "PASS: yes."])
+    check(passed is True and len(calls) == 3,
+          f"two PASS votes outvote one contradictory FAIL, got {passed} after {len(calls)} calls: {detail!r}")
+    check(abs(cost - 0.03) < 1e-9, f"the judge cost adds every vote, got {cost}")
+    check("2/3" in detail, f"the detail gives the vote count, got {detail!r}")
+    (passed, detail, cost), calls = judge_with(["PASS: a.", "PASS: b.", "FAIL: c."])
+    check(passed is True and len(calls) == 2 and abs(cost - 0.02) < 1e-9,
+          f"the judge stops when 2 votes agree, got {passed} after {len(calls)} calls, cost {cost}")
+    (passed, detail, _), calls = judge_with(["FAIL: a.", "PASS: b.", "FAIL: c."])
+    check(passed is False and len(calls) == 3, f"two FAIL votes fail the grader, got {passed}: {detail!r}")
+    (passed, detail, _), calls = judge_with([None, "PASS: b.", "PASS: c."])
+    check(passed is True and len(calls) == 3, f"a judge call that fails counts as one FAIL vote, got {passed}: {detail!r}")
+    (passed, detail, _), calls = judge_with([None, None, "PASS: c."])
+    check(passed is False and "judge failed" in detail, f"two failed judge calls fail the grader, got {detail!r}")
+
+
 def test_readme_names_the_environment():
     with open(os.path.join(EVALS, "README.md")) as handle:
         readme = handle.read()
@@ -730,6 +772,7 @@ for test in (test_fake_gh, test_runner_happy_path, test_runner_failures_and_ceil
              test_args_anchor_ignores_body_lines, test_ordered_and_model, test_real_pm_suite,
              test_real_cases_can_pass, test_host_session_env_is_dropped, test_effort_is_passed_and_recorded,
              test_readme_names_the_environment, test_git_isolation_env, test_plugin_copy_protects_the_plugin,
+             test_judge_takes_a_majority_of_votes,
              test_agent_repo_cannot_run_code_on_the_host, test_a_case_needs_a_deterministic_grader,
              test_run_claude_timeout):
     try:

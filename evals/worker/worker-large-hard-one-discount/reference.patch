@@ -1,0 +1,122 @@
+diff --git a/docs/api.md b/docs/api.md
+index e0625e0..b8a0386 100644
+--- a/docs/api.md
++++ b/docs/api.md
+@@ -26,6 +26,7 @@ An error is `{"error": <code>, "message": <text>}`.
+ | 400 | `invalid_input` | A field is missing or has a bad value. |
+ | 404 | `not_found` | No product, order, discount code or route matches. |
+ | 409 | `out_of_stock` | The stock is too low for the order. |
++| 409 | `discount_already_applied` | The order already has a different discount code. The message names it. |
+ 
+-A discount code is not case-sensitive. Adding a code that the order already has changes
+-nothing.
++A discount code is not case-sensitive. An order takes one code. Adding the code that the
++order already has changes nothing.
+diff --git a/shop/api/errors.py b/shop/api/errors.py
+index 8ad409b..079837d 100644
+--- a/shop/api/errors.py
++++ b/shop/api/errors.py
+@@ -1,10 +1,11 @@
+ """Error responses. docs/api.md lists each status and code."""
+ 
+-from shop.services import InvalidInput, NotFound, OutOfStock
++from shop.services import DiscountAlreadyApplied, InvalidInput, NotFound, OutOfStock
+ 
+ # The first matching class wins, so a subclass goes before its parent.
+ STATUS = [
+     (OutOfStock, 409, "out_of_stock"),
++    (DiscountAlreadyApplied, 409, "discount_already_applied"),
+     (NotFound, 404, "not_found"),
+     (InvalidInput, 400, "invalid_input"),
+ ]
+diff --git a/shop/services/__init__.py b/shop/services/__init__.py
+index 926c093..13840ac 100644
+--- a/shop/services/__init__.py
++++ b/shop/services/__init__.py
+@@ -15,3 +15,7 @@ class InvalidInput(ShopError):
+ 
+ class OutOfStock(ShopError):
+     """The stock is too low for the order."""
++
++
++class DiscountAlreadyApplied(ShopError):
++    """The order already has a different discount code."""
+diff --git a/shop/services/discounts.py b/shop/services/discounts.py
+index f9e5e05..23ba84c 100644
+--- a/shop/services/discounts.py
++++ b/shop/services/discounts.py
+@@ -1,4 +1,4 @@
+-from shop.services import InvalidInput, NotFound
++from shop.services import DiscountAlreadyApplied, InvalidInput, NotFound
+ from shop.util.text import normalize_code
+ 
+ 
+@@ -19,8 +19,11 @@ class Discounts:
+         return discount
+ 
+     def apply(self, order, code):
+-        """Add a code to the order. A code that the order already has changes nothing."""
++        """Add a code to the order. An order takes one code; the same code again changes nothing."""
+         discount = self.find(code)
+-        if discount.code not in order.discounts:
+-            order.discounts.append(discount.code)
++        if discount.code in order.discounts:
++            return order
++        if order.discounts:
++            raise DiscountAlreadyApplied(f"order {order.id} already has discount code {order.discounts[0]}")
++        order.discounts.append(discount.code)
+         return order
+diff --git a/shop/services/pricing.py b/shop/services/pricing.py
+index 2fe4b43..ff5fe84 100644
+--- a/shop/services/pricing.py
++++ b/shop/services/pricing.py
+@@ -8,7 +8,7 @@ def subtotal(order):
+ 
+ 
+ def discount(order, discounts):
+-    """Return the discount in cents. Each code takes its percent of the subtotal."""
++    """Return the discount in cents: the percent of the order's code, of the subtotal."""
+     base = subtotal(order)
+     return sum(percent_of(base, discounts[code].percent) for code in order.discounts if code in discounts)
+ 
+diff --git a/tests/test_api.py b/tests/test_api.py
+index 0fd0d0d..2908d2f 100644
+--- a/tests/test_api.py
++++ b/tests/test_api.py
+@@ -48,6 +48,12 @@ class ApiTest(unittest.TestCase):
+         self.assertEqual(self.app.handle("GET", "/reports/daily")[1]["error"], "invalid_input")
+         self.assertEqual(self.app.handle("DELETE", "/orders/1001")[0], 404)
+ 
++    def test_a_second_discount_code_is_a_conflict(self):
++        self.app.handle("POST", "/orders/1001/discounts", body={"code": "SAVE10"})
++        status, payload = self.app.handle("POST", "/orders/1001/discounts", body={"code": "FALL5"})
++        self.assertEqual((status, payload["error"]), (409, "discount_already_applied"))
++        self.assertIn("SAVE10", payload["message"])
++
+     def test_the_command_line_shows_an_order(self):
+         result = cli(self.directory.name, "order", "show", "1001")
+         self.assertEqual(result.returncode, 0, result.stderr)
+diff --git a/tests/test_ordering.py b/tests/test_ordering.py
+index 2275954..cd1c7da 100644
+--- a/tests/test_ordering.py
++++ b/tests/test_ordering.py
+@@ -1,7 +1,7 @@
+ import unittest
+ 
+ from shop.app import App
+-from shop.services import InvalidInput, NotFound, OutOfStock
++from shop.services import DiscountAlreadyApplied, InvalidInput, NotFound, OutOfStock
+ from tests import data_dir
+ 
+ 
+@@ -41,3 +41,10 @@ class OrderingTest(unittest.TestCase):
+         self.app.ordering.add_discount(1001, " save10 ")
+         self.app.ordering.add_discount(1001, "SAVE10")
+         self.assertEqual(self.app.ordering.get(1001).discounts, ["SAVE10"])
++
++    def test_a_second_code_is_refused(self):
++        self.app.ordering.place([{"sku": "MUG-1", "qty": 1}])
++        self.app.ordering.add_discount(1001, "SAVE10")
++        with self.assertRaises(DiscountAlreadyApplied):
++            self.app.ordering.add_discount(1001, "FALL5")
++        self.assertEqual(App(self.directory.name).ordering.get(1001).discounts, ["SAVE10"])

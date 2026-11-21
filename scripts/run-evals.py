@@ -34,6 +34,8 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 FAKE_GH_DIR = os.path.join(ROOT, "evals", "fakegh")
 INSTALLED_PLUGIN = "issue-flow@sniper7kills"
 JUDGE_MODEL = "haiku"
+# An odd count, so that the votes cannot tie.
+JUDGE_VOTES = 3
 DEFAULT_TIMEOUT_S = 900
 FAKE_TOKEN = "ife-eval-fake-token-without-access"
 EFFORTS = ("low", "medium", "high", "xhigh", "max")
@@ -120,6 +122,9 @@ def validate_case(case, path):
     for grader in case["graders"]:
         if grader.get("type") not in GRADERS:
             raise CaseError(f"{path}: unknown grader type {grader.get('type')!r}")
+    docs = case.get("docs_paths", [])
+    if not (isinstance(docs, list) and all(isinstance(item, str) for item in docs)):
+        raise CaseError(f"{path}: 'docs_paths' must be a list of path globs")
     if all(grader["type"] == "llm" for grader in case["graders"]):
         raise CaseError(f"{path}: a case needs at least one deterministic grader; an llm grader is only a second score")
 
@@ -315,8 +320,23 @@ def render_writes(entries):
     return "\n".join(lines) or "(no tracker writes)"
 
 
+def judge_once(args, ctx):
+    """Ask the judge once; return (passed, answer, cost). A judge call that fails is a FAIL vote."""
+    code, stdout, stderr, timed_out = run_claude(args, ctx["sandbox"], ctx["judge_env"], 300)
+    result = parse_result(stdout)
+    if timed_out or result is None:
+        return False, f"judge failed (exit {code}): {(stderr or stdout or '').strip()[:200]}", 0.0
+    answer = (result.get("result") or "").strip()
+    return answer.upper().startswith("PASS"), answer, float(result.get("total_cost_usd") or 0.0)
+
+
 def grade_llm(grader, ctx):
-    """A cheap judge reads the target against the rubric and answers PASS or FAIL."""
+    """A cheap judge reads the target against the rubric; the majority of JUDGE_VOTES answers decides.
+
+    One vote can contradict itself: in #111's candidate, a FAIL answer gave a reason that the
+    run met the rubric. The judge stops as soon as one answer has a majority, so a clear run
+    costs 2 calls and a split run costs 3.
+    """
     target = grader.get("target", "final")
     material = ctx["final"] if target == "final" else render_writes(ctx["gh_log"])
     prompt = (
@@ -326,13 +346,15 @@ def grade_llm(grader, ctx):
     )
     args = ["-p", prompt, "--model", grader.get("model", JUDGE_MODEL), "--tools", "",
             "--output-format", "json", "--no-session-persistence", *isolation_args()]
-    code, stdout, stderr, timed_out = run_claude(args, ctx["sandbox"], ctx["judge_env"], 300)
-    result = parse_result(stdout)
-    if timed_out or result is None:
-        return False, f"judge failed (exit {code}): {(stderr or stdout or '').strip()[:200]}", 0.0
-    answer = (result.get("result") or "").strip()
-    cost = float(result.get("total_cost_usd") or 0.0)
-    return answer.upper().startswith("PASS"), answer[:300], cost
+    majority = JUDGE_VOTES // 2 + 1
+    votes, cost = [], 0.0
+    while max(sum(v[0] for v in votes), sum(not v[0] for v in votes)) < majority:
+        passed, answer, vote_cost = judge_once(args, ctx)
+        votes.append((passed, answer))
+        cost += vote_cost
+    passed = sum(v[0] for v in votes) >= majority
+    reason = next(answer for vote, answer in votes if vote == passed)
+    return passed, f"{sum(v[0] == passed for v in votes)}/{len(votes)} votes: {reason[:300]}", cost
 
 
 # ---------------------------------------------------------------- worker graders
@@ -340,6 +362,10 @@ def grade_llm(grader, ctx):
 VERDICT_PATH = ".eval/verdict.json"
 OUTCOMES = {"ready-to-merge", "checkpoint", "needs-feedback", "blocked"}
 HIDDEN_COMMAND = [sys.executable, "-m", "unittest", "discover", "-s", ".", "-p", "hidden_test*.py"]
+# The words that name the pre-patch run. issue-worker.md gives no fixed field for it, so
+# workers say it in their own words ("failed before the fix" in #111's candidate).
+PREPATCH_RUN = (r"(?i)\bpre-?(patch|fix|change)|\bunpatched\b"
+                r"|\b(before|without) (the|my|this|any) (fix|change|patch|implementation)\b")
 
 
 def acceptance_criteria(tracker, number):
@@ -453,7 +479,7 @@ def grade_verdict(grader, ctx):
                 problems.append(f"criterion {index} has no evidence")
     if grader.get("prepatch"):
         checks = str(verdict.get("localChecks") or "")
-        if not (re.search(r"(?i)pre-?patch", checks) and re.search(r"(?i)fail", checks)):
+        if not (re.search(PREPATCH_RUN, checks) and re.search(r"(?i)\bfail", checks)):
             problems.append(f"localChecks names no pre-patch failing run: {checks[:160]!r}")
     if problems:
         return False, "; ".join(problems), 0.0
@@ -482,7 +508,9 @@ def grade_diff_scope(grader, ctx):
             return False, reason, 0.0
         ref, sha = found
         changed = git(repo, "diff", "--no-ext-diff", "--name-only", base, sha).splitlines()
-        outside = [path for path in changed if not path_allowed(path, grader.get("allow", []))]
+        # A worker brief asks for docs of a changed interface, so the case's docs are always allowed.
+        allow = grader.get("allow", []) + ctx["case"].get("docs_paths", [])
+        outside = [path for path in changed if not path_allowed(path, allow)]
         if outside:
             problems.append(f"{ref} changes paths outside the allowlist: {', '.join(outside)}")
         if not changed:
