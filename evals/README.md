@@ -71,18 +71,24 @@ Give the inner plugin directory, `<worktree>/issue-flow`, not the worktree root.
 directory without `.claude-plugin/plugin.json` stops the runner with exit 2.
 
 ```bash
-python3 scripts/run-evals.py --plugin-dir <worktree>/issue-flow --suite pm \
+git worktree add --detach /tmp/if-0.20.0 issue-flow--v0.20.0   # the plugin version to test
+python3 scripts/run-evals.py --plugin-dir /tmp/if-0.20.0/issue-flow --suite pm \
     --case pm-triage --runs 1 --max-cost-usd 2 --out evals/results/smoke-pm
-python3 scripts/run-evals.py --plugin-dir <worktree>/issue-flow --suite worker \
+python3 scripts/run-evals.py --plugin-dir /tmp/if-0.20.0/issue-flow --suite worker \
     --case worker-easy-negative-qty --runs 1 --max-cost-usd 2 --out evals/results/smoke-worker
+python3 scripts/eval-compare.py evals/baselines/0.20.0/pm evals/results/smoke-pm          # exits 5
+python3 scripts/eval-compare.py evals/baselines/0.20.0/worker evals/results/smoke-worker  # exits 5
+git worktree remove /tmp/if-0.20.0
 ```
+
+`--out` may be any directory. `evals/results/` is the default place, and Git ignores it.
 
 `--max-cost-usd` applies to each invocation by itself, so these two commands can spend up
 to $4 together.
 
-A smoke test is not a decision. `scripts/eval-compare.py` refuses a candidate that has
-fewer cases or fewer runs per case than the baseline, and exits 5 with "smoke test only,
-not a decision". One run of a case can differ from the 3-run mean by more than the
+A smoke test is not a decision, so both `eval-compare.py` commands above exit 5 with
+"smoke test only, not a decision". The script refuses a candidate that has fewer cases or
+fewer runs per case than the baseline. One run of a case can differ from the 3-run mean by more than the
 margins of the decision rules. In the dogfood run, one `pm-triage` run used 186,639 PM
 tokens against a baseline mean of 244,830, with no change to the plugin.
 
@@ -675,7 +681,10 @@ python3 issue-flow/scripts/usage.py --transcript ~/.claude/projects/<project>/<s
 - `--session <id>` finds `<id>.jsonl` in any project under `~/.claude/projects/`. The id
   of an eval run is the `session_id` of its record in `results.json`. The id of the
   session you are in is `CLAUDE_CODE_SESSION_ID` in the environment of its Bash commands,
-  and `claude --resume` lists the ids of earlier sessions.
+  and `claude --resume` lists the ids of earlier sessions. A report on the session you are
+  in covers it only up to the moment you run `usage.py`. Run `usage.py` from this
+  checkout (`issue-flow/scripts/usage.py`); a plugin worktree of an older version may not
+  have it.
 - `--json` prints the report as JSON: `agents` (one row per agent, with `type`, `id`,
   `model`, `turns`, the four token counts and `cost_usd`) and `totals`. `eval-baseline.py`
   keeps this output as the record's `agents`.
