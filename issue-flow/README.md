@@ -70,7 +70,7 @@ self-hosted Gitea with its own runner has no such ceiling.
 
 The full operation mapping is in [references/forge.md](references/forge.md).
 
-## The eight skills
+## The seven skills
 
 ### `/project-planner`
 
@@ -171,16 +171,6 @@ sequenceDiagram
     PM->>F: status batched + tick the tracking checklist
 ```
 
-**Machine-readable markers.** Every PM comment that records a plan, a cross-check, a gate
-result, a sub-merge, a checkpoint, a worker launch or a status repair starts with a hidden
-marker such as `<!-- issue-flow:event role=gate.rework issue=75 pr=9 problem=r1 -->`. Every
-worker commit carries the trailers `Change:` and `Why:`, and `Fixes:` when it answers a
-rework comment, a review comment or a CI run. `/timeline` reads them to show why each change
-happened. The visible text does not change. A run made before this change has no markers or
-trailers, and it still classifies through the prose fallback: the comment prefixes
-(`## Plan (PM)`, `PM gate: rework requested`, and so on) and the commit's files. The grammar
-is in [`references/timeline.md`](references/timeline.md).
-
 ### `/project-review`
 
 The QA and documentation pass that follows a build wave. The PM starts a sandbox, runs
@@ -216,43 +206,6 @@ the job never force-pushes.
 
 GitHub only, and the account must be able to run Actions on private repos (GitHub bills
 those minutes). A rewrite cannot recall what forks and clones already hold.
-
-### `/timeline`
-
-Draws what a run did as one local HTML page. The page has a lane per issue and per
-batch, with markers for status changes, pull requests, checkpoints and batch merges.
-It filters by timeframe in the browser (24 hours, 7 days, 30 days, all, or a date range).
-
-- **Snapshot** — `scripts/timeline.py snapshot` writes the page once. It exits non-zero when the collect or the render fails.
-- **Live** — `scripts/timeline.py watch` rewrites the page every 5 minutes (60 seconds or
-  more) for up to 4 hours, and the open page reloads itself. Stop it with `SIGTERM`; the
-  last page stays.
-
-Click a lane to open its detail panel: a summary, **What needed fixing** (each rework request,
-changes-requested review or failed CI run, with the commits that fixed it), and a log of commits,
-comments, reviews, CI runs and agent events that you can filter by kind. Each file of a commit
-expands into its diff. On a batch lane the panel also lists the cross-check findings and plan
-amendments.
-
-The **Problems** section at the top lists every rework request, changes-requested review and failed
-CI run in the timeframe: open ones first, then resolved ones, each with its age or time to fix and its
-fix commits. A click on a row opens that issue's panel at the problem. **Search lanes** (press `/`)
-filters lanes by number or title, and **Only lanes with problems** keeps the lanes that show one. The
-address bar holds the view (open lane, timeframe, log filters, search), so you can share the link, and
-`watch` reloads keep it. The panel summary shows the time the issue spent working, waiting and parked.
-
-The **Theme** button in the page header cycles auto (the browser setting), light and dark. The page
-remembers the choice in the browser. Every lane and marker works from the keyboard.
-
-The skill is read-only on the tracker, so it works outside a run. It reads the tracker and the
-checkout's git: commit diffs come from local git, and it fetches PR heads into
-`refs/issue-flow/` of the checkout for them (no branch, tag or work-tree file changes). On this
-machine it writes the page to `<git common dir>/issue-flow/timeline.html` (no commit carries it,
-and every worktree shares it) or to the `--out` path you give, and it keeps a read cache in
-`<git common dir>/issue-flow/cache/`. `snapshot` removes old cache files and the refs of PRs
-closed long ago, and `timeline.py gc --all` removes all of them. It publishes nothing. The
-script is `scripts/timeline.py` (`collect`, `render`, `snapshot`, `watch`, `path`, `gc`); the
-schema and the API cost are in [references/timeline.md](references/timeline.md).
 
 ## What earns an issue
 
@@ -432,39 +385,6 @@ promotion from `dev` to the live branch.
 summary: PM and issue-worker run on **Opus**; a worker's children, the deploy-verifier,
 the ux-explorer, the code-auditor and the review-scribe run on **Sonnet**.
 
-## Hooks
-
-The plugin ships three hooks in `hooks/hooks.json`. Claude Code loads them with the plugin.
-
-| Hook | Event | What it does |
-|---|---|---|
-| `preflight.py` | `SessionStart` | Fetches the remote and reports drift to the PM. |
-| `guard-spawn.py` | `PreToolUse` on `Agent\|Task` | Refuses two spawn shapes that strand a result. |
-| `record-event.py` | `PostToolUse` on `Agent`, `SendMessage` and `Bash`; `SubagentStop` | Logs local orchestration events for the timeline. |
-
-### Local event log
-
-The tracker does not show worker spawns, worker verdicts or worktree changes. `record-event.py`
-appends them, one JSON line each, to `<git common dir>/issue-flow/events.jsonl`. All linked
-worktrees of one repository share that file, and git never tracks it. The log stays on your
-machine: nothing publishes it.
-
-| Kind | Logged when |
-|---|---|
-| `agent.spawned` | An `Agent` call whose brief has an `issue: #<n>` line. |
-| `agent.stopped` | A subagent ends with a verdict JSON, an issue-worker ends, or an agent that has an `agent.spawned` line ends. The line carries `outcome`, `branch` and `worktree` from the verdict. With no verdict, `outcome` is null and `worktree` is the agent's own worktree. |
-| `agent.messaged` | The PM sends a message to an agent with `SendMessage`, for example to send a worker back for rework. The line holds the recipient and the time. It never holds the message text. |
-| `worktree.added`, `worktree.removed` | A Bash command runs `git worktree add` or `git worktree remove`. |
-
-Each line holds only `ts`, `kind`, `session`, `agent`, `issue`, `worktree`, `branch` and
-`outcome`. It never holds a prompt, a brief body or tool output. The hook never blocks or
-changes a tool call: it always exits 0 and prints nothing, and it swallows every error.
-`timeline.py collect` merges the log into the timeline (see
-[`references/timeline.md`](references/timeline.md)).
-
-To turn the log off, set `ISSUE_FLOW_EVENTS=off` in the project's `.claude/settings.json`
-`env` block, then start a new session. Hooks read the environment at session start.
-
 ## Install
 
 ```bash
@@ -504,9 +424,6 @@ the spec" after a plugin upgrade).
 
 On any existing tracker, start the loop with `/issue-flow`, "work the issues", or "pick up
 the next issue".
-
-To see what a run did, use `/timeline` ("show the issue-flow timeline"), live or as a
-snapshot.
 
 After a build wave, start the review with `/project-review`, "review the project",
 "user-test the app", or "build the user manual". The review ends by offering to launch
