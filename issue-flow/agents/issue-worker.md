@@ -11,7 +11,7 @@ description: >
   directory. Decision-free: never
   guesses on product questions, never merges. Spawned by the issue-flow PM, one
   per issue.
-model: opus
+model: sonnet
 tools: Read, Edit, Write, Bash, Grep, Glob, Agent, Workflow, WebSearch, WebFetch, ToolSearch
 ---
 

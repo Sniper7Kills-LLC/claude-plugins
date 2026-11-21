@@ -388,8 +388,14 @@ promotion from `dev` to the live branch.
    stays quiet. The loop continues while workable backlog remains.
 
 **Model tiers.** Each agent's own `model:` frontmatter is authoritative. The current
-summary: PM and issue-worker run on **Opus**; a worker's children, the deploy-verifier,
-the ux-explorer, the code-auditor and the review-scribe run on **Sonnet**.
+summary: the PM runs on **Opus**. The issue-worker, a worker's children, the
+deploy-verifier, the ux-explorer, the code-auditor and the review-scribe run on **Sonnet**.
+
+The issue-worker moved from Opus to Sonnet after the worker eval suite
+(Sniper7Kills-LLC/claude-plugins#109). On 8 cases with 3 runs each, Sonnet passed the
+hidden tests on 21 of 21 runs, the same as Opus. Its mean cost per run was $0.10, against
+$0.35 for Opus: 72% lower. The records are in
+`evals/candidates/109-sonnet-worker/worker/`.
 
 ## Install
 
