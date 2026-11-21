@@ -32,6 +32,17 @@ claude plugin validate .                 # the marketplace manifest
 claude plugin validate ./issue-flow      # one plugin and all its components
 ```
 
+Check that a change to `issue-flow/skills/issue-flow/` keeps every rule of the 0.20.0
+skill, at the phase where it applies:
+
+```bash
+python3 scripts/rule-coverage.py check           # every rule in evals/rule-inventory.json
+python3 scripts/rule-coverage.py check --judge   # also ask Haiku about each failed rule
+```
+
+A reworded rule passes when the reworded text is in the rule's `aliases` list in
+`evals/rule-inventory.json`. The judge only reports. It never makes a failed rule pass.
+
 Test a change without publishing it. Add this checkout as a local marketplace:
 
 ```bash

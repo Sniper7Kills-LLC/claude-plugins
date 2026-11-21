@@ -1,0 +1,202 @@
+{
+  "suite": "pm",
+  "variant": {
+    "plugin_dir": "issue-flow (git worktree of tag issue-flow--v0.20.0)",
+    "git_sha": "c3974fe577b7ce45383f564c3ed54b5a99080a9d",
+    "version": "0.20.0"
+  },
+  "effort": "medium",
+  "started": "20261121T183449Z",
+  "finished": "20261121T184735Z",
+  "partial": false,
+  "models": [
+    "claude-haiku-5-5",
+    "claude-opus-5-5"
+  ],
+  "total_cost_usd": 9.998784,
+  "runs": 18,
+  "suite_means": {
+    "runs": 18,
+    "ok_rate": 1.0,
+    "mean_score": 1.0,
+    "score_range": [
+      1.0,
+      1.0
+    ],
+    "hidden_pass_rate": null,
+    "mean_cost_usd": 0.4809,
+    "cost_range": [
+      0.4178,
+      0.6388
+    ],
+    "mean_turns": 6.0,
+    "mean_duration_s": 31.7374,
+    "duration_range": [
+      17.6,
+      67.8
+    ],
+    "mean_main_tokens": 261107.3333,
+    "mean_subagent_tokens": 1566.7222,
+    "mean_subagent_turns": 0.1111,
+    "mean_agent_cost_usd": 0.4809,
+    "errors": 0
+  },
+  "cases": {
+    "pm-a0-split-status": {
+      "runs": 3,
+      "ok_rate": 1.0,
+      "mean_score": 1.0,
+      "score_range": [
+        1.0,
+        1.0
+      ],
+      "hidden_pass_rate": null,
+      "mean_cost_usd": 0.4194,
+      "cost_range": [
+        0.4178,
+        0.4214
+      ],
+      "mean_turns": 5.0,
+      "mean_duration_s": 19.6277,
+      "duration_range": [
+        17.6,
+        22.6
+      ],
+      "mean_main_tokens": 186485.0,
+      "mean_subagent_tokens": 0.0,
+      "mean_subagent_turns": 0.0,
+      "mean_agent_cost_usd": 0.4194,
+      "errors": 0
+    },
+    "pm-batch-cross-check": {
+      "runs": 3,
+      "ok_rate": 1.0,
+      "mean_score": 1.0,
+      "score_range": [
+        1.0,
+        1.0
+      ],
+      "hidden_pass_rate": null,
+      "mean_cost_usd": 0.6281,
+      "cost_range": [
+        0.6076,
+        0.6388
+      ],
+      "mean_turns": 9.0,
+      "mean_duration_s": 59.559,
+      "duration_range": [
+        49.0,
+        67.8
+      ],
+      "mean_main_tokens": 484180.3333,
+      "mean_subagent_tokens": 5065.3333,
+      "mean_subagent_turns": 0.3333,
+      "mean_agent_cost_usd": 0.6281,
+      "errors": 0
+    },
+    "pm-c1-no-prepatch": {
+      "runs": 3,
+      "ok_rate": 1.0,
+      "mean_score": 1.0,
+      "score_range": [
+        1.0,
+        1.0
+      ],
+      "hidden_pass_rate": null,
+      "mean_cost_usd": 0.4658,
+      "cost_range": [
+        0.4467,
+        0.478
+      ],
+      "mean_turns": 5.6667,
+      "mean_duration_s": 34.315,
+      "duration_range": [
+        28.1,
+        43.0
+      ],
+      "mean_main_tokens": 230449.3333,
+      "mean_subagent_tokens": 0.0,
+      "mean_subagent_turns": 0.0,
+      "mean_agent_cost_usd": 0.4658,
+      "errors": 0
+    },
+    "pm-c1-unevidenced": {
+      "runs": 3,
+      "ok_rate": 1.0,
+      "mean_score": 1.0,
+      "score_range": [
+        1.0,
+        1.0
+      ],
+      "hidden_pass_rate": null,
+      "mean_cost_usd": 0.4475,
+      "cost_range": [
+        0.4378,
+        0.4569
+      ],
+      "mean_turns": 5.0,
+      "mean_duration_s": 24.2007,
+      "duration_range": [
+        22.3,
+        26.3
+      ],
+      "mean_main_tokens": 191783.0,
+      "mean_subagent_tokens": 0.0,
+      "mean_subagent_turns": 0.0,
+      "mean_agent_cost_usd": 0.4475,
+      "errors": 0
+    },
+    "pm-semantic-conflict": {
+      "runs": 3,
+      "ok_rate": 1.0,
+      "mean_score": 1.0,
+      "score_range": [
+        1.0,
+        1.0
+      ],
+      "hidden_pass_rate": null,
+      "mean_cost_usd": 0.4869,
+      "cost_range": [
+        0.4745,
+        0.5066
+      ],
+      "mean_turns": 5.3333,
+      "mean_duration_s": 32.469,
+      "duration_range": [
+        28.1,
+        38.9
+      ],
+      "mean_main_tokens": 228916.3333,
+      "mean_subagent_tokens": 4335.0,
+      "mean_subagent_turns": 0.3333,
+      "mean_agent_cost_usd": 0.4869,
+      "errors": 0
+    },
+    "pm-triage": {
+      "runs": 3,
+      "ok_rate": 1.0,
+      "mean_score": 1.0,
+      "score_range": [
+        1.0,
+        1.0
+      ],
+      "hidden_pass_rate": null,
+      "mean_cost_usd": 0.438,
+      "cost_range": [
+        0.4366,
+        0.4398
+      ],
+      "mean_turns": 6.0,
+      "mean_duration_s": 20.253,
+      "duration_range": [
+        17.7,
+        22.4
+      ],
+      "mean_main_tokens": 244830.0,
+      "mean_subagent_tokens": 0.0,
+      "mean_subagent_turns": 0.0,
+      "mean_agent_cost_usd": 0.438,
+      "errors": 0
+    }
+  }
+}

@@ -1,0 +1,44 @@
+{
+  "name": "worker-medium-money-refactor",
+  "suite": "worker",
+  "tags": [
+    "worker",
+    "medium"
+  ],
+  "timeout_s": 2700,
+  "runs": 3,
+  "fixture": "../_fixture",
+  "tracker": "tracker.json",
+  "model": "haiku",
+  "prompt": "You are a dispatcher in an automated eval of the issue-flow plugin. Nobody is available to answer questions. Do only these steps:\n\n1. Call the Agent tool once, with:\n   - subagent_type: \"issue-flow:issue-worker\"\n   - isolation: \"worktree\"\n   - description: \"worker #4\"\n   - prompt: the brief between the BRIEF START and BRIEF END lines below, unchanged.\n   Do not pass `name`.\n2. Wait until the worker finishes. Do not work on the issue yourself. Do not run `sleep`, and do not poll for the worker: a notification wakes you when it finishes.\n3. Write the worker's final message, unchanged, to `.eval/verdict.json` in the current directory.\n4. Reply with one line: the worker's outcome.\n\nBRIEF START\nissue:        #4 — Move the dollar format into one function\nbranch:       issue/4-format-money\nbase:         origin/main\nci:           skip\nbatch:        standalone\nmembers:      1\ncrossCheck:   n/a — standalone\nremote:       origin\nforge:        {type: github, host: github.com, owner: acme, repo: inventory, interface: cli}\nplan:         No plan comment is posted. Read the issue with `gh issue view 4` and plan from its body and acceptance criteria.\nconventions:  Python 3, standard library only. Test command: `python3 -m unittest`. There is no lint, typecheck or build step. The PM squash-merges; you never merge.\npractices:    tdd: true   (tests first; record the pre-patch failing run in localChecks)\n              ddd: false\n              e2e: none\n              coverage: null\n              commitStyle: \"<imperative summary> (#4)\"\n              docs: public-interfaces\nsteRule:      {plugin_dir}/references/ste.md\npluginRoot:   {plugin_dir}\nBRIEF END\n",
+  "graders": [
+    {
+      "type": "hidden_tests",
+      "issue": 4
+    },
+    {
+      "type": "verdict",
+      "issue": 4,
+      "outcome": "ready-to-merge",
+      "prepatch": true
+    },
+    {
+      "type": "diff_scope",
+      "issue": 4,
+      "allow": [
+        "inventory/money.py",
+        "inventory/report.py",
+        "inventory/cli.py",
+        "tests/*"
+      ]
+    },
+    {
+      "type": "gh_log",
+      "forbid": [
+        {
+          "cmd": "pr merge"
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,28 @@
+diff --git a/inventory/items.py b/inventory/items.py
+index d76a837..5655e3d 100644
+--- a/inventory/items.py
++++ b/inventory/items.py
+@@ -27,6 +27,8 @@ def parse_line(line):
+     if len(fields) != 4:
+         raise ValueError(f"expected 4 fields, got {len(fields)}")
+     sku, name, qty, price = fields
++    if int(qty) < 0:
++        raise ValueError(f"quantity must not be negative: {qty}")
+     return Item(sku, name, int(qty), parse_price(price))
+ 
+ 
+diff --git a/tests/test_items.py b/tests/test_items.py
+index 7c2d20a..b051848 100644
+--- a/tests/test_items.py
++++ b/tests/test_items.py
+@@ -19,6 +19,10 @@ class ParseTest(unittest.TestCase):
+         with self.assertRaises(ValueError):
+             parse_line("A1,bolt,40")
+ 
++    def test_rejects_a_negative_quantity(self):
++        with self.assertRaisesRegex(ValueError, "quantity must not be negative"):
++            parse_line("A1,bolt,-2,0.25")
++
+ 
+ class LoadTest(unittest.TestCase):
+     def test_skips_blank_and_comment_lines(self):

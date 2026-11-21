@@ -1,0 +1,63 @@
+diff --git a/inventory/cli.py b/inventory/cli.py
+index da43b4c..faf543e 100644
+--- a/inventory/cli.py
++++ b/inventory/cli.py
+@@ -8,8 +8,10 @@ from . import items, report
+ def build_parser():
+     parser = argparse.ArgumentParser(prog="inventory")
+     commands = parser.add_subparsers(dest="command", required=True)
+-    for name in ("list", "total"):
+-        commands.add_parser(name).add_argument("path")
++    listing = commands.add_parser("list")
++    listing.add_argument("path")
++    listing.add_argument("--format", choices=("table", "csv"), default="table")
++    commands.add_parser("total").add_argument("path")
+     low = commands.add_parser("low")
+     low.add_argument("path")
+     low.add_argument("--threshold", type=int, default=5)
+@@ -20,7 +22,10 @@ def main(argv=None):
+     """Run one command and return the exit status."""
+     args = build_parser().parse_args(argv)
+     stock = items.load(args.path)
+-    if args.command == "list":
++    if args.command == "list" and args.format == "csv":
++        for row in report.csv_lines(stock):
++            print(row)
++    elif args.command == "list":
+         for item in stock:
+             print(report.format_line(item))
+     elif args.command == "total":
+diff --git a/inventory/report.py b/inventory/report.py
+index 527a1ab..8ef9026 100644
+--- a/inventory/report.py
++++ b/inventory/report.py
+@@ -11,6 +11,14 @@ def low_stock(items, threshold):
+     return [item for item in items if item.qty < threshold]
+ 
+ 
++def csv_lines(items):
++    """Return the CSV header and one row per item, with the price in dollars."""
++    rows = ["sku,name,qty,price"]
++    for item in items:
++        rows.append(f"{item.sku},{item.name},{item.qty},{item.price // 100}.{item.price % 100:02d}")
++    return rows
++
++
+ def format_line(item):
+     """Return one table row for an item: sku, name, quantity and unit price."""
+     price = f"${item.price // 100}.{item.price % 100:02d}"
+diff --git a/tests/test_cli.py b/tests/test_cli.py
+index a82edd3..84ae95b 100644
+--- a/tests/test_cli.py
++++ b/tests/test_cli.py
+@@ -22,6 +22,10 @@ class CliTest(unittest.TestCase):
+         result = run("list", STOCK)
+         self.assertEqual(len(result.stdout.splitlines()), 4)
+ 
++    def test_list_prints_csv(self):
++        result = run("list", "--format", "csv", STOCK)
++        self.assertEqual(result.stdout.splitlines()[:2], ["sku,name,qty,price", "A1,bolt,40,0.25"])
++
+     def test_low_uses_the_threshold(self):
+         result = run("low", STOCK, "--threshold", "4")
+         self.assertEqual([line.split()[0] for line in result.stdout.splitlines()], ["A2"])

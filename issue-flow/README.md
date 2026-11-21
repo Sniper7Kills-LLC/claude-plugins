@@ -534,6 +534,53 @@ If the harness compacts the context, preflight rebuilds the state from the track
 continues. One session can therefore clear far more issues than a single context window
 holds.
 
+## Measure what a session used
+
+[`scripts/usage.py`](scripts/usage.py) reports the tokens and the estimated cost of each
+agent in a session. It reads the local Claude Code transcripts only. It makes no network
+calls and no API calls. It needs Python 3 and nothing else.
+
+```bash
+python3 issue-flow/scripts/usage.py --session <session-id>         # one session
+python3 issue-flow/scripts/usage.py --since 2026-11-01T00:00:00Z   # this project, since a time
+python3 issue-flow/scripts/usage.py --transcript <file>.jsonl      # one transcript file
+python3 issue-flow/scripts/usage.py --session <session-id> --json  # the same report as JSON
+```
+
+- `--since` reads every session of the project in the current directory. Use
+  `--project-dir` to name another project's transcript directory. With `--session` or
+  `--transcript`, `--since` drops the requests before that time.
+- The session ID is the transcript's file name. Claude Code keeps the transcripts in
+  `~/.claude/projects/<project>/<session-id>.jsonl`, and the subagents of a session in
+  `<session-id>/subagents/`.
+
+The table has one row for each agent: the type, the ID, the model, the turns, and the
+input, output, cache-read and cache-write tokens and the cost. A turn is one API request.
+The agent of type `main` is the session itself; in an `/issue-flow` session it is the PM.
+Rows per agent type and a `TOTAL` row follow.
+
+`--json` prints this shape:
+
+```json
+{
+  "agents": [{"type": "...", "id": "...", "model": "...", "turns": 0, "input": 0,
+              "output": 0, "cache_read": 0, "cache_write": 0, "cost_usd": 0.0}],
+  "totals": {"turns": 0, "input": 0, "output": 0, "cache_read": 0, "cache_write": 0,
+             "cost_usd": 0.0, "unpriced_models": [], "skipped_lines": 0, "by_type": {}},
+  "pricing_date": "2026-11-21"
+}
+```
+
+The cost is an estimate. It uses the standard rates in
+[`scripts/pricing.json`](scripts/pricing.json), which records the source page and the
+date of each price. Fast mode, US-only routing and Batch API discounts are not applied.
+If a model has no price, its agent's `cost_usd` is `null`, the model is listed in
+`unpriced_models`, and `totals.cost_usd` leaves its requests out. Update `pricing.json`
+when Anthropic changes a price.
+
+The transcript format is internal to Claude Code and can change. The script skips lines
+and entries it does not know, and counts the lines that are not JSON in `skipped_lines`.
+
 ## License
 
 MIT — see [LICENSE](../LICENSE).

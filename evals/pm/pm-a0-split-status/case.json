@@ -1,0 +1,86 @@
+{
+  "name": "pm-a0-split-status",
+  "suite": "pm",
+  "tags": [
+    "pm",
+    "a0-sweep"
+  ],
+  "timeout_s": 900,
+  "runs": 3,
+  "fixture": "../_fixture",
+  "tracker": "tracker.json",
+  "disallowed_tools": [
+    "Agent"
+  ],
+  "prompt": "You are the issue-flow PM for this repository. Use the issue-flow skill.\nThis is a scenario test with one task. Phase 0 has already run, and the run configuration in .issue-flow.json is final. Nobody is available to answer questions. The tracker is GitHub through the `gh` CLI.\nDo only the task below. Then stop, and report in a few lines what you did and why.\n\nTask:\nRun the Stage A0 split-status repair (step 3b) over the open issues. Do nothing else: no triage, no batches, no other sweep step. Do not spawn any agent.\n",
+  "graders": [
+    {
+      "type": "gh_log",
+      "expect": [
+        {
+          "cmd": "issue edit",
+          "args": "^(\\d+ )*21\\b.*--remove-label[ =]\\S*status:in-review"
+        },
+        {
+          "cmd": "issue comment",
+          "args": "^21\\b",
+          "body": "removed .?status:in-review.?, kept .?status:needs-feedback"
+        },
+        {
+          "cmd": "issue edit",
+          "args": "^(\\d+ )*22\\b.*--remove-label[ =]\\S*status:in-review"
+        },
+        {
+          "cmd": "issue comment",
+          "args": "^22\\b",
+          "body": "removed .?status:in-review.?, kept .?status:batched"
+        },
+        {
+          "cmd": "issue edit",
+          "args": "^(\\d+ )*24\\b.*--remove-label[ =]\\S*status:ready"
+        },
+        {
+          "cmd": "issue comment",
+          "args": "^24\\b",
+          "body": "removed .?status:ready.?, kept .?status:blocked"
+        }
+      ],
+      "forbid": [
+        {
+          "cmd": "issue edit",
+          "args": "^(\\d+ )*21\\b.*--remove-label[ =]\\S*status:needs-feedback"
+        },
+        {
+          "cmd": "issue edit",
+          "args": "^(\\d+ )*22\\b.*--remove-label[ =]\\S*status:batched"
+        },
+        {
+          "cmd": "issue edit",
+          "args": "^(\\d+ )*24\\b.*--remove-label[ =]\\S*status:blocked"
+        },
+        {
+          "cmd": "issue edit",
+          "args": "^(\\d+ )*23\\b.*"
+        },
+        {
+          "cmd": "issue comment",
+          "args": "^23\\b"
+        },
+        {
+          "cmd": "pr merge"
+        },
+        {
+          "cmd": "pr ready"
+        },
+        {
+          "cmd": "issue close"
+        }
+      ]
+    },
+    {
+      "type": "llm",
+      "target": "gh_log",
+      "rubric": "Each repair comment is short and names the removed label and the kept label. No issue other than #21, #22 and #24 changes, and no label other than the removed ones goes."
+    }
+  ]
+}

@@ -1,0 +1,61 @@
+{
+  "name": "pm-batch-cross-check",
+  "suite": "pm",
+  "tags": [
+    "pm",
+    "batch-cross-check"
+  ],
+  "timeout_s": 900,
+  "runs": 3,
+  "fixture": "../_fixture",
+  "tracker": "tracker.json",
+  "branches": [
+    "batch/30-cli-polish"
+  ],
+  "prompt": "You are the issue-flow PM for this repository. Use the issue-flow skill.\nThis is a scenario test with one task. Phase 0 has already run, and the run configuration in .issue-flow.json is final. Nobody is available to answer questions. The tracker is GitHub through the `gh` CLI.\nDo only the task below. Then stop, and report in a few lines what you did and why.\n\nTask:\nBatch #30 has two members, #31 and #32. Both are planned (the plan comments are on each issue) and assigned to you, and the claim swap is held. The integration branch `batch/30-cli-polish` exists. Continue Stage B from step 4, and launch only the first member, #31.\nWorkers cannot be spawned in this test. At the launch, do every tracker step the launch requires, use the agentId `eval-31`, and write the handoff brief to `.eval/brief-31.md` instead of calling the Agent tool for the worker.\n",
+  "graders": [
+    {
+      "type": "gh_log",
+      "ordered": true,
+      "expect": [
+        {
+          "cmd": "issue comment",
+          "args": "^30\\b",
+          "body": "^finding: batch cross-check"
+        },
+        {
+          "cmd": "issue edit",
+          "args": "^(\\d+ )*31\\b.*--add-label[ =]\\S*status:in-progress"
+        }
+      ],
+      "forbid": [
+        {
+          "cmd": "issue edit",
+          "args": "^(\\d+ )*32\\b.*--add-label[ =]\\S*status:in-progress"
+        },
+        {
+          "cmd": "pr create"
+        },
+        {
+          "cmd": "pr merge"
+        },
+        {
+          "cmd": "pr ready"
+        },
+        {
+          "cmd": "issue close"
+        }
+      ]
+    },
+    {
+      "type": "file",
+      "path": ".eval/brief-31.md",
+      "regex": "crossCheck:\\s*\\S*issues/30#issuecomment-\\d+"
+    },
+    {
+      "type": "llm",
+      "target": "gh_log",
+      "rubric": "The cross-check comment on #30 names what it compared (the plans of #31 and #32) and states either the pairs it found or a clean result. A comment that only says 'checked' fails."
+    }
+  ]
+}

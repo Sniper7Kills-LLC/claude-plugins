@@ -1,0 +1,59 @@
+{
+  "source": "https://platform.claude.com/docs/en/about-claude/pricing",
+  "retrieved": "2026-11-21",
+  "unit": "USD per million tokens, standard rates: global routing, no fast mode, no Batch API",
+  "models": {
+    "claude-opus-5-5": {
+      "input": 4, "output": 20, "cache_read": 0.20, "cache_write_5m": 5, "cache_write_1h": 8,
+      "date": "2026-11-21"
+    },
+    "claude-opus-5": {
+      "input": 5, "output": 25, "cache_read": 0.50, "cache_write_5m": 6.25, "cache_write_1h": 10,
+      "date": "2026-11-21"
+    },
+    "claude-opus-4-8": {
+      "input": 5, "output": 25, "cache_read": 0.50, "cache_write_5m": 6.25, "cache_write_1h": 10,
+      "date": "2026-11-21"
+    },
+    "claude-opus-4-7": {
+      "input": 5, "output": 25, "cache_read": 0.50, "cache_write_5m": 6.25, "cache_write_1h": 10,
+      "date": "2026-11-21"
+    },
+    "claude-opus-4-6": {
+      "input": 5, "output": 25, "cache_read": 0.50, "cache_write_5m": 6.25, "cache_write_1h": 10,
+      "date": "2026-11-21"
+    },
+    "claude-opus-4-5": {
+      "input": 5, "output": 25, "cache_read": 0.50, "cache_write_5m": 6.25, "cache_write_1h": 10,
+      "date": "2026-11-21"
+    },
+    "claude-sonnet-5-5": {
+      "input": 2, "output": 10, "cache_read": 0.10, "cache_write_5m": 2.50, "cache_write_1h": 4,
+      "date": "2026-11-21"
+    },
+    "claude-sonnet-5": {
+      "input": 2, "output": 10, "cache_read": 0.20, "cache_write_5m": 2.50, "cache_write_1h": 4,
+      "date": "2026-11-21"
+    },
+    "claude-sonnet-4-6": {
+      "input": 3, "output": 15, "cache_read": 0.30, "cache_write_5m": 3.75, "cache_write_1h": 6,
+      "date": "2026-11-21"
+    },
+    "claude-sonnet-4-5": {
+      "input": 3, "output": 15, "cache_read": 0.30, "cache_write_5m": 3.75, "cache_write_1h": 6,
+      "date": "2026-11-21"
+    },
+    "claude-haiku-5-5": {
+      "input": 0.10, "output": 0.50, "cache_read": 0.01, "cache_write_5m": 0.125, "cache_write_1h": 0.20,
+      "date": "2026-11-21",
+      "long_prompt": {
+        "over_tokens": 100000,
+        "input": 0.50, "output": 2.50, "cache_read": 0.05, "cache_write_5m": 0.625, "cache_write_1h": 1
+      }
+    },
+    "claude-haiku-4-5": {
+      "input": 1, "output": 5, "cache_read": 0.10, "cache_write_5m": 1.25, "cache_write_1h": 2,
+      "date": "2026-11-21"
+    }
+  }
+}

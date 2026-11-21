@@ -1,0 +1,254 @@
+{
+  "suite": "worker",
+  "variant": {
+    "plugin_dir": "issue-flow (git worktree of tag issue-flow--v0.20.0)",
+    "git_sha": "c3974fe577b7ce45383f564c3ed54b5a99080a9d",
+    "version": "0.20.0"
+  },
+  "effort": "medium",
+  "started": "20261121T190930Z",
+  "finished": "20261121T200454Z",
+  "partial": false,
+  "models": [
+    "claude-haiku-5-5",
+    "claude-opus-5-5"
+  ],
+  "total_cost_usd": 8.378159,
+  "runs": 24,
+  "suite_means": {
+    "runs": 24,
+    "ok_rate": 1.0,
+    "mean_score": 1.0,
+    "score_range": [
+      1.0,
+      1.0
+    ],
+    "hidden_pass_rate": 1.0,
+    "mean_cost_usd": 0.3491,
+    "cost_range": [
+      0.1354,
+      0.6037
+    ],
+    "mean_turns": 2.5,
+    "mean_duration_s": 125.5934,
+    "duration_range": [
+      27.9,
+      908.2
+    ],
+    "mean_main_tokens": 120211.5417,
+    "mean_subagent_tokens": 472165.375,
+    "mean_subagent_turns": 13.1667,
+    "mean_agent_cost_usd": 0.3478,
+    "errors": 0
+  },
+  "cases": {
+    "worker-easy-low-stock-boundary": {
+      "runs": 3,
+      "ok_rate": 1.0,
+      "mean_score": 1.0,
+      "score_range": [
+        1.0,
+        1.0
+      ],
+      "hidden_pass_rate": 1.0,
+      "mean_cost_usd": 0.2596,
+      "cost_range": [
+        0.2125,
+        0.3514
+      ],
+      "mean_turns": 2.6667,
+      "mean_duration_s": 69.3123,
+      "duration_range": [
+        62.3,
+        79.1
+      ],
+      "mean_main_tokens": 111867.0,
+      "mean_subagent_tokens": 323077.6667,
+      "mean_subagent_turns": 10.3333,
+      "mean_agent_cost_usd": 0.2596,
+      "errors": 0
+    },
+    "worker-easy-negative-qty": {
+      "runs": 3,
+      "ok_rate": 1.0,
+      "mean_score": 1.0,
+      "score_range": [
+        1.0,
+        1.0
+      ],
+      "hidden_pass_rate": 1.0,
+      "mean_cost_usd": 0.2615,
+      "cost_range": [
+        0.2438,
+        0.2755
+      ],
+      "mean_turns": 2.3333,
+      "mean_duration_s": 78.5203,
+      "duration_range": [
+        75.1,
+        80.7
+      ],
+      "mean_main_tokens": 102924.3333,
+      "mean_subagent_tokens": 412392.6667,
+      "mean_subagent_turns": 13.0,
+      "mean_agent_cost_usd": 0.2615,
+      "errors": 0
+    },
+    "worker-hard-ambiguous-tax": {
+      "runs": 3,
+      "ok_rate": 1.0,
+      "mean_score": 1.0,
+      "score_range": [
+        1.0,
+        1.0
+      ],
+      "hidden_pass_rate": null,
+      "mean_cost_usd": 0.176,
+      "cost_range": [
+        0.1354,
+        0.2209
+      ],
+      "mean_turns": 2.0,
+      "mean_duration_s": 327.5463,
+      "duration_range": [
+        27.9,
+        908.2
+      ],
+      "mean_main_tokens": 129384.3333,
+      "mean_subagent_tokens": 184151.0,
+      "mean_subagent_turns": 6.3333,
+      "mean_agent_cost_usd": 0.176,
+      "errors": 0
+    },
+    "worker-hard-error-lines": {
+      "runs": 3,
+      "ok_rate": 1.0,
+      "mean_score": 1.0,
+      "score_range": [
+        1.0,
+        1.0
+      ],
+      "hidden_pass_rate": 1.0,
+      "mean_cost_usd": 0.4814,
+      "cost_range": [
+        0.411,
+        0.541
+      ],
+      "mean_turns": 3.0,
+      "mean_duration_s": 124.653,
+      "duration_range": [
+        113.6,
+        136.9
+      ],
+      "mean_main_tokens": 146788.6667,
+      "mean_subagent_tokens": 637250.0,
+      "mean_subagent_turns": 16.3333,
+      "mean_agent_cost_usd": 0.4814,
+      "errors": 0
+    },
+    "worker-hard-location": {
+      "runs": 3,
+      "ok_rate": 1.0,
+      "mean_score": 1.0,
+      "score_range": [
+        1.0,
+        1.0
+      ],
+      "hidden_pass_rate": 1.0,
+      "mean_cost_usd": 0.5349,
+      "cost_range": [
+        0.4694,
+        0.6037
+      ],
+      "mean_turns": 2.6667,
+      "mean_duration_s": 130.57,
+      "duration_range": [
+        114.5,
+        145.3
+      ],
+      "mean_main_tokens": 122994.0,
+      "mean_subagent_tokens": 696656.6667,
+      "mean_subagent_turns": 16.6667,
+      "mean_agent_cost_usd": 0.5349,
+      "errors": 0
+    },
+    "worker-medium-csv-format": {
+      "runs": 3,
+      "ok_rate": 1.0,
+      "mean_score": 1.0,
+      "score_range": [
+        1.0,
+        1.0
+      ],
+      "hidden_pass_rate": 1.0,
+      "mean_cost_usd": 0.3877,
+      "cost_range": [
+        0.278,
+        0.466
+      ],
+      "mean_turns": 2.3333,
+      "mean_duration_s": 96.7357,
+      "duration_range": [
+        74.6,
+        116.1
+      ],
+      "mean_main_tokens": 113207.6667,
+      "mean_subagent_tokens": 541474.3333,
+      "mean_subagent_turns": 14.6667,
+      "mean_agent_cost_usd": 0.3877,
+      "errors": 0
+    },
+    "worker-medium-money-refactor": {
+      "runs": 3,
+      "ok_rate": 1.0,
+      "mean_score": 1.0,
+      "score_range": [
+        1.0,
+        1.0
+      ],
+      "hidden_pass_rate": 1.0,
+      "mean_cost_usd": 0.3714,
+      "cost_range": [
+        0.3434,
+        0.3964
+      ],
+      "mean_turns": 2.3333,
+      "mean_duration_s": 92.104,
+      "duration_range": [
+        89.3,
+        94.3
+      ],
+      "mean_main_tokens": 113050.0,
+      "mean_subagent_tokens": 537387.0,
+      "mean_subagent_turns": 15.0,
+      "mean_agent_cost_usd": 0.3613,
+      "errors": 0
+    },
+    "worker-medium-price-parse": {
+      "runs": 3,
+      "ok_rate": 1.0,
+      "mean_score": 1.0,
+      "score_range": [
+        1.0,
+        1.0
+      ],
+      "hidden_pass_rate": 1.0,
+      "mean_cost_usd": 0.3202,
+      "cost_range": [
+        0.2793,
+        0.3598
+      ],
+      "mean_turns": 2.6667,
+      "mean_duration_s": 85.3053,
+      "duration_range": [
+        77.2,
+        89.8
+      ],
+      "mean_main_tokens": 121476.3333,
+      "mean_subagent_tokens": 444933.6667,
+      "mean_subagent_turns": 13.0,
+      "mean_agent_cost_usd": 0.3202,
+      "errors": 0
+    }
+  }
+}

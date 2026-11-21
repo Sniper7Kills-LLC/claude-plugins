@@ -1,0 +1,649 @@
+#!/usr/bin/env python3
+"""A fake `gh` for the issue-flow evals. It never makes a network call.
+
+The fake serves a fixed tracker state from the JSON file at $IFE_TRACKER and
+writes every change back to that file. It appends one JSON line per call to
+$IFE_GH_LOG, so graders can read each tracker call after the run.
+
+The fake implements only the subcommands the PM and the worker use. Any other subcommand
+exits 1, and the log records it as an error. The schemas of tracker.json and
+of the log are in evals/README.md; other tools read both, so keep them stable.
+"""
+
+import datetime
+import fcntl
+import json
+import os
+import re
+import shutil
+import subprocess
+import sys
+
+# Flags that take a value. Every other flag is a switch.
+VALUE_FLAGS = {
+    "--json", "--jq", "--state", "--label", "--limit", "--search", "--assignee",
+    "--author", "--body", "--body-file", "--title", "--add-label", "--remove-label",
+    "--add-assignee", "--remove-assignee", "--base", "--head", "--subject", "--color",
+    "--description", "--repo", "--reason", "--comment", "--method", "--field",
+    "--raw-field", "--header", "--input", "--template", "--milestone", "--project",
+}
+
+# Short flags per command, because gh gives one letter different meanings.
+SHORT_FLAGS = {
+    "common": {"-q": "--jq", "-R": "--repo", "-L": "--limit", "-s": "--state",
+               "-l": "--label", "-S": "--search", "-a": "--assignee", "-A": "--author",
+               "-b": "--body", "-F": "--body-file", "-t": "--title", "-B": "--base",
+               "-H": "--head"},
+    "label create": {"-c": "--color", "-d": "--description", "-f": "--force"},
+    "issue close": {"-c": "--comment", "-r": "--reason"},
+    "pr merge": {"-s": "--squash", "-m": "--merge", "-r": "--rebase", "-d": "--delete-branch",
+                 "-t": "--subject", "-b": "--body"},
+    "pr create": {"-d": "--draft"},
+    "api": {"-X": "--method", "-f": "--raw-field", "-F": "--field", "-H": "--header",
+            "-q": "--jq"},
+}
+
+SWITCH_SHORTS = {"-f": "--force", "-s": "--squash", "-m": "--merge", "-r": "--rebase",
+                 "-d": "--delete-branch"}
+
+ISSUE_FIELDS = {"number", "title", "body", "state", "labels", "assignees", "author",
+                "comments", "url", "createdAt", "updatedAt", "closed", "milestone"}
+PR_FIELDS = ISSUE_FIELDS | {"isDraft", "headRefName", "baseRefName", "reviews",
+                            "reviewDecision", "mergeable", "statusCheckRollup", "mergedAt",
+                            "files", "commits"}
+LABEL_FIELDS = {"name", "color", "description"}
+
+
+class Refused(Exception):
+    """A call the fake refuses. It exits 1 and the log records it as an error."""
+
+
+def now():
+    return datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
+def parse(cmd, args):
+    """Split argv into positionals and a flag map; a repeated flag keeps every value."""
+    shorts = dict(SHORT_FLAGS["common"])
+    shorts.update(SHORT_FLAGS.get(cmd, {}))
+    positionals, flags = [], {}
+    index = 0
+    while index < len(args):
+        arg = args[index]
+        if arg.startswith("-") and arg != "-":
+            name, _, inline = arg.partition("=")
+            name = shorts.get(name, name)
+            if name in VALUE_FLAGS:
+                if inline or "=" in arg:
+                    value = inline
+                elif index + 1 < len(args):
+                    index += 1
+                    value = args[index]
+                else:
+                    raise Refused(f"flag needs an argument: {arg}")
+                flags.setdefault(name, []).append(value)
+            else:
+                flags.setdefault(SWITCH_SHORTS.get(name, name), []).append(True)
+        else:
+            positionals.append(arg)
+        index += 1
+    return positionals, flags
+
+
+def one(flags, name, default=None):
+    values = flags.get(name)
+    return values[-1] if values else default
+
+
+def split_values(flags, name):
+    """Return the values of a repeatable flag, with comma lists split apart."""
+    found = []
+    for value in flags.get(name, []):
+        found.extend(part.strip() for part in str(value).split(",") if part.strip())
+    return found
+
+
+def body_from(flags):
+    """The body text from --body or --body-file, or None when neither is given."""
+    if "--body" in flags:
+        return one(flags, "--body")
+    path = one(flags, "--body-file")
+    if path is None:
+        return None
+    if path == "-":
+        return sys.stdin.read()
+    with open(path) as handle:
+        return handle.read()
+
+
+class Tracker:
+    def __init__(self, state):
+        self.state = state
+        self.owner = state["repo"]["owner"]
+        self.name = state["repo"]["name"]
+        self.user = state["user"]
+        self.changed = False
+
+    def base_url(self):
+        return f"https://github.com/{self.owner}/{self.name}"
+
+    def label_names(self):
+        return {label["name"] for label in self.state["labels"]}
+
+    def next_number(self):
+        numbers = [item["number"] for item in self.state["issues"] + self.state["prs"]]
+        return max(numbers, default=0) + 1
+
+    def next_comment_id(self):
+        ids = [comment["id"] for item in self.state["issues"] + self.state["prs"]
+               for comment in item.get("comments", [])]
+        return max(ids, default=1000) + 1
+
+    def find(self, number, kinds=("issues", "prs")):
+        try:
+            number = int(str(number).lstrip("#"))
+        except ValueError:
+            raise Refused(f"not a number: {number}")
+        for kind in kinds:
+            for item in self.state[kind]:
+                if item["number"] == number:
+                    return kind, item
+        raise Refused(f"Could not resolve to an issue or pull request with the number of {number}.")
+
+    def find_pr(self, ref):
+        if str(ref).lstrip("#").isdigit():
+            return self.find(ref, ("prs",))[1]
+        matches = [pr for pr in self.state["prs"] if pr["headRefName"] == ref]
+        if not matches:
+            raise Refused(f'no pull requests found for branch "{ref}"')
+        return matches[-1]
+
+    def add_comment(self, item, body, kind):
+        comment = {"id": self.next_comment_id(), "author": self.user, "body": body,
+                   "createdAt": now()}
+        item.setdefault("comments", []).append(comment)
+        item["updatedAt"] = comment["createdAt"]
+        self.changed = True
+        path = "pull" if kind == "prs" else "issues"
+        return f"{self.base_url()}/{path}/{item['number']}#issuecomment-{comment['id']}"
+
+    # ---- GraphQL-style objects, as `gh --json` prints them
+
+    def comment_json(self, item, comment, kind):
+        path = "pull" if kind == "prs" else "issues"
+        return {"id": comment["id"], "author": {"login": comment.get("author", "")},
+                "body": comment.get("body", ""), "createdAt": comment.get("createdAt", ""),
+                "url": f"{self.base_url()}/{path}/{item['number']}#issuecomment-{comment['id']}"}
+
+    def item_json(self, item, kind):
+        path = "pull" if kind == "prs" else "issues"
+        state = item.get("state", "open").upper()
+        record = {
+            "number": item["number"], "title": item.get("title", ""), "body": item.get("body", ""),
+            "state": state, "closed": state != "OPEN",
+            "labels": [{"name": name} for name in item.get("labels", [])],
+            "assignees": [{"login": login} for login in item.get("assignees", [])],
+            "author": {"login": item.get("author", "")},
+            "comments": [self.comment_json(item, c, kind) for c in item.get("comments", [])],
+            "url": f"{self.base_url()}/{path}/{item['number']}",
+            "createdAt": item.get("createdAt", ""), "updatedAt": item.get("updatedAt", ""),
+            "milestone": None,
+        }
+        if kind == "prs":
+            record.update({
+                "isDraft": item.get("isDraft", False), "headRefName": item.get("headRefName", ""),
+                "baseRefName": item.get("baseRefName", ""), "reviews": item.get("reviews", []),
+                "reviewDecision": item.get("reviewDecision", ""),
+                "mergeable": item.get("mergeable", "MERGEABLE"),
+                "statusCheckRollup": item.get("statusCheckRollup", []),
+                "mergedAt": item.get("mergedAt"), "files": item.get("files", []),
+                "commits": item.get("commits", []),
+            })
+        return record
+
+    # ---- REST objects, as `gh api` prints them
+
+    def rest_comment(self, item, comment, kind):
+        record = self.comment_json(item, comment, kind)
+        return {"id": comment["id"], "body": record["body"], "user": {"login": record["author"]["login"]},
+                "created_at": record["createdAt"], "html_url": record["url"]}
+
+    def rest_item(self, item, kind):
+        record = self.item_json(item, kind)
+        rest = {"number": item["number"], "title": record["title"], "body": record["body"],
+                "state": "open" if record["state"] == "OPEN" else "closed",
+                "labels": record["labels"], "assignees": record["assignees"],
+                "user": record["author"], "html_url": record["url"],
+                "comments": len(item.get("comments", [])),
+                "created_at": record["createdAt"], "updated_at": record["updatedAt"]}
+        if kind == "prs":
+            rest.update({"draft": record["isDraft"], "merged": item.get("state") == "merged",
+                         "head": {"ref": record["headRefName"]}, "base": {"ref": record["baseRefName"]}})
+        return rest
+
+
+def select_fields(records, fields, allowed):
+    """Keep only the asked --json fields; an unknown field is refused, as gh does."""
+    wanted = [field.strip() for field in fields.split(",") if field.strip()]
+    unknown = [field for field in wanted if field not in allowed]
+    if unknown:
+        raise Refused(f"Unknown JSON field: {unknown[0]!r}")
+    if isinstance(records, list):
+        return [{field: record[field] for field in wanted} for record in records]
+    return {field: records[field] for field in wanted}
+
+
+def emit(data, flags, text=None):
+    """Print JSON (through jq when --jq is given), or the plain text form."""
+    if text is not None and "--json" not in flags and "--jq" not in flags:
+        return text
+    expression = one(flags, "--jq")
+    payload = json.dumps(data, indent=2)
+    if expression is None:
+        return payload + "\n"
+    jq = shutil.which("jq")
+    if not jq:
+        raise Refused("--jq needs the jq binary on PATH in the eval sandbox")
+    result = subprocess.run([jq, "-r", expression], input=payload, capture_output=True, text=True)
+    if result.returncode != 0:
+        raise Refused(result.stderr.strip() or "jq failed")
+    return result.stdout
+
+
+def filter_items(tracker, kind, flags):
+    state = one(flags, "--state", "open")
+    labels = split_values(flags, "--label")
+    assignee = one(flags, "--assignee")
+    if assignee == "@me":
+        assignee = tracker.user
+    head, base = one(flags, "--head"), one(flags, "--base")
+    found = []
+    for item in tracker.state[kind]:
+        item_state = item.get("state", "open")
+        # GitHub lists a merged PR under --state closed as well as --state merged.
+        if state != "all" and item_state != state and not (state == "closed" and item_state == "merged"):
+            continue
+        if any(label not in item.get("labels", []) for label in labels):
+            continue
+        if assignee and assignee not in item.get("assignees", []):
+            continue
+        if head and item.get("headRefName") != head:
+            continue
+        if base and item.get("baseRefName") != base:
+            continue
+        found.append(item)
+    limit = int(one(flags, "--limit", 30))
+    return found[:limit]
+
+
+def text_list(items):
+    return "".join(
+        f"{item['number']}\t{item.get('state', 'open').upper()}\t{item.get('title', '')}\t"
+        f"{', '.join(item.get('labels', []))}\n" for item in items)
+
+
+def text_view(tracker, item, kind, flags):
+    lines = [f"title:\t{item.get('title', '')}", f"state:\t{item.get('state', 'open').upper()}",
+             f"labels:\t{', '.join(item.get('labels', []))}",
+             f"assignees:\t{', '.join(item.get('assignees', []))}", f"number:\t{item['number']}"]
+    if kind == "prs":
+        lines += [f"draft:\t{str(item.get('isDraft', False)).lower()}",
+                  f"head:\t{item.get('headRefName', '')}", f"base:\t{item.get('baseRefName', '')}"]
+    lines += ["--", item.get("body", "")]
+    if "--comments" in flags:
+        for comment in item.get("comments", []):
+            lines += ["--", f"author:\t{comment.get('author', '')}", comment.get("body", "")]
+    return "\n".join(lines) + "\n"
+
+
+# ---------------------------------------------------------------- commands
+
+
+def issue_list(tracker, positionals, flags):
+    items = filter_items(tracker, "issues", flags)
+    records = [tracker.item_json(item, "issues") for item in items]
+    if "--json" in flags:
+        records = select_fields(records, one(flags, "--json"), ISSUE_FIELDS)
+    return "read", emit(records, flags, text_list(items))
+
+
+def issue_view(tracker, positionals, flags):
+    if not positionals:
+        raise Refused("issue view needs an issue number")
+    kind, item = tracker.find(positionals[0])
+    record = tracker.item_json(item, kind)
+    if "--json" in flags:
+        record = select_fields(record, one(flags, "--json"), PR_FIELDS if kind == "prs" else ISSUE_FIELDS)
+    return "read", emit(record, flags, text_view(tracker, item, kind, flags))
+
+
+def issue_edit(tracker, positionals, flags):
+    if not positionals:
+        raise Refused("issue edit needs an issue number")
+    add, remove = split_values(flags, "--add-label"), split_values(flags, "--remove-label")
+    missing = [label for label in add if label not in tracker.label_names()]
+    if missing:
+        raise Refused(f"'{missing[0]}' not found")
+    targets = [tracker.find(number) for number in positionals]
+    for kind, item in targets:
+        labels = item.setdefault("labels", [])
+        for label in add:
+            if label not in labels:
+                labels.append(label)
+        item["labels"] = [label for label in labels if label not in remove]
+        assignees = item.setdefault("assignees", [])
+        for login in split_values(flags, "--add-assignee"):
+            login = tracker.user if login == "@me" else login
+            if login not in assignees:
+                assignees.append(login)
+        drop = {tracker.user if login == "@me" else login for login in split_values(flags, "--remove-assignee")}
+        item["assignees"] = [login for login in assignees if login not in drop]
+        if "--title" in flags:
+            item["title"] = one(flags, "--title")
+        body = body_from(flags)
+        if body is not None:
+            item["body"] = body
+        item["updatedAt"] = now()
+    tracker.changed = True
+    return "write", "".join(f"{tracker.base_url()}/{'pull' if kind == 'prs' else 'issues'}/{item['number']}\n"
+                            for kind, item in targets)
+
+
+def issue_comment(tracker, positionals, flags):
+    if not positionals:
+        raise Refused("issue comment needs an issue number")
+    body = body_from(flags)
+    if not body:
+        raise Refused("a comment needs --body or --body-file")
+    kind, item = tracker.find(positionals[0])
+    return "write", tracker.add_comment(item, body, kind) + "\n"
+
+
+def issue_create(tracker, positionals, flags):
+    title = one(flags, "--title")
+    if not title:
+        raise Refused("issue create needs --title")
+    labels = split_values(flags, "--label")
+    missing = [label for label in labels if label not in tracker.label_names()]
+    if missing:
+        raise Refused(f"could not add label: '{missing[0]}' not found")
+    stamp = now()
+    item = {"number": tracker.next_number(), "title": title, "body": body_from(flags) or "",
+            "state": "open", "labels": labels, "author": tracker.user,
+            "assignees": [tracker.user if a == "@me" else a for a in split_values(flags, "--assignee")],
+            "comments": [], "createdAt": stamp, "updatedAt": stamp}
+    tracker.state["issues"].append(item)
+    tracker.changed = True
+    return "write", f"{tracker.base_url()}/issues/{item['number']}\n"
+
+
+def issue_close(tracker, positionals, flags):
+    if not positionals:
+        raise Refused("issue close needs an issue number")
+    kind, item = tracker.find(positionals[0], ("issues",))
+    if "--comment" in flags:
+        tracker.add_comment(item, one(flags, "--comment"), kind)
+    item["state"] = "closed"
+    item["updatedAt"] = now()
+    tracker.changed = True
+    return "write", f"Closed issue #{item['number']}\n"
+
+
+def pr_list(tracker, positionals, flags):
+    items = filter_items(tracker, "prs", flags)
+    records = [tracker.item_json(item, "prs") for item in items]
+    if "--json" in flags:
+        records = select_fields(records, one(flags, "--json"), PR_FIELDS)
+    return "read", emit(records, flags, text_list(items))
+
+
+def pr_view(tracker, positionals, flags):
+    # Without an argument, gh shows the PR of the current branch.
+    item = tracker.find_pr(positionals[0] if positionals else current_branch())
+    record = tracker.item_json(item, "prs")
+    if "--json" in flags:
+        record = select_fields(record, one(flags, "--json"), PR_FIELDS)
+    return "read", emit(record, flags, text_view(tracker, item, "prs", flags))
+
+
+def current_branch():
+    result = subprocess.run(["git", "rev-parse", "--abbrev-ref", "HEAD"], capture_output=True, text=True)
+    return result.stdout.strip() if result.returncode == 0 else ""
+
+
+def pr_create(tracker, positionals, flags):
+    head = one(flags, "--head") or current_branch()
+    base = one(flags, "--base") or tracker.state["repo"].get("defaultBranch", "main")
+    title = one(flags, "--title")
+    if not title:
+        raise Refused("pr create needs --title")
+    if any(pr["headRefName"] == head and pr.get("state") == "open" for pr in tracker.state["prs"]):
+        raise Refused(f'a pull request for branch "{head}" into branch "{base}" already exists')
+    stamp = now()
+    item = {"number": tracker.next_number(), "title": title, "body": body_from(flags) or "",
+            "state": "open", "isDraft": "--draft" in flags, "headRefName": head, "baseRefName": base,
+            "labels": split_values(flags, "--label"), "author": tracker.user, "assignees": [],
+            "comments": [], "createdAt": stamp, "updatedAt": stamp}
+    tracker.state["prs"].append(item)
+    tracker.changed = True
+    return "write", f"{tracker.base_url()}/pull/{item['number']}\n"
+
+
+def pr_edit(tracker, positionals, flags):
+    """Change the title, body, base or labels of one PR, found by number or by head branch."""
+    # Without an argument, gh edits the PR of the current branch.
+    item = tracker.find_pr(positionals[0] if positionals else current_branch())
+    add, remove = split_values(flags, "--add-label"), split_values(flags, "--remove-label")
+    missing = [label for label in add if label not in tracker.label_names()]
+    if missing:
+        raise Refused(f"'{missing[0]}' not found")
+    labels = item.setdefault("labels", [])
+    labels.extend(label for label in add if label not in labels)
+    item["labels"] = [label for label in labels if label not in remove]
+    for flag, key in (("--title", "title"), ("--base", "baseRefName")):
+        if flag in flags:
+            item[key] = one(flags, flag)
+    body = body_from(flags)
+    if body is not None:
+        item["body"] = body
+    item["updatedAt"] = now()
+    tracker.changed = True
+    return "write", f"{tracker.base_url()}/pull/{item['number']}\n"
+
+
+def pr_ready(tracker, positionals, flags):
+    if not positionals:
+        raise Refused("pr ready needs a number")
+    item = tracker.find_pr(positionals[0])
+    item["isDraft"] = "--undo" in flags
+    tracker.changed = True
+    return "write", f"Pull request #{item['number']} is marked as \"ready for review\"\n"
+
+
+def pr_merge(tracker, positionals, flags):
+    if not positionals:
+        raise Refused("pr merge needs a number")
+    item = tracker.find_pr(positionals[0])
+    if item.get("state") != "open":
+        raise Refused(f"Pull request #{item['number']} is not open")
+    item["state"] = "merged"
+    item["mergedAt"] = now()
+    tracker.changed = True
+    return "write", f"Merged pull request #{item['number']}\n"
+
+
+def pr_comment(tracker, positionals, flags):
+    if not positionals:
+        raise Refused("pr comment needs a number")
+    body = body_from(flags)
+    if not body:
+        raise Refused("a comment needs --body or --body-file")
+    item = tracker.find_pr(positionals[0])
+    return "write", tracker.add_comment(item, body, "prs") + "\n"
+
+
+def label_list(tracker, positionals, flags):
+    labels = tracker.state["labels"][: int(one(flags, "--limit", 30))]
+    records = [{"name": l["name"], "color": l.get("color", ""), "description": l.get("description", "")}
+               for l in labels]
+    if "--json" in flags:
+        records = select_fields(records, one(flags, "--json"), LABEL_FIELDS)
+    text = "".join(f"{l['name']}\t{l.get('description', '')}\t#{l.get('color', '')}\n" for l in labels)
+    return "read", emit(records, flags, text)
+
+
+def label_create(tracker, positionals, flags):
+    if not positionals:
+        raise Refused("label create needs a name")
+    name = positionals[0]
+    existing = [label for label in tracker.state["labels"] if label["name"] == name]
+    if existing and "--force" not in flags:
+        raise Refused(f"label with name \"{name}\" already exists; use `--force` to update its color and description")
+    label = existing[0] if existing else {"name": name}
+    label["color"] = one(flags, "--color", label.get("color", "ededed"))
+    label["description"] = one(flags, "--description", label.get("description", ""))
+    if not existing:
+        tracker.state["labels"].append(label)
+    tracker.changed = True
+    return "write", f"Label \"{name}\" created\n"
+
+
+def auth_status(tracker, positionals, flags):
+    return "read", f"github.com\n  Logged in to github.com account {tracker.user} (eval fake)\n"
+
+
+def repo_view(tracker, positionals, flags):
+    record = {"name": tracker.name, "owner": {"login": tracker.owner},
+              "nameWithOwner": f"{tracker.owner}/{tracker.name}",
+              "defaultBranchRef": {"name": tracker.state["repo"].get("defaultBranch", "main")},
+              "url": tracker.base_url()}
+    if "--json" in flags:
+        record = select_fields(record, one(flags, "--json"), set(record))
+    return "read", emit(record, flags, f"name:\t{record['nameWithOwner']}\n")
+
+
+def api(tracker, positionals, flags):
+    method = str(one(flags, "--method", "GET")).upper()
+    has_fields = "--field" in flags or "--raw-field" in flags or "--input" in flags
+    if method != "GET" or (has_fields and "--method" not in flags):
+        raise Refused(f"gh api {method} is not supported by the eval fake: use gh issue/pr/label subcommands")
+    if not positionals:
+        raise Refused("api needs an endpoint")
+    endpoint = positionals[0].replace("{owner}", tracker.owner).replace("{repo}", tracker.name)
+    path, _, query = endpoint.lstrip("/").partition("?")
+    parts = path.split("/")
+    data = None
+    if parts == ["user"]:
+        data = {"login": tracker.user}
+    elif len(parts) >= 3 and parts[0] == "repos":
+        rest = parts[3:]
+        if not rest:
+            data = {"full_name": f"{tracker.owner}/{tracker.name}", "name": tracker.name,
+                    "default_branch": tracker.state["repo"].get("defaultBranch", "main")}
+        elif rest == ["issues"] or rest == ["pulls"]:
+            kind = "issues" if rest == ["issues"] else "prs"
+            state = dict(p.partition("=")[::2] for p in query.split("&") if p).get("state", "open")
+            items = [i for i in tracker.state[kind] if state == "all" or i.get("state", "open") == state
+                     or (state == "closed" and i.get("state") == "merged")]
+            data = [tracker.rest_item(i, kind) for i in items]
+        elif rest[0] in ("issues", "pulls") and len(rest) == 2 and rest[1].isdigit():
+            kind, item = tracker.find(rest[1], ("issues", "prs") if rest[0] == "issues" else ("prs",))
+            data = tracker.rest_item(item, kind)
+        elif rest[0] == "pulls" and len(rest) == 3 and rest[1].isdigit() and rest[2] in ("comments", "reviews"):
+            # The tracker has no line comments on a diff, so a PR has none to list.
+            item = tracker.find(rest[1], ("prs",))[1]
+            data = [] if rest[2] == "comments" else item.get("reviews", [])
+        elif rest[0] == "issues" and len(rest) == 3 and rest[1].isdigit() and rest[2] == "comments":
+            kind, item = tracker.find(rest[1])
+            data = [tracker.rest_comment(item, c, kind) for c in item.get("comments", [])]
+        elif rest[:2] == ["issues", "comments"] and len(rest) == 3 and rest[2].isdigit():
+            for kind in ("issues", "prs"):
+                for item in tracker.state[kind]:
+                    for comment in item.get("comments", []):
+                        if comment["id"] == int(rest[2]):
+                            data = tracker.rest_comment(item, comment, kind)
+            if data is None:
+                raise Refused("HTTP 404: Not Found")
+        elif rest == ["labels"]:
+            data = [{"name": l["name"], "color": l.get("color", ""), "description": l.get("description", "")}
+                    for l in tracker.state["labels"]]
+    if data is None:
+        raise Refused(f"gh api {path} is not supported by the eval fake")
+    output = emit(data, flags)
+    return "read", output
+
+
+COMMANDS = {
+    "issue list": issue_list, "issue view": issue_view, "issue edit": issue_edit,
+    "issue comment": issue_comment, "issue create": issue_create, "issue close": issue_close,
+    "pr list": pr_list, "pr view": pr_view, "pr create": pr_create, "pr edit": pr_edit,
+    "pr ready": pr_ready,
+    "pr merge": pr_merge, "pr comment": pr_comment, "label list": label_list,
+    "label create": label_create, "auth status": auth_status, "repo view": repo_view,
+}
+
+
+def command_name(argv):
+    words = [arg for arg in argv[:2] if not arg.startswith("-")]
+    if words[:1] == ["api"]:
+        return "api"
+    return " ".join(words)
+
+
+def append_log(path, entry):
+    """Append one log line with the next seq; the caller holds the lock."""
+    seq = 1
+    if os.path.exists(path):
+        with open(path) as handle:
+            seq = sum(1 for line in handle if line.strip()) + 1
+    entry = dict({"seq": seq}, **entry)
+    with open(path, "a") as handle:
+        handle.write(json.dumps(entry) + "\n")
+
+
+def main(argv):
+    tracker_path = os.environ.get("IFE_TRACKER")
+    if not tracker_path:
+        sys.stderr.write("eval fake gh: IFE_TRACKER is not set, so there is no tracker to serve\n")
+        return 1
+    log_path = os.environ.get("IFE_GH_LOG") or os.path.join(os.path.dirname(tracker_path), "gh-log.jsonl")
+    cmd = command_name(argv)
+    with open(tracker_path + ".lock", "w") as lock:
+        fcntl.flock(lock, fcntl.LOCK_EX)
+        with open(tracker_path) as handle:
+            tracker = Tracker(json.load(handle))
+        entry = {"argv": argv, "cmd": cmd, "time": now()}
+        try:
+            handler = COMMANDS.get(cmd) or (api if cmd == "api" else None)
+            if handler is None:
+                raise Refused(f"gh {cmd or '(nothing)'} is not supported by the eval fake")
+            skip = 1 if cmd == "api" else 2
+            positionals, flags = parse(cmd, argv[skip:])
+            body = body_from(flags) if cmd in ("issue comment", "pr comment", "issue create",
+                                               "pr create", "issue edit", "pr edit") else None
+            if body is not None:
+                # body_from may have read stdin; serve the same text to the handler.
+                flags.pop("--body-file", None)
+                flags["--body"] = [body]
+                entry["body"] = body
+            if cmd == "issue close" and "--comment" in flags:
+                entry["body"] = one(flags, "--comment")
+            kind, output = handler(tracker, positionals, flags)
+        except Refused as refusal:
+            entry.update(kind="error", exit=1, error=str(refusal))
+            append_log(log_path, entry)
+            sys.stderr.write(f"{refusal}\n")
+            return 1
+        if tracker.changed:
+            temporary = tracker_path + ".tmp"
+            with open(temporary, "w") as handle:
+                json.dump(tracker.state, handle, indent=2)
+            os.replace(temporary, tracker_path)
+        entry.update(kind=kind, exit=0)
+        append_log(log_path, entry)
+    sys.stdout.write(output)
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main(sys.argv[1:]))
