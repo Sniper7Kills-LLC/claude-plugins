@@ -1,0 +1,160 @@
+{
+  "repo": {
+    "owner": "acme",
+    "name": "widgets",
+    "defaultBranch": "main"
+  },
+  "user": "eval-bot",
+  "labels": [
+    {
+      "name": "status:ready",
+      "color": "0E8A16",
+      "description": ""
+    },
+    {
+      "name": "status:in-progress",
+      "color": "1D76DB",
+      "description": ""
+    },
+    {
+      "name": "status:in-review",
+      "color": "5319E7",
+      "description": ""
+    },
+    {
+      "name": "status:batched",
+      "color": "BFD4F2",
+      "description": ""
+    },
+    {
+      "name": "status:deploying",
+      "color": "0052CC",
+      "description": ""
+    },
+    {
+      "name": "status:deploy-failed",
+      "color": "B60205",
+      "description": ""
+    },
+    {
+      "name": "status:awaiting-review",
+      "color": "FEF2C0",
+      "description": ""
+    },
+    {
+      "name": "status:blocked",
+      "color": "D93F0B",
+      "description": ""
+    },
+    {
+      "name": "status:needs-feedback",
+      "color": "FBCA04",
+      "description": ""
+    },
+    {
+      "name": "type:epic",
+      "color": "5319E7",
+      "description": ""
+    },
+    {
+      "name": "type:batch",
+      "color": "C5DEF5",
+      "description": ""
+    },
+    {
+      "name": "type:hotfix",
+      "color": "B60205",
+      "description": ""
+    },
+    {
+      "name": "review:finding",
+      "color": "F9D0C4",
+      "description": ""
+    },
+    {
+      "name": "type:spec-update",
+      "color": "D4C5F9",
+      "description": ""
+    },
+    {
+      "name": "flow:status",
+      "color": "EDEDED",
+      "description": ""
+    },
+    {
+      "name": "priority:high",
+      "color": "B60205",
+      "description": ""
+    },
+    {
+      "name": "priority:low",
+      "color": "C2E0C6",
+      "description": ""
+    }
+  ],
+  "issues": [
+    {
+      "number": 40,
+      "title": "Batch: rate limit",
+      "body": "Tracking issue for a loose batch.\n\nIntegration branch: `batch/40-rate-limit`\n\n- [ ] #41 Reject requests over the rate limit\n- [ ] #42 Queue requests over the rate limit\n",
+      "state": "open",
+      "labels": [
+        "type:batch"
+      ],
+      "assignees": [
+        "eval-bot"
+      ],
+      "author": "maintainer",
+      "createdAt": "2026-11-20T09:00:00Z",
+      "updatedAt": "2026-11-20T09:00:00Z",
+      "comments": []
+    },
+    {
+      "number": 41,
+      "title": "Reject requests over the rate limit",
+      "body": "When a client sends more than 100 requests in one minute, `handle_excess()` in `ratelimit.py` answers `429 Too Many Requests`.\n\nPart of #40\n\n## Acceptance criteria\n- [ ] Request 101 in one minute gets `429`\n",
+      "state": "open",
+      "labels": [
+        "status:ready"
+      ],
+      "assignees": [
+        "eval-bot"
+      ],
+      "author": "maintainer",
+      "createdAt": "2026-11-20T09:00:00Z",
+      "updatedAt": "2026-11-20T09:00:00Z",
+      "comments": [
+        {
+          "id": 4101,
+          "author": "eval-bot",
+          "body": "## Plan (PM)\n\n**Files.** `ratelimit.py` (`handle_excess()`), `test_ratelimit.py`.\n\n**Approach.** `handle_excess()` returns `429` for request 101 and later in one minute.",
+          "createdAt": "2026-11-20T09:00:00Z"
+        }
+      ]
+    },
+    {
+      "number": 42,
+      "title": "Queue requests over the rate limit",
+      "body": "Requests over the limit of 100 in one minute must never be rejected. `handle_excess()` in `ratelimit.py` queues them and serves them in the next minute.\n\nPart of #40\n\n## Acceptance criteria\n- [ ] Request 101 in one minute gets `200` in the next minute\n- [ ] No request ever gets `429`\n",
+      "state": "open",
+      "labels": [
+        "status:ready"
+      ],
+      "assignees": [
+        "eval-bot"
+      ],
+      "author": "maintainer",
+      "createdAt": "2026-11-20T09:00:00Z",
+      "updatedAt": "2026-11-20T09:00:00Z",
+      "comments": [
+        {
+          "id": 4201,
+          "author": "eval-bot",
+          "body": "## Plan (PM)\n\n**Files.** `ratelimit.py` (`handle_excess()`), `test_ratelimit.py`.\n\n**Approach.** `handle_excess()` puts request 101 and later in a queue and serves them in the next minute. It never returns `429`.",
+          "createdAt": "2026-11-20T09:00:00Z"
+        }
+      ]
+    }
+  ],
+  "prs": []
+}

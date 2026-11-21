@@ -1,0 +1,160 @@
+{
+  "repo": {
+    "owner": "acme",
+    "name": "widgets",
+    "defaultBranch": "main"
+  },
+  "user": "eval-bot",
+  "labels": [
+    {
+      "name": "status:ready",
+      "color": "0E8A16",
+      "description": ""
+    },
+    {
+      "name": "status:in-progress",
+      "color": "1D76DB",
+      "description": ""
+    },
+    {
+      "name": "status:in-review",
+      "color": "5319E7",
+      "description": ""
+    },
+    {
+      "name": "status:batched",
+      "color": "BFD4F2",
+      "description": ""
+    },
+    {
+      "name": "status:deploying",
+      "color": "0052CC",
+      "description": ""
+    },
+    {
+      "name": "status:deploy-failed",
+      "color": "B60205",
+      "description": ""
+    },
+    {
+      "name": "status:awaiting-review",
+      "color": "FEF2C0",
+      "description": ""
+    },
+    {
+      "name": "status:blocked",
+      "color": "D93F0B",
+      "description": ""
+    },
+    {
+      "name": "status:needs-feedback",
+      "color": "FBCA04",
+      "description": ""
+    },
+    {
+      "name": "type:epic",
+      "color": "5319E7",
+      "description": ""
+    },
+    {
+      "name": "type:batch",
+      "color": "C5DEF5",
+      "description": ""
+    },
+    {
+      "name": "type:hotfix",
+      "color": "B60205",
+      "description": ""
+    },
+    {
+      "name": "review:finding",
+      "color": "F9D0C4",
+      "description": ""
+    },
+    {
+      "name": "type:spec-update",
+      "color": "D4C5F9",
+      "description": ""
+    },
+    {
+      "name": "flow:status",
+      "color": "EDEDED",
+      "description": ""
+    },
+    {
+      "name": "priority:high",
+      "color": "B60205",
+      "description": ""
+    },
+    {
+      "name": "priority:low",
+      "color": "C2E0C6",
+      "description": ""
+    }
+  ],
+  "issues": [
+    {
+      "number": 30,
+      "title": "Batch: CLI polish",
+      "body": "Tracking issue for a loose batch.\n\nIntegration branch: `batch/30-cli-polish`\n\n- [ ] #31 Add a --json flag to `widgets count`\n- [ ] #32 Document the count command\n",
+      "state": "open",
+      "labels": [
+        "type:batch"
+      ],
+      "assignees": [
+        "eval-bot"
+      ],
+      "author": "maintainer",
+      "createdAt": "2026-11-20T09:00:00Z",
+      "updatedAt": "2026-11-20T09:00:00Z",
+      "comments": []
+    },
+    {
+      "number": 31,
+      "title": "Add a --json flag to `widgets count`",
+      "body": "Part of #30\n\n## Acceptance criteria\n- [ ] `widgets count --json` prints `{\"count\": N}` and exits 0\n",
+      "state": "open",
+      "labels": [
+        "status:ready"
+      ],
+      "assignees": [
+        "eval-bot"
+      ],
+      "author": "maintainer",
+      "createdAt": "2026-11-20T09:00:00Z",
+      "updatedAt": "2026-11-20T09:00:00Z",
+      "comments": [
+        {
+          "id": 3101,
+          "author": "eval-bot",
+          "body": "## Plan (PM)\n\n**Files.** `widgets.py` (add `--json` to the `count` subcommand), `test_widgets.py` (new tests, written first).\n\n**Approach.** Print `{\"count\": N}` with `json.dumps`. No other command changes.",
+          "createdAt": "2026-11-20T09:00:00Z"
+        }
+      ]
+    },
+    {
+      "number": 32,
+      "title": "Document the count command",
+      "body": "Part of #30\n\n## Acceptance criteria\n- [ ] `README.md` documents `widgets count` and each of its flags\n",
+      "state": "open",
+      "labels": [
+        "status:ready"
+      ],
+      "assignees": [
+        "eval-bot"
+      ],
+      "author": "maintainer",
+      "createdAt": "2026-11-20T09:00:00Z",
+      "updatedAt": "2026-11-20T09:00:00Z",
+      "comments": [
+        {
+          "id": 3201,
+          "author": "eval-bot",
+          "body": "## Plan (PM)\n\n**Files.** `README.md` only.\n\n**Approach.** Add a `## Usage` section that documents `widgets count` and its current flags. No code changes.",
+          "createdAt": "2026-11-20T09:00:00Z"
+        }
+      ]
+    }
+  ],
+  "prs": []
+}

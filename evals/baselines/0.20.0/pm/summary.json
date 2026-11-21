@@ -1,0 +1,58 @@
+{
+  "variant": {
+    "plugin_dir": "issue-flow (git worktree of tag issue-flow--v0.20.0)",
+    "git_sha": "c3974fe577b7ce45383f564c3ed54b5a99080a9d",
+    "version": "0.20.0"
+  },
+  "total_cost_usd": 9.998784,
+  "cases": {
+    "pm-a0-split-status": {
+      "runs": 3,
+      "ok_rate": 1.0,
+      "mean_score": 1.0,
+      "mean_cost_usd": 0.4201,
+      "mean_turns": 5,
+      "mean_duration_s": 19.6
+    },
+    "pm-batch-cross-check": {
+      "runs": 3,
+      "ok_rate": 1.0,
+      "mean_score": 1.0,
+      "mean_cost_usd": 0.6291,
+      "mean_turns": 9,
+      "mean_duration_s": 59.6
+    },
+    "pm-c1-no-prepatch": {
+      "runs": 3,
+      "ok_rate": 1.0,
+      "mean_score": 1.0,
+      "mean_cost_usd": 0.4667,
+      "mean_turns": 5.67,
+      "mean_duration_s": 34.3
+    },
+    "pm-c1-unevidenced": {
+      "runs": 3,
+      "ok_rate": 1.0,
+      "mean_score": 1.0,
+      "mean_cost_usd": 0.4485,
+      "mean_turns": 5,
+      "mean_duration_s": 24.2
+    },
+    "pm-semantic-conflict": {
+      "runs": 3,
+      "ok_rate": 1.0,
+      "mean_score": 1.0,
+      "mean_cost_usd": 0.488,
+      "mean_turns": 5.33,
+      "mean_duration_s": 32.5
+    },
+    "pm-triage": {
+      "runs": 3,
+      "ok_rate": 1.0,
+      "mean_score": 1.0,
+      "mean_cost_usd": 0.4388,
+      "mean_turns": 6,
+      "mean_duration_s": 20.3
+    }
+  }
+}

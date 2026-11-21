@@ -1,0 +1,41 @@
+{
+  "version": 1,
+  "pluginVersion": "0.20.0",
+  "forge": {
+    "type": "github",
+    "host": "github.com",
+    "owner": "acme",
+    "repo": "widgets",
+    "interface": "cli"
+  },
+  "concurrency": 3,
+  "batchSize": 4,
+  "runLength": {
+    "mode": "issues",
+    "value": 5
+  },
+  "prGranularity": "batch",
+  "prAuthority": "batch-review",
+  "planReview": false,
+  "reviewWipLimit": 2,
+  "review": {
+    "when": "never"
+  },
+  "deploy": null,
+  "docsMcp": {
+    "offered": [],
+    "installed": [],
+    "marketplacesAdded": [],
+    "declined": true,
+    "restartPending": false
+  },
+  "practices": {
+    "tdd": true,
+    "ddd": false,
+    "e2e": "none",
+    "coverage": null,
+    "commitStyle": "conventional",
+    "docs": "public-interfaces"
+  },
+  "notes": "Python stdlib only. Test command: python3 -m unittest. Trunk branch model: integration branches fork off main."
+}

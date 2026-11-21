@@ -9,6 +9,9 @@ CLAUDE.local.md
 __pycache__/
 *.pyc
 
+# Eval results (scripts/run-evals.py writes them; a PR records the ones that matter)
+evals/results/
+
 # OS / editor
 .DS_Store
 Thumbs.db

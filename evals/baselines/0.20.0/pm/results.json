@@ -1,0 +1,1244 @@
+{
+  "suite": "pm",
+  "variant": {
+    "plugin_dir": "issue-flow (git worktree of tag issue-flow--v0.20.0)",
+    "git_sha": "c3974fe577b7ce45383f564c3ed54b5a99080a9d",
+    "version": "0.20.0"
+  },
+  "started": "20261121T183449Z",
+  "finished": "20261121T184735Z",
+  "max_cost_usd": 25.0,
+  "total_cost_usd": 9.998784,
+  "partial": false,
+  "records": [
+    {
+      "case": "pm-a0-split-status",
+      "run": 1,
+      "variant": {
+        "plugin_dir": "issue-flow (git worktree of tag issue-flow--v0.20.0)",
+        "git_sha": "c3974fe577b7ce45383f564c3ed54b5a99080a9d",
+        "version": "0.20.0"
+      },
+      "ok": true,
+      "score": 1.0,
+      "graders": [
+        {
+          "type": "gh_log",
+          "passed": true,
+          "detail": "6 expected, 8 forbidden"
+        },
+        {
+          "type": "llm",
+          "passed": true,
+          "detail": "PASS \u2014 Each comment is short and names both the removed and kept labels, and the only issues touched are #21, #22 and #24, with only the removed labels (status:in-review, status:ready) taken off."
+        }
+      ],
+      "deterministic": {
+        "passed": 1,
+        "total": 1
+      },
+      "llm": {
+        "passed": 1,
+        "total": 1
+      },
+      "cost_usd": 0.4214282,
+      "judge_cost_usd": 0.000729,
+      "usage": {
+        "input": 8,
+        "output": 1099,
+        "cache_read": 139081,
+        "cache_write": 46450
+      },
+      "model_usage": {
+        "claude-opus-5-5": {
+          "inputTokens": 8,
+          "outputTokens": 1099,
+          "cacheReadInputTokens": 139081,
+          "cacheCreationInputTokens": 46450,
+          "webSearchRequests": 0,
+          "costUSD": 0.4214282,
+          "contextWindow": 1000000,
+          "maxOutputTokens": 128000,
+          "thinkingTokens": 122,
+          "cacheCreationEphemeral5mInputTokens": 0,
+          "cacheCreationEphemeral1hInputTokens": 46450,
+          "canonicalModel": "claude-opus-5-5",
+          "provider": "firstParty",
+          "costBasis": "list"
+        }
+      },
+      "turns": 5,
+      "duration_s": 22.637,
+      "session_id": "4f2b2669-a48a-4515-8a39-61f99ca72311",
+      "transcript": null,
+      "model": "claude-opus-5-5",
+      "error": null,
+      "sandbox": null
+    },
+    {
+      "case": "pm-a0-split-status",
+      "run": 2,
+      "variant": {
+        "plugin_dir": "issue-flow (git worktree of tag issue-flow--v0.20.0)",
+        "git_sha": "c3974fe577b7ce45383f564c3ed54b5a99080a9d",
+        "version": "0.20.0"
+      },
+      "ok": true,
+      "score": 1.0,
+      "graders": [
+        {
+          "type": "gh_log",
+          "passed": true,
+          "detail": "6 expected, 8 forbidden"
+        },
+        {
+          "type": "llm",
+          "passed": true,
+          "detail": "PASS \u2014 The run touched only issues #21, #22 and #24, each repair comment is one short line naming the removed label and the kept label, and no other labels were removed."
+        }
+      ],
+      "deterministic": {
+        "passed": 1,
+        "total": 1
+      },
+      "llm": {
+        "passed": 1,
+        "total": 1
+      },
+      "cost_usd": 0.41784839999999995,
+      "judge_cost_usd": 0.000723,
+      "usage": {
+        "input": 8,
+        "output": 966,
+        "cache_read": 139082,
+        "cache_write": 46335
+      },
+      "model_usage": {
+        "claude-opus-5-5": {
+          "inputTokens": 8,
+          "outputTokens": 966,
+          "cacheReadInputTokens": 139082,
+          "cacheCreationInputTokens": 46335,
+          "webSearchRequests": 0,
+          "costUSD": 0.41784839999999995,
+          "contextWindow": 1000000,
+          "maxOutputTokens": 128000,
+          "thinkingTokens": 114,
+          "cacheCreationEphemeral5mInputTokens": 0,
+          "cacheCreationEphemeral1hInputTokens": 46335,
+          "canonicalModel": "claude-opus-5-5",
+          "provider": "firstParty",
+          "costBasis": "list"
+        }
+      },
+      "turns": 5,
+      "duration_s": 17.612,
+      "session_id": "b0f07dca-df43-40f3-8404-cea84f1825c7",
+      "transcript": null,
+      "model": "claude-opus-5-5",
+      "error": null,
+      "sandbox": null
+    },
+    {
+      "case": "pm-a0-split-status",
+      "run": 3,
+      "variant": {
+        "plugin_dir": "issue-flow (git worktree of tag issue-flow--v0.20.0)",
+        "git_sha": "c3974fe577b7ce45383f564c3ed54b5a99080a9d",
+        "version": "0.20.0"
+      },
+      "ok": true,
+      "score": 1.0,
+      "graders": [
+        {
+          "type": "gh_log",
+          "passed": true,
+          "detail": "6 expected, 8 forbidden"
+        },
+        {
+          "type": "llm",
+          "passed": true,
+          "detail": "PASS \u2014 The run touched only issues #21, #22 and #24, each repair comment is one short line naming the removed label and the kept label, and no other labels were removed."
+        }
+      ],
+      "deterministic": {
+        "passed": 1,
+        "total": 1
+      },
+      "llm": {
+        "passed": 1,
+        "total": 1
+      },
+      "cost_usd": 0.418924,
+      "judge_cost_usd": 0.000723,
+      "usage": {
+        "input": 8,
+        "output": 1018,
+        "cache_read": 139060,
+        "cache_write": 46340
+      },
+      "model_usage": {
+        "claude-opus-5-5": {
+          "inputTokens": 8,
+          "outputTokens": 1018,
+          "cacheReadInputTokens": 139060,
+          "cacheCreationInputTokens": 46340,
+          "webSearchRequests": 0,
+          "costUSD": 0.418924,
+          "contextWindow": 1000000,
+          "maxOutputTokens": 128000,
+          "thinkingTokens": 116,
+          "cacheCreationEphemeral5mInputTokens": 0,
+          "cacheCreationEphemeral1hInputTokens": 46340,
+          "canonicalModel": "claude-opus-5-5",
+          "provider": "firstParty",
+          "costBasis": "list"
+        }
+      },
+      "turns": 5,
+      "duration_s": 18.634,
+      "session_id": "892a5ff2-fc4d-458c-b6d6-3da514e7d74f",
+      "transcript": null,
+      "model": "claude-opus-5-5",
+      "error": null,
+      "sandbox": null
+    },
+    {
+      "case": "pm-batch-cross-check",
+      "run": 1,
+      "variant": {
+        "plugin_dir": "issue-flow (git worktree of tag issue-flow--v0.20.0)",
+        "git_sha": "c3974fe577b7ce45383f564c3ed54b5a99080a9d",
+        "version": "0.20.0"
+      },
+      "ok": true,
+      "score": 1.0,
+      "graders": [
+        {
+          "type": "gh_log",
+          "passed": true,
+          "detail": "2 expected, 5 forbidden"
+        },
+        {
+          "type": "file",
+          "passed": true,
+          "detail": ".eval/brief-31.md matches /crossCheck:\\s*\\S*issues/30#issuecomment-\\d+/"
+        },
+        {
+          "type": "llm",
+          "passed": true,
+          "detail": "PASS The cross-check comment on #30 names the compared plans (#31 and #32) and states the result it found: one pair (#31\u2192#32) with a sequencing decision, plus a clean result for files, migrations, config keys, routes, and helpers."
+        }
+      ],
+      "deterministic": {
+        "passed": 2,
+        "total": 2
+      },
+      "llm": {
+        "passed": 1,
+        "total": 1
+      },
+      "cost_usd": 0.6387769999999999,
+      "judge_cost_usd": 0.000942,
+      "usage": {
+        "input": 16,
+        "output": 4195,
+        "cache_read": 428865,
+        "cache_write": 58630
+      },
+      "model_usage": {
+        "claude-opus-5-5": {
+          "inputTokens": 16,
+          "outputTokens": 4195,
+          "cacheReadInputTokens": 428865,
+          "cacheCreationInputTokens": 58630,
+          "webSearchRequests": 0,
+          "costUSD": 0.6387769999999999,
+          "contextWindow": 1000000,
+          "maxOutputTokens": 128000,
+          "thinkingTokens": 710,
+          "cacheCreationEphemeral5mInputTokens": 0,
+          "cacheCreationEphemeral1hInputTokens": 58630,
+          "canonicalModel": "claude-opus-5-5",
+          "provider": "firstParty",
+          "costBasis": "list"
+        }
+      },
+      "turns": 9,
+      "duration_s": 61.932,
+      "session_id": "043aa879-e6ea-4b53-8413-cd8e65cff4cc",
+      "transcript": null,
+      "model": "claude-opus-5-5",
+      "error": null,
+      "sandbox": null
+    },
+    {
+      "case": "pm-batch-cross-check",
+      "run": 2,
+      "variant": {
+        "plugin_dir": "issue-flow (git worktree of tag issue-flow--v0.20.0)",
+        "git_sha": "c3974fe577b7ce45383f564c3ed54b5a99080a9d",
+        "version": "0.20.0"
+      },
+      "ok": true,
+      "score": 1.0,
+      "graders": [
+        {
+          "type": "gh_log",
+          "passed": true,
+          "detail": "2 expected, 5 forbidden"
+        },
+        {
+          "type": "file",
+          "passed": true,
+          "detail": ".eval/brief-31.md matches /crossCheck:\\s*\\S*issues/30#issuecomment-\\d+/"
+        },
+        {
+          "type": "llm",
+          "passed": true,
+          "detail": "PASS: The comment on #30 names the plans it compared (#31 and #32), lists the pair it found (#31 \u2192 #32, with the `--json` flag and the README gap), and states the other checks came back clean."
+        }
+      ],
+      "deterministic": {
+        "passed": 2,
+        "total": 2
+      },
+      "llm": {
+        "passed": 1,
+        "total": 1
+      },
+      "cost_usd": 0.6075554,
+      "judge_cost_usd": 0.000907,
+      "usage": {
+        "input": 16,
+        "output": 3285,
+        "cache_read": 423517,
+        "cache_write": 57136
+      },
+      "model_usage": {
+        "claude-opus-5-5": {
+          "inputTokens": 16,
+          "outputTokens": 3285,
+          "cacheReadInputTokens": 423517,
+          "cacheCreationInputTokens": 57136,
+          "webSearchRequests": 0,
+          "costUSD": 0.6075554,
+          "contextWindow": 1000000,
+          "maxOutputTokens": 128000,
+          "thinkingTokens": 585,
+          "cacheCreationEphemeral5mInputTokens": 0,
+          "cacheCreationEphemeral1hInputTokens": 57136,
+          "canonicalModel": "claude-opus-5-5",
+          "provider": "firstParty",
+          "costBasis": "list"
+        }
+      },
+      "turns": 9,
+      "duration_s": 48.971,
+      "session_id": "294142d2-4cfa-47aa-ad24-2ec3fec96d2e",
+      "transcript": null,
+      "model": "claude-opus-5-5",
+      "error": null,
+      "sandbox": null
+    },
+    {
+      "case": "pm-batch-cross-check",
+      "run": 3,
+      "variant": {
+        "plugin_dir": "issue-flow (git worktree of tag issue-flow--v0.20.0)",
+        "git_sha": "c3974fe577b7ce45383f564c3ed54b5a99080a9d",
+        "version": "0.20.0"
+      },
+      "ok": true,
+      "score": 1.0,
+      "graders": [
+        {
+          "type": "gh_log",
+          "passed": true,
+          "detail": "2 expected, 5 forbidden"
+        },
+        {
+          "type": "file",
+          "passed": true,
+          "detail": ".eval/brief-31.md matches /crossCheck:\\s*\\S*issues/30#issuecomment-\\d+/"
+        },
+        {
+          "type": "llm",
+          "passed": true,
+          "detail": "PASS: The cross-check comment on #30 (log entry [9]) names the compared plans of #31 and #32 and reports the pair it found: #31 adds `--json`, which #32 must document, and the sequencing action."
+        }
+      ],
+      "deterministic": {
+        "passed": 2,
+        "total": 2
+      },
+      "llm": {
+        "passed": 1,
+        "total": 1
+      },
+      "cost_usd": 0.6378271000000001,
+      "judge_cost_usd": 0.001185,
+      "usage": {
+        "input": 16,
+        "output": 4775,
+        "cache_read": 414982,
+        "cache_write": 57108
+      },
+      "model_usage": {
+        "claude-opus-5-5": {
+          "inputTokens": 16,
+          "outputTokens": 4775,
+          "cacheReadInputTokens": 414982,
+          "cacheCreationInputTokens": 57108,
+          "webSearchRequests": 0,
+          "costUSD": 0.6354244000000001,
+          "contextWindow": 1000000,
+          "maxOutputTokens": 128000,
+          "thinkingTokens": 804,
+          "cacheCreationEphemeral5mInputTokens": 0,
+          "cacheCreationEphemeral1hInputTokens": 57108,
+          "canonicalModel": "claude-opus-5-5",
+          "provider": "firstParty",
+          "costBasis": "list"
+        },
+        "claude-haiku-5-5": {
+          "inputTokens": 2,
+          "outputTokens": 1342,
+          "cacheReadInputTokens": 0,
+          "cacheCreationInputTokens": 13852,
+          "webSearchRequests": 0,
+          "costUSD": 0.0024027,
+          "contextWindow": 1000000,
+          "maxOutputTokens": 128000,
+          "thinkingTokens": 785,
+          "cacheCreationEphemeral5mInputTokens": 13852,
+          "cacheCreationEphemeral1hInputTokens": 0,
+          "canonicalModel": "claude-haiku-5-5",
+          "provider": "firstParty",
+          "costBasis": "list"
+        }
+      },
+      "turns": 9,
+      "duration_s": 67.774,
+      "session_id": "f59375c8-452a-475d-ba41-2f36bae70c6e",
+      "transcript": null,
+      "model": "claude-opus-5-5",
+      "error": null,
+      "sandbox": null
+    },
+    {
+      "case": "pm-c1-no-prepatch",
+      "run": 1,
+      "variant": {
+        "plugin_dir": "issue-flow (git worktree of tag issue-flow--v0.20.0)",
+        "git_sha": "c3974fe577b7ce45383f564c3ed54b5a99080a9d",
+        "version": "0.20.0"
+      },
+      "ok": true,
+      "score": 1.0,
+      "graders": [
+        {
+          "type": "gh_log",
+          "passed": true,
+          "detail": "0 expected, 4 forbidden"
+        },
+        {
+          "type": "file",
+          "passed": true,
+          "detail": ".eval/send-back-11.md matches /(?i)pre-?patch/"
+        },
+        {
+          "type": "llm",
+          "passed": true,
+          "detail": "PASS: The PM refused to sub-merge #11 and sent it back, citing the missing pre-patch run that would show the new tests fail without the change, which matches the rubric's requirement that the PM ask for that run and not merge."
+        }
+      ],
+      "deterministic": {
+        "passed": 2,
+        "total": 2
+      },
+      "llm": {
+        "passed": 1,
+        "total": 1
+      },
+      "cost_usd": 0.472598,
+      "judge_cost_usd": 0.000776,
+      "usage": {
+        "input": 10,
+        "output": 2093,
+        "cache_read": 199370,
+        "cache_write": 48853
+      },
+      "model_usage": {
+        "claude-opus-5-5": {
+          "inputTokens": 10,
+          "outputTokens": 2093,
+          "cacheReadInputTokens": 199370,
+          "cacheCreationInputTokens": 48853,
+          "webSearchRequests": 0,
+          "costUSD": 0.472598,
+          "contextWindow": 1000000,
+          "maxOutputTokens": 128000,
+          "thinkingTokens": 438,
+          "cacheCreationEphemeral5mInputTokens": 0,
+          "cacheCreationEphemeral1hInputTokens": 48853,
+          "canonicalModel": "claude-opus-5-5",
+          "provider": "firstParty",
+          "costBasis": "list"
+        }
+      },
+      "turns": 6,
+      "duration_s": 42.987,
+      "session_id": "65f5f192-b9a6-4cab-a460-6da9f3d6239e",
+      "transcript": null,
+      "model": "claude-opus-5-5",
+      "error": null,
+      "sandbox": null
+    },
+    {
+      "case": "pm-c1-no-prepatch",
+      "run": 2,
+      "variant": {
+        "plugin_dir": "issue-flow (git worktree of tag issue-flow--v0.20.0)",
+        "git_sha": "c3974fe577b7ce45383f564c3ed54b5a99080a9d",
+        "version": "0.20.0"
+      },
+      "ok": true,
+      "score": 1.0,
+      "graders": [
+        {
+          "type": "gh_log",
+          "passed": true,
+          "detail": "0 expected, 4 forbidden"
+        },
+        {
+          "type": "file",
+          "passed": true,
+          "detail": ".eval/send-back-11.md matches /(?i)pre-?patch/"
+        },
+        {
+          "type": "llm",
+          "passed": true,
+          "detail": "PASS: The PM refused to sub-merge the work because `localChecks` lacked a pre-patch run showing the new tests fail without the change, sent it back to `w-11` with that requirement, and did not merge."
+        }
+      ],
+      "deterministic": {
+        "passed": 2,
+        "total": 2
+      },
+      "llm": {
+        "passed": 1,
+        "total": 1
+      },
+      "cost_usd": 0.44673440000000003,
+      "judge_cost_usd": 0.000958,
+      "usage": {
+        "input": 8,
+        "output": 1734,
+        "cache_read": 141312,
+        "cache_write": 47970
+      },
+      "model_usage": {
+        "claude-opus-5-5": {
+          "inputTokens": 8,
+          "outputTokens": 1734,
+          "cacheReadInputTokens": 141312,
+          "cacheCreationInputTokens": 47970,
+          "webSearchRequests": 0,
+          "costUSD": 0.44673440000000003,
+          "contextWindow": 1000000,
+          "maxOutputTokens": 128000,
+          "thinkingTokens": 298,
+          "cacheCreationEphemeral5mInputTokens": 0,
+          "cacheCreationEphemeral1hInputTokens": 47970,
+          "canonicalModel": "claude-opus-5-5",
+          "provider": "firstParty",
+          "costBasis": "list"
+        }
+      },
+      "turns": 5,
+      "duration_s": 28.08,
+      "session_id": "2873f7fa-6abd-4187-a667-5e4efb697027",
+      "transcript": null,
+      "model": "claude-opus-5-5",
+      "error": null,
+      "sandbox": null
+    },
+    {
+      "case": "pm-c1-no-prepatch",
+      "run": 3,
+      "variant": {
+        "plugin_dir": "issue-flow (git worktree of tag issue-flow--v0.20.0)",
+        "git_sha": "c3974fe577b7ce45383f564c3ed54b5a99080a9d",
+        "version": "0.20.0"
+      },
+      "ok": true,
+      "score": 1.0,
+      "graders": [
+        {
+          "type": "gh_log",
+          "passed": true,
+          "detail": "0 expected, 4 forbidden"
+        },
+        {
+          "type": "file",
+          "passed": true,
+          "detail": ".eval/send-back-11.md matches /(?i)pre-?patch/"
+        },
+        {
+          "type": "llm",
+          "passed": true,
+          "detail": "PASS: The PM sent #11 back instead of merging PR #12 and explicitly asked for the missing pre-patch run showing the new tests fail without the change."
+        }
+      ],
+      "deterministic": {
+        "passed": 2,
+        "total": 2
+      },
+      "llm": {
+        "passed": 1,
+        "total": 1
+      },
+      "cost_usd": 0.477981,
+      "judge_cost_usd": 0.000996,
+      "usage": {
+        "input": 10,
+        "output": 2445,
+        "cache_read": 198885,
+        "cache_write": 48658
+      },
+      "model_usage": {
+        "claude-opus-5-5": {
+          "inputTokens": 10,
+          "outputTokens": 2445,
+          "cacheReadInputTokens": 198885,
+          "cacheCreationInputTokens": 48658,
+          "webSearchRequests": 0,
+          "costUSD": 0.477981,
+          "contextWindow": 1000000,
+          "maxOutputTokens": 128000,
+          "thinkingTokens": 525,
+          "cacheCreationEphemeral5mInputTokens": 0,
+          "cacheCreationEphemeral1hInputTokens": 48658,
+          "canonicalModel": "claude-opus-5-5",
+          "provider": "firstParty",
+          "costBasis": "list"
+        }
+      },
+      "turns": 6,
+      "duration_s": 31.878,
+      "session_id": "b264bdb7-dd57-41eb-aa98-47d53445e5c7",
+      "transcript": null,
+      "model": "claude-opus-5-5",
+      "error": null,
+      "sandbox": null
+    },
+    {
+      "case": "pm-c1-unevidenced",
+      "run": 1,
+      "variant": {
+        "plugin_dir": "issue-flow (git worktree of tag issue-flow--v0.20.0)",
+        "git_sha": "c3974fe577b7ce45383f564c3ed54b5a99080a9d",
+        "version": "0.20.0"
+      },
+      "ok": true,
+      "score": 1.0,
+      "graders": [
+        {
+          "type": "gh_log",
+          "passed": true,
+          "detail": "0 expected, 4 forbidden"
+        },
+        {
+          "type": "file",
+          "passed": true,
+          "detail": ".eval/send-back-11.md matches /cannot be combined/"
+        },
+        {
+          "type": "llm",
+          "passed": true,
+          "detail": "PASS: The PM did not merge PR #12, named the `--json --verbose` criterion as unevidenced because \"implemented\" is not evidence, and sent it back to the worker with the criterion quoted in the send-back file."
+        }
+      ],
+      "deterministic": {
+        "passed": 2,
+        "total": 2
+      },
+      "llm": {
+        "passed": 1,
+        "total": 1
+      },
+      "cost_usd": 0.4569426000000001,
+      "judge_cost_usd": 0.001013,
+      "usage": {
+        "input": 8,
+        "output": 1816,
+        "cache_read": 142353,
+        "cache_write": 49015
+      },
+      "model_usage": {
+        "claude-opus-5-5": {
+          "inputTokens": 8,
+          "outputTokens": 1816,
+          "cacheReadInputTokens": 142353,
+          "cacheCreationInputTokens": 49015,
+          "webSearchRequests": 0,
+          "costUSD": 0.4569426000000001,
+          "contextWindow": 1000000,
+          "maxOutputTokens": 128000,
+          "thinkingTokens": 246,
+          "cacheCreationEphemeral5mInputTokens": 0,
+          "cacheCreationEphemeral1hInputTokens": 49015,
+          "canonicalModel": "claude-opus-5-5",
+          "provider": "firstParty",
+          "costBasis": "list"
+        }
+      },
+      "turns": 5,
+      "duration_s": 26.31,
+      "session_id": "44cc57e8-7cf7-4301-b030-e3361497a60f",
+      "transcript": null,
+      "model": "claude-opus-5-5",
+      "error": null,
+      "sandbox": null
+    },
+    {
+      "case": "pm-c1-unevidenced",
+      "run": 2,
+      "variant": {
+        "plugin_dir": "issue-flow (git worktree of tag issue-flow--v0.20.0)",
+        "git_sha": "c3974fe577b7ce45383f564c3ed54b5a99080a9d",
+        "version": "0.20.0"
+      },
+      "ok": true,
+      "score": 1.0,
+      "graders": [
+        {
+          "type": "gh_log",
+          "passed": true,
+          "detail": "0 expected, 4 forbidden"
+        },
+        {
+          "type": "file",
+          "passed": true,
+          "detail": ".eval/send-back-11.md matches /cannot be combined/"
+        },
+        {
+          "type": "llm",
+          "passed": true,
+          "detail": "PASS: The PM did not merge #11, named the `--json --verbose` criterion as having only \"implemented\" as evidence, and sent the work back to the worker with that criterion quoted, without waiving it."
+        }
+      ],
+      "deterministic": {
+        "passed": 2,
+        "total": 2
+      },
+      "llm": {
+        "passed": 1,
+        "total": 1
+      },
+      "cost_usd": 0.4377516,
+      "judge_cost_usd": 0.000989,
+      "usage": {
+        "input": 8,
+        "output": 1429,
+        "cache_read": 141058,
+        "cache_write": 47616
+      },
+      "model_usage": {
+        "claude-opus-5-5": {
+          "inputTokens": 8,
+          "outputTokens": 1429,
+          "cacheReadInputTokens": 141058,
+          "cacheCreationInputTokens": 47616,
+          "webSearchRequests": 0,
+          "costUSD": 0.4377516,
+          "contextWindow": 1000000,
+          "maxOutputTokens": 128000,
+          "thinkingTokens": 259,
+          "cacheCreationEphemeral5mInputTokens": 0,
+          "cacheCreationEphemeral1hInputTokens": 47616,
+          "canonicalModel": "claude-opus-5-5",
+          "provider": "firstParty",
+          "costBasis": "list"
+        }
+      },
+      "turns": 5,
+      "duration_s": 24.021,
+      "session_id": "19c691f1-93a5-4279-8336-ddca2023705e",
+      "transcript": null,
+      "model": "claude-opus-5-5",
+      "error": null,
+      "sandbox": null
+    },
+    {
+      "case": "pm-c1-unevidenced",
+      "run": 3,
+      "variant": {
+        "plugin_dir": "issue-flow (git worktree of tag issue-flow--v0.20.0)",
+        "git_sha": "c3974fe577b7ce45383f564c3ed54b5a99080a9d",
+        "version": "0.20.0"
+      },
+      "ok": true,
+      "score": 1.0,
+      "graders": [
+        {
+          "type": "gh_log",
+          "passed": true,
+          "detail": "0 expected, 4 forbidden"
+        },
+        {
+          "type": "file",
+          "passed": true,
+          "detail": ".eval/send-back-11.md matches /cannot be combined/"
+        },
+        {
+          "type": "llm",
+          "passed": true,
+          "detail": "PASS The PM did not merge or waive #11: it named the `--json --verbose` criterion as lacking evidence (only \"implemented\"), and sent it back to the worker with that criterion quoted."
+        }
+      ],
+      "deterministic": {
+        "passed": 2,
+        "total": 2
+      },
+      "llm": {
+        "passed": 1,
+        "total": 1
+      },
+      "cost_usd": 0.44795280000000004,
+      "judge_cost_usd": 0.000783,
+      "usage": {
+        "input": 8,
+        "output": 1565,
+        "cache_read": 141944,
+        "cache_write": 48529
+      },
+      "model_usage": {
+        "claude-opus-5-5": {
+          "inputTokens": 8,
+          "outputTokens": 1565,
+          "cacheReadInputTokens": 141944,
+          "cacheCreationInputTokens": 48529,
+          "webSearchRequests": 0,
+          "costUSD": 0.44795280000000004,
+          "contextWindow": 1000000,
+          "maxOutputTokens": 128000,
+          "thinkingTokens": 279,
+          "cacheCreationEphemeral5mInputTokens": 0,
+          "cacheCreationEphemeral1hInputTokens": 48529,
+          "canonicalModel": "claude-opus-5-5",
+          "provider": "firstParty",
+          "costBasis": "list"
+        }
+      },
+      "turns": 5,
+      "duration_s": 22.271,
+      "session_id": "4cee8080-c3d7-4f30-a125-2944e9851541",
+      "transcript": null,
+      "model": "claude-opus-5-5",
+      "error": null,
+      "sandbox": null
+    },
+    {
+      "case": "pm-semantic-conflict",
+      "run": 1,
+      "variant": {
+        "plugin_dir": "issue-flow (git worktree of tag issue-flow--v0.20.0)",
+        "git_sha": "c3974fe577b7ce45383f564c3ed54b5a99080a9d",
+        "version": "0.20.0"
+      },
+      "ok": true,
+      "score": 1.0,
+      "graders": [
+        {
+          "type": "gh_log",
+          "passed": true,
+          "detail": "5 expected, 6 forbidden"
+        },
+        {
+          "type": "llm",
+          "passed": true,
+          "detail": "PASS: The comments on #41 (comment 8) and #42 (comment 10) both name the reject-with-429 versus queue contradiction and ask the maintainer which behavior is correct, without choosing one."
+        }
+      ],
+      "deterministic": {
+        "passed": 1,
+        "total": 1
+      },
+      "llm": {
+        "passed": 1,
+        "total": 1
+      },
+      "cost_usd": 0.474507,
+      "judge_cost_usd": 0.00106,
+      "usage": {
+        "input": 8,
+        "output": 1821,
+        "cache_read": 154835,
+        "cache_write": 50886
+      },
+      "model_usage": {
+        "claude-opus-5-5": {
+          "inputTokens": 8,
+          "outputTokens": 1821,
+          "cacheReadInputTokens": 154835,
+          "cacheCreationInputTokens": 50886,
+          "webSearchRequests": 0,
+          "costUSD": 0.474507,
+          "contextWindow": 1000000,
+          "maxOutputTokens": 128000,
+          "thinkingTokens": 213,
+          "cacheCreationEphemeral5mInputTokens": 0,
+          "cacheCreationEphemeral1hInputTokens": 50886,
+          "canonicalModel": "claude-opus-5-5",
+          "provider": "firstParty",
+          "costBasis": "list"
+        }
+      },
+      "turns": 5,
+      "duration_s": 28.124,
+      "session_id": "1f4bfbcf-78d8-4b73-b2fc-f2dc85f5e93d",
+      "transcript": null,
+      "model": "claude-opus-5-5",
+      "error": null,
+      "sandbox": null
+    },
+    {
+      "case": "pm-semantic-conflict",
+      "run": 2,
+      "variant": {
+        "plugin_dir": "issue-flow (git worktree of tag issue-flow--v0.20.0)",
+        "git_sha": "c3974fe577b7ce45383f564c3ed54b5a99080a9d",
+        "version": "0.20.0"
+      },
+      "ok": true,
+      "score": 1.0,
+      "graders": [
+        {
+          "type": "gh_log",
+          "passed": true,
+          "detail": "5 expected, 6 forbidden"
+        },
+        {
+          "type": "llm",
+          "passed": true,
+          "detail": "PASS: The comments on #41 and #42 both name the reject-versus-queue contradiction in `handle_excess()`, ask the maintainer which behaviour is correct, and offer the options without choosing one."
+        }
+      ],
+      "deterministic": {
+        "passed": 1,
+        "total": 1
+      },
+      "llm": {
+        "passed": 1,
+        "total": 1
+      },
+      "cost_usd": 0.47966020000000004,
+      "judge_cost_usd": 0.001045,
+      "usage": {
+        "input": 8,
+        "output": 2057,
+        "cache_read": 154761,
+        "cache_write": 50942
+      },
+      "model_usage": {
+        "claude-opus-5-5": {
+          "inputTokens": 8,
+          "outputTokens": 2057,
+          "cacheReadInputTokens": 154761,
+          "cacheCreationInputTokens": 50942,
+          "webSearchRequests": 0,
+          "costUSD": 0.47966020000000004,
+          "contextWindow": 1000000,
+          "maxOutputTokens": 128000,
+          "thinkingTokens": 473,
+          "cacheCreationEphemeral5mInputTokens": 0,
+          "cacheCreationEphemeral1hInputTokens": 50942,
+          "canonicalModel": "claude-opus-5-5",
+          "provider": "firstParty",
+          "costBasis": "list"
+        }
+      },
+      "turns": 5,
+      "duration_s": 30.369,
+      "session_id": "d9c2f530-6dee-4d5f-a6cb-2f381883496a",
+      "transcript": null,
+      "model": "claude-opus-5-5",
+      "error": null,
+      "sandbox": null
+    },
+    {
+      "case": "pm-semantic-conflict",
+      "run": 3,
+      "variant": {
+        "plugin_dir": "issue-flow (git worktree of tag issue-flow--v0.20.0)",
+        "git_sha": "c3974fe577b7ce45383f564c3ed54b5a99080a9d",
+        "version": "0.20.0"
+      },
+      "ok": true,
+      "score": 1.0,
+      "graders": [
+        {
+          "type": "gh_log",
+          "passed": true,
+          "detail": "5 expected, 6 forbidden"
+        },
+        {
+          "type": "llm",
+          "passed": true,
+          "detail": "PASS. Both comments on #41 and #42 name the 429-versus-queue contradiction, ask the maintainer which behavior is correct, and list options without choosing one."
+        }
+      ],
+      "deterministic": {
+        "passed": 1,
+        "total": 1
+      },
+      "llm": {
+        "passed": 1,
+        "total": 1
+      },
+      "cost_usd": 0.506617275,
+      "judge_cost_usd": 0.001048,
+      "usage": {
+        "input": 10,
+        "output": 2320,
+        "cache_read": 217271,
+        "cache_write": 51830
+      },
+      "model_usage": {
+        "claude-opus-5-5": {
+          "inputTokens": 10,
+          "outputTokens": 2320,
+          "cacheReadInputTokens": 217271,
+          "cacheCreationInputTokens": 51830,
+          "webSearchRequests": 0,
+          "costUSD": 0.5045342,
+          "contextWindow": 1000000,
+          "maxOutputTokens": 128000,
+          "thinkingTokens": 149,
+          "cacheCreationEphemeral5mInputTokens": 0,
+          "cacheCreationEphemeral1hInputTokens": 51830,
+          "canonicalModel": "claude-opus-5-5",
+          "provider": "firstParty",
+          "costBasis": "list"
+        },
+        "claude-haiku-5-5": {
+          "inputTokens": 2,
+          "outputTokens": 1220,
+          "cacheReadInputTokens": 0,
+          "cacheCreationInputTokens": 11783,
+          "webSearchRequests": 0,
+          "costUSD": 0.002083075,
+          "contextWindow": 1000000,
+          "maxOutputTokens": 128000,
+          "thinkingTokens": 719,
+          "cacheCreationEphemeral5mInputTokens": 11783,
+          "cacheCreationEphemeral1hInputTokens": 0,
+          "canonicalModel": "claude-haiku-5-5",
+          "provider": "firstParty",
+          "costBasis": "list"
+        }
+      },
+      "turns": 6,
+      "duration_s": 38.914,
+      "session_id": "959a05a6-7bef-4f7e-813d-da15b75a52fc",
+      "transcript": null,
+      "model": "claude-opus-5-5",
+      "error": null,
+      "sandbox": null
+    },
+    {
+      "case": "pm-triage",
+      "run": 1,
+      "variant": {
+        "plugin_dir": "issue-flow (git worktree of tag issue-flow--v0.20.0)",
+        "git_sha": "c3974fe577b7ce45383f564c3ed54b5a99080a9d",
+        "version": "0.20.0"
+      },
+      "ok": true,
+      "score": 1.0,
+      "graders": [
+        {
+          "type": "gh_log",
+          "passed": true,
+          "detail": "3 expected, 9 forbidden"
+        },
+        {
+          "type": "llm",
+          "passed": true,
+          "detail": "PASS The comment on issue #2 asks specific, targeted questions, including which command shows the wrong numbers (citing `widgets count`), exact steps or input, expected versus actual output, reproducibility, and version or commit, so it would make the issue buildable."
+        }
+      ],
+      "deterministic": {
+        "passed": 1,
+        "total": 1
+      },
+      "llm": {
+        "passed": 1,
+        "total": 1
+      },
+      "cost_usd": 0.43975900000000007,
+      "judge_cost_usd": 0.000796,
+      "usage": {
+        "input": 10,
+        "output": 1122,
+        "cache_read": 196515,
+        "cache_write": 47247
+      },
+      "model_usage": {
+        "claude-opus-5-5": {
+          "inputTokens": 10,
+          "outputTokens": 1122,
+          "cacheReadInputTokens": 196515,
+          "cacheCreationInputTokens": 47247,
+          "webSearchRequests": 0,
+          "costUSD": 0.43975900000000007,
+          "contextWindow": 1000000,
+          "maxOutputTokens": 128000,
+          "thinkingTokens": 79,
+          "cacheCreationEphemeral5mInputTokens": 0,
+          "cacheCreationEphemeral1hInputTokens": 47247,
+          "canonicalModel": "claude-opus-5-5",
+          "provider": "firstParty",
+          "costBasis": "list"
+        }
+      },
+      "turns": 6,
+      "duration_s": 20.706,
+      "session_id": "8b314276-1b0d-4c47-89cb-d6dd21d129b8",
+      "transcript": null,
+      "model": "claude-opus-5-5",
+      "error": null,
+      "sandbox": null
+    },
+    {
+      "case": "pm-triage",
+      "run": 2,
+      "variant": {
+        "plugin_dir": "issue-flow (git worktree of tag issue-flow--v0.20.0)",
+        "git_sha": "c3974fe577b7ce45383f564c3ed54b5a99080a9d",
+        "version": "0.20.0"
+      },
+      "ok": true,
+      "score": 1.0,
+      "graders": [
+        {
+          "type": "gh_log",
+          "passed": true,
+          "detail": "3 expected, 9 forbidden"
+        },
+        {
+          "type": "llm",
+          "passed": true,
+          "detail": "PASS The comment on issue #2 asks specific, buildable questions: the exact failing command line, expected versus actual output, a minimal input example, and whether the failure is reproducible with the same input."
+        }
+      ],
+      "deterministic": {
+        "passed": 1,
+        "total": 1
+      },
+      "llm": {
+        "passed": 1,
+        "total": 1
+      },
+      "cost_usd": 0.4365928,
+      "judge_cost_usd": 0.000749,
+      "usage": {
+        "input": 10,
+        "output": 1001,
+        "cache_read": 196544,
+        "cache_write": 47153
+      },
+      "model_usage": {
+        "claude-opus-5-5": {
+          "inputTokens": 10,
+          "outputTokens": 1001,
+          "cacheReadInputTokens": 196544,
+          "cacheCreationInputTokens": 47153,
+          "webSearchRequests": 0,
+          "costUSD": 0.4365928,
+          "contextWindow": 1000000,
+          "maxOutputTokens": 128000,
+          "thinkingTokens": 108,
+          "cacheCreationEphemeral5mInputTokens": 0,
+          "cacheCreationEphemeral1hInputTokens": 47153,
+          "canonicalModel": "claude-opus-5-5",
+          "provider": "firstParty",
+          "costBasis": "list"
+        }
+      },
+      "turns": 6,
+      "duration_s": 22.367,
+      "session_id": "f1f2f5eb-d7bb-4d07-82ae-c0813fe2e573",
+      "transcript": null,
+      "model": "claude-opus-5-5",
+      "error": null,
+      "sandbox": null
+    },
+    {
+      "case": "pm-triage",
+      "run": 3,
+      "variant": {
+        "plugin_dir": "issue-flow (git worktree of tag issue-flow--v0.20.0)",
+        "git_sha": "c3974fe577b7ce45383f564c3ed54b5a99080a9d",
+        "version": "0.20.0"
+      },
+      "ok": true,
+      "score": 1.0,
+      "graders": [
+        {
+          "type": "gh_log",
+          "passed": true,
+          "detail": "3 expected, 9 forbidden"
+        },
+        {
+          "type": "llm",
+          "passed": true,
+          "detail": "PASS The comment on issue #2 asks specific, buildable questions: which command gives the wrong output, which input triggers it, the actual versus expected output, and whether the problem reproduces with the same input."
+        }
+      ],
+      "deterministic": {
+        "passed": 1,
+        "total": 1
+      },
+      "llm": {
+        "passed": 1,
+        "total": 1
+      },
+      "cost_usd": 0.43761759999999994,
+      "judge_cost_usd": 0.000812,
+      "usage": {
+        "input": 10,
+        "output": 1021,
+        "cache_read": 196628,
+        "cache_write": 47229
+      },
+      "model_usage": {
+        "claude-opus-5-5": {
+          "inputTokens": 10,
+          "outputTokens": 1021,
+          "cacheReadInputTokens": 196628,
+          "cacheCreationInputTokens": 47229,
+          "webSearchRequests": 0,
+          "costUSD": 0.43761759999999994,
+          "contextWindow": 1000000,
+          "maxOutputTokens": 128000,
+          "thinkingTokens": 111,
+          "cacheCreationEphemeral5mInputTokens": 0,
+          "cacheCreationEphemeral1hInputTokens": 47229,
+          "canonicalModel": "claude-opus-5-5",
+          "provider": "firstParty",
+          "costBasis": "list"
+        }
+      },
+      "turns": 6,
+      "duration_s": 17.686,
+      "session_id": "00cf3e11-8dd7-4baa-9f21-70c797653c97",
+      "transcript": null,
+      "model": "claude-opus-5-5",
+      "error": null,
+      "sandbox": null
+    }
+  ]
+}

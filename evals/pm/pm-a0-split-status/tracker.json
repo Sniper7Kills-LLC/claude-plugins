@@ -1,0 +1,175 @@
+{
+  "repo": {
+    "owner": "acme",
+    "name": "widgets",
+    "defaultBranch": "main"
+  },
+  "user": "eval-bot",
+  "labels": [
+    {
+      "name": "status:ready",
+      "color": "0E8A16",
+      "description": ""
+    },
+    {
+      "name": "status:in-progress",
+      "color": "1D76DB",
+      "description": ""
+    },
+    {
+      "name": "status:in-review",
+      "color": "5319E7",
+      "description": ""
+    },
+    {
+      "name": "status:batched",
+      "color": "BFD4F2",
+      "description": ""
+    },
+    {
+      "name": "status:deploying",
+      "color": "0052CC",
+      "description": ""
+    },
+    {
+      "name": "status:deploy-failed",
+      "color": "B60205",
+      "description": ""
+    },
+    {
+      "name": "status:awaiting-review",
+      "color": "FEF2C0",
+      "description": ""
+    },
+    {
+      "name": "status:blocked",
+      "color": "D93F0B",
+      "description": ""
+    },
+    {
+      "name": "status:needs-feedback",
+      "color": "FBCA04",
+      "description": ""
+    },
+    {
+      "name": "type:epic",
+      "color": "5319E7",
+      "description": ""
+    },
+    {
+      "name": "type:batch",
+      "color": "C5DEF5",
+      "description": ""
+    },
+    {
+      "name": "type:hotfix",
+      "color": "B60205",
+      "description": ""
+    },
+    {
+      "name": "review:finding",
+      "color": "F9D0C4",
+      "description": ""
+    },
+    {
+      "name": "type:spec-update",
+      "color": "D4C5F9",
+      "description": ""
+    },
+    {
+      "name": "flow:status",
+      "color": "EDEDED",
+      "description": ""
+    },
+    {
+      "name": "priority:high",
+      "color": "B60205",
+      "description": ""
+    },
+    {
+      "name": "priority:low",
+      "color": "C2E0C6",
+      "description": ""
+    }
+  ],
+  "issues": [
+    {
+      "number": 21,
+      "title": "Add a --json flag",
+      "body": "Body.",
+      "state": "open",
+      "labels": [
+        "status:in-review",
+        "status:needs-feedback"
+      ],
+      "assignees": [
+        "eval-bot"
+      ],
+      "author": "maintainer",
+      "createdAt": "2026-11-20T09:00:00Z",
+      "updatedAt": "2026-11-20T09:00:00Z",
+      "comments": [
+        {
+          "id": 2101,
+          "author": "eval-bot",
+          "body": "Question: should `--json` print a list or an object?",
+          "createdAt": "2026-11-20T09:00:00Z"
+        }
+      ]
+    },
+    {
+      "number": 22,
+      "title": "Add a --version flag",
+      "body": "Body.",
+      "state": "open",
+      "labels": [
+        "status:in-review",
+        "status:batched"
+      ],
+      "assignees": [
+        "eval-bot"
+      ],
+      "author": "maintainer",
+      "createdAt": "2026-11-20T09:00:00Z",
+      "updatedAt": "2026-11-20T09:00:00Z",
+      "comments": []
+    },
+    {
+      "number": 23,
+      "title": "Document the count command",
+      "body": "Body.",
+      "state": "open",
+      "labels": [
+        "status:ready"
+      ],
+      "assignees": [],
+      "author": "maintainer",
+      "createdAt": "2026-11-20T09:00:00Z",
+      "updatedAt": "2026-11-20T09:00:00Z",
+      "comments": []
+    },
+    {
+      "number": 24,
+      "title": "Read the config file",
+      "body": "Depends on #23",
+      "state": "open",
+      "labels": [
+        "status:ready",
+        "status:blocked"
+      ],
+      "assignees": [],
+      "author": "maintainer",
+      "createdAt": "2026-11-20T09:00:00Z",
+      "updatedAt": "2026-11-20T09:00:00Z",
+      "comments": [
+        {
+          "id": 2401,
+          "author": "eval-bot",
+          "body": "Blocked on #23.",
+          "createdAt": "2026-11-20T09:00:00Z"
+        }
+      ]
+    }
+  ],
+  "prs": []
+}
