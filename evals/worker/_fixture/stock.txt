@@ -1,0 +1,5 @@
+# sku,name,qty,price
+A1,bolt,40,0.25
+A2,nut,3,0.10
+B7,hinge,5,4.50
+C3,bracket,12,2.75

@@ -1,0 +1,79 @@
+{
+  "repo": {
+    "owner": "acme",
+    "name": "inventory",
+    "defaultBranch": "main"
+  },
+  "user": "eval-bot",
+  "labels": [
+    {
+      "name": "status:ready",
+      "color": "EDEDED",
+      "description": ""
+    },
+    {
+      "name": "status:in-progress",
+      "color": "EDEDED",
+      "description": ""
+    },
+    {
+      "name": "status:in-review",
+      "color": "EDEDED",
+      "description": ""
+    },
+    {
+      "name": "status:needs-feedback",
+      "color": "EDEDED",
+      "description": ""
+    },
+    {
+      "name": "status:blocked",
+      "color": "EDEDED",
+      "description": ""
+    },
+    {
+      "name": "type:hotfix",
+      "color": "EDEDED",
+      "description": ""
+    },
+    {
+      "name": "type:batch",
+      "color": "EDEDED",
+      "description": ""
+    },
+    {
+      "name": "type:epic",
+      "color": "EDEDED",
+      "description": ""
+    },
+    {
+      "name": "priority:high",
+      "color": "EDEDED",
+      "description": ""
+    },
+    {
+      "name": "priority:low",
+      "color": "EDEDED",
+      "description": ""
+    }
+  ],
+  "issues": [
+    {
+      "number": 6,
+      "title": "Add a location to stock items",
+      "body": "We keep stock in more than one location. Add an optional fifth field, `location`, to the stock file, and let `total` and `low` work on one location.\n\n## Acceptance criteria\n- [ ] A stock line can have a fifth field, `location`. An item from a line with four fields has the location `main`.\n- [ ] `Item` has a `location` field, and `Item(\"A1\", \"bolt\", 40, 25)` still works and gives an item at `main`.\n- [ ] `inventory list` prints the location as the last column of each row, after one space.\n- [ ] `inventory total --location north stock.txt` prints the value of the items at `north` only.\n- [ ] `inventory low --location north stock.txt` lists only the low items at `north`.\n- [ ] Without `--location`, `total` and `low` cover every location.\n",
+      "state": "open",
+      "labels": [
+        "status:in-progress"
+      ],
+      "assignees": [
+        "eval-bot"
+      ],
+      "author": "maintainer",
+      "createdAt": "2026-11-20T09:00:00Z",
+      "updatedAt": "2026-11-20T09:00:00Z",
+      "comments": []
+    }
+  ],
+  "prs": []
+}

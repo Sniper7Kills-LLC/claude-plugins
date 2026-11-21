@@ -5,7 +5,7 @@ The fake serves a fixed tracker state from the JSON file at $IFE_TRACKER and
 writes every change back to that file. It appends one JSON line per call to
 $IFE_GH_LOG, so graders can read each tracker call after the run.
 
-The fake implements only the subcommands the PM uses. Any other subcommand
+The fake implements only the subcommands the PM and the worker use. Any other subcommand
 exits 1, and the log records it as an error. The schemas of tracker.json and
 of the log are in evals/README.md; other tools read both, so keep them stable.
 """
@@ -398,9 +398,8 @@ def pr_list(tracker, positionals, flags):
 
 
 def pr_view(tracker, positionals, flags):
-    if not positionals:
-        raise Refused("pr view needs a number or a branch")
-    item = tracker.find_pr(positionals[0])
+    # Without an argument, gh shows the PR of the current branch.
+    item = tracker.find_pr(positionals[0] if positionals else current_branch())
     record = tracker.item_json(item, "prs")
     if "--json" in flags:
         record = select_fields(record, one(flags, "--json"), PR_FIELDS)
@@ -426,6 +425,28 @@ def pr_create(tracker, positionals, flags):
             "labels": split_values(flags, "--label"), "author": tracker.user, "assignees": [],
             "comments": [], "createdAt": stamp, "updatedAt": stamp}
     tracker.state["prs"].append(item)
+    tracker.changed = True
+    return "write", f"{tracker.base_url()}/pull/{item['number']}\n"
+
+
+def pr_edit(tracker, positionals, flags):
+    """Change the title, body, base or labels of one PR, found by number or by head branch."""
+    # Without an argument, gh edits the PR of the current branch.
+    item = tracker.find_pr(positionals[0] if positionals else current_branch())
+    add, remove = split_values(flags, "--add-label"), split_values(flags, "--remove-label")
+    missing = [label for label in add if label not in tracker.label_names()]
+    if missing:
+        raise Refused(f"'{missing[0]}' not found")
+    labels = item.setdefault("labels", [])
+    labels.extend(label for label in add if label not in labels)
+    item["labels"] = [label for label in labels if label not in remove]
+    for flag, key in (("--title", "title"), ("--base", "baseRefName")):
+        if flag in flags:
+            item[key] = one(flags, flag)
+    body = body_from(flags)
+    if body is not None:
+        item["body"] = body
+    item["updatedAt"] = now()
     tracker.changed = True
     return "write", f"{tracker.base_url()}/pull/{item['number']}\n"
 
@@ -528,6 +549,10 @@ def api(tracker, positionals, flags):
         elif rest[0] in ("issues", "pulls") and len(rest) == 2 and rest[1].isdigit():
             kind, item = tracker.find(rest[1], ("issues", "prs") if rest[0] == "issues" else ("prs",))
             data = tracker.rest_item(item, kind)
+        elif rest[0] == "pulls" and len(rest) == 3 and rest[1].isdigit() and rest[2] in ("comments", "reviews"):
+            # The tracker has no line comments on a diff, so a PR has none to list.
+            item = tracker.find(rest[1], ("prs",))[1]
+            data = [] if rest[2] == "comments" else item.get("reviews", [])
         elif rest[0] == "issues" and len(rest) == 3 and rest[1].isdigit() and rest[2] == "comments":
             kind, item = tracker.find(rest[1])
             data = [tracker.rest_comment(item, c, kind) for c in item.get("comments", [])]
@@ -551,7 +576,8 @@ def api(tracker, positionals, flags):
 COMMANDS = {
     "issue list": issue_list, "issue view": issue_view, "issue edit": issue_edit,
     "issue comment": issue_comment, "issue create": issue_create, "issue close": issue_close,
-    "pr list": pr_list, "pr view": pr_view, "pr create": pr_create, "pr ready": pr_ready,
+    "pr list": pr_list, "pr view": pr_view, "pr create": pr_create, "pr edit": pr_edit,
+    "pr ready": pr_ready,
     "pr merge": pr_merge, "pr comment": pr_comment, "label list": label_list,
     "label create": label_create, "auth status": auth_status, "repo view": repo_view,
 }
@@ -594,7 +620,7 @@ def main(argv):
             skip = 1 if cmd == "api" else 2
             positionals, flags = parse(cmd, argv[skip:])
             body = body_from(flags) if cmd in ("issue comment", "pr comment", "issue create",
-                                               "pr create", "issue edit") else None
+                                               "pr create", "issue edit", "pr edit") else None
             if body is not None:
                 # body_from may have read stdin; serve the same text to the handler.
                 flags.pop("--body-file", None)

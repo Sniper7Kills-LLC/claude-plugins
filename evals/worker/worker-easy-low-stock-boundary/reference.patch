@@ -1,0 +1,26 @@
+diff --git a/inventory/report.py b/inventory/report.py
+index 527a1ab..c32ec3a 100644
+--- a/inventory/report.py
++++ b/inventory/report.py
+@@ -8,7 +8,7 @@ def total_value(items):
+ 
+ def low_stock(items, threshold):
+     """Return the items whose quantity is at or below the threshold, in input order."""
+-    return [item for item in items if item.qty < threshold]
++    return [item for item in items if item.qty <= threshold]
+ 
+ 
+ def format_line(item):
+diff --git a/tests/test_report.py b/tests/test_report.py
+index 09f6646..53870f4 100644
+--- a/tests/test_report.py
++++ b/tests/test_report.py
+@@ -13,5 +13,8 @@ class ReportTest(unittest.TestCase):
+     def test_low_stock_lists_items_below_the_threshold(self):
+         self.assertEqual([item.sku for item in low_stock(STOCK, 5)], ["A2"])
+ 
++    def test_low_stock_includes_an_item_at_the_threshold(self):
++        self.assertEqual([item.sku for item in low_stock(STOCK, 3)], ["A2"])
++
+     def test_format_line_shows_the_price_in_dollars(self):
+         self.assertEqual(format_line(STOCK[2]), "C3     bracket         12     $2.75")

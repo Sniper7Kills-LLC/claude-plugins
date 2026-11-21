@@ -1,0 +1,79 @@
+{
+  "repo": {
+    "owner": "acme",
+    "name": "inventory",
+    "defaultBranch": "main"
+  },
+  "user": "eval-bot",
+  "labels": [
+    {
+      "name": "status:ready",
+      "color": "EDEDED",
+      "description": ""
+    },
+    {
+      "name": "status:in-progress",
+      "color": "EDEDED",
+      "description": ""
+    },
+    {
+      "name": "status:in-review",
+      "color": "EDEDED",
+      "description": ""
+    },
+    {
+      "name": "status:needs-feedback",
+      "color": "EDEDED",
+      "description": ""
+    },
+    {
+      "name": "status:blocked",
+      "color": "EDEDED",
+      "description": ""
+    },
+    {
+      "name": "type:hotfix",
+      "color": "EDEDED",
+      "description": ""
+    },
+    {
+      "name": "type:batch",
+      "color": "EDEDED",
+      "description": ""
+    },
+    {
+      "name": "type:epic",
+      "color": "EDEDED",
+      "description": ""
+    },
+    {
+      "name": "priority:high",
+      "color": "EDEDED",
+      "description": ""
+    },
+    {
+      "name": "priority:low",
+      "color": "EDEDED",
+      "description": ""
+    }
+  ],
+  "issues": [
+    {
+      "number": 5,
+      "title": "`inventory total` prints the wrong value",
+      "body": "`inventory total` gives the wrong value for some stock files. With this file:\n\n```\nD4,washer,10,1.5\n```\n\nit prints `$10.50`, but 10 washers at $1.50 are `$15.00`. I think the sum in `total_value` in `inventory/report.py` is wrong.\n\n## Acceptance criteria\n- [ ] For a stock file with the line `D4,washer,10,1.5`, `inventory total` prints `$15.00`.\n- [ ] A price with one decimal digit, for example `1.5`, is read as 150 cents.\n- [ ] A price with two decimal digits, for example `12.05`, is still read as 1205 cents.\n",
+      "state": "open",
+      "labels": [
+        "status:in-progress"
+      ],
+      "assignees": [
+        "eval-bot"
+      ],
+      "author": "maintainer",
+      "createdAt": "2026-11-20T09:00:00Z",
+      "updatedAt": "2026-11-20T09:00:00Z",
+      "comments": []
+    }
+  ],
+  "prs": []
+}

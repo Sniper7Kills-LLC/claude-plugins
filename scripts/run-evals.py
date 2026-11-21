@@ -278,8 +278,165 @@ def grade_llm(grader, ctx):
     return answer.upper().startswith("PASS"), answer[:300], cost
 
 
+# ---------------------------------------------------------------- worker graders
+
+VERDICT_PATH = ".eval/verdict.json"
+OUTCOMES = {"ready-to-merge", "checkpoint", "needs-feedback", "blocked"}
+HIDDEN_COMMAND = [sys.executable, "-m", "unittest", "discover", "-s", ".", "-p", "hidden_test*.py"]
+
+
+def acceptance_criteria(tracker, number):
+    """Return the checklist items under the issue's `Acceptance criteria` heading, in order."""
+    issue = next((item for item in tracker.get("issues", []) if item["number"] == number), None)
+    found, inside = [], False
+    for line in ((issue or {}).get("body") or "").splitlines():
+        if line.startswith("#"):
+            inside = line.lstrip("#").strip().lower() == "acceptance criteria"
+            continue
+        item = re.match(r"\s*[-*] \[[ xX]\] (.+)", line)
+        if inside and item:
+            found.append(item.group(1).strip())
+    return found
+
+
+def path_allowed(path, allow):
+    return any(fnmatch.fnmatch(path, pattern) for pattern in allow)
+
+
+def fixture_commit(repo):
+    """The commit that build_sandbox made from the fixture: the root commit of main."""
+    return git(repo, "rev-list", "--max-parents=0", "main").splitlines()[-1]
+
+
+def issue_branch(repo, number):
+    """Return ((ref, sha), None) for the worker's issue/<number>-* branch, or (None, reason).
+
+    A local branch wins over origin, because a worker can commit after its last push.
+    """
+    for pattern in (f"refs/heads/issue/{number}-*", f"refs/remotes/origin/issue/{number}-*"):
+        refs = git(repo, "for-each-ref", "--format=%(refname) %(objectname)", pattern).splitlines()
+        if len(refs) > 1:
+            return None, f"more than one branch matches {pattern}: {', '.join(r.split()[0] for r in refs)}"
+        if refs:
+            return tuple(refs[0].split()), None
+    return None, f"no branch issue/{number}-* in the sandbox repo or its origin"
+
+
+def grade_hidden_tests(grader, ctx):
+    """Run the case's hidden tests in a clean checkout of the worker's branch; pass on exit 0."""
+    found, reason = issue_branch(ctx["repo"], grader["issue"])
+    if found is None:
+        return False, reason, 0.0
+    ref, sha = found
+    # A separate clone, so the hidden tests never reach the repo the agent worked in.
+    checkout = os.path.join(ctx["sandbox"], "grading")
+    shutil.rmtree(checkout, ignore_errors=True)
+    try:
+        git(ctx["sandbox"], "clone", "-q", "--no-checkout", ctx["repo"], checkout)
+        git(checkout, "checkout", "-q", "--detach", sha)
+        hidden = os.path.join(ctx["case"]["dir"], grader.get("dir", "hidden"))
+        for entry in sorted(os.listdir(hidden)):
+            shutil.copy(os.path.join(hidden, entry), checkout)
+        try:
+            result = subprocess.run(grader.get("command") or HIDDEN_COMMAND, cwd=checkout,
+                                    capture_output=True, text=True, timeout=grader.get("timeout_s", 300))
+        except subprocess.TimeoutExpired:
+            return False, f"the hidden tests on {ref} ran past {grader.get('timeout_s', 300)}s", 0.0
+    finally:
+        shutil.rmtree(checkout, ignore_errors=True)
+    output = (result.stderr + result.stdout).strip().splitlines()
+    tail = " | ".join(line for line in output if re.match(r"(Ran \d+|OK|FAILED)", line)) or " | ".join(output[-3:])
+    verdict = "pass" if result.returncode == 0 else f"fail (exit {result.returncode})"
+    return result.returncode == 0, f"hidden tests on {ref} {sha[:8]}: {verdict}: {tail[:300]}", 0.0
+
+
+def read_verdict(path):
+    """Return (verdict, None), or (None, reason). A JSON object inside a code fence also counts."""
+    if not os.path.isfile(path):
+        return None, f"{os.path.basename(os.path.dirname(path))}/{os.path.basename(path)} does not exist"
+    with open(path, errors="replace") as handle:
+        text = handle.read().strip()
+    for candidate in [text, *re.findall(r"```(?:json)?\s*\n(.*?)\n\s*```", text, re.S)]:
+        try:
+            data = json.loads(candidate)
+        except json.JSONDecodeError:
+            continue
+        if isinstance(data, dict):
+            return data, None
+    return None, f"the verdict file holds no JSON object: {text[:120]!r}"
+
+
+def grade_verdict(grader, ctx):
+    """The verdict parses, has the expected outcome, and backs every acceptance criterion with evidence."""
+    verdict, reason = read_verdict(os.path.join(ctx["repo"], grader.get("path", VERDICT_PATH)))
+    if verdict is None:
+        return False, reason, 0.0
+    problems = []
+    outcome = verdict.get("outcome")
+    if outcome not in OUTCOMES:
+        problems.append(f"outcome {outcome!r} is not one of {sorted(OUTCOMES)}")
+    if grader.get("outcome") and outcome != grader["outcome"]:
+        problems.append(f"outcome {outcome!r}, expected {grader['outcome']!r}")
+    if str(verdict.get("issue", "")).lstrip("#") != str(grader["issue"]):
+        problems.append(f"issue {verdict.get('issue')!r}, expected {grader['issue']}")
+    if outcome == "needs-feedback" and not str(verdict.get("question") or "").strip():
+        problems.append("needs-feedback without a question")
+    if outcome == "ready-to-merge":
+        with open(ctx["case"]["tracker_path"]) as handle:
+            expected = acceptance_criteria(json.load(handle), grader["issue"])
+        criteria = [c for c in verdict.get("criteria") or [] if isinstance(c, dict)]
+        if len(criteria) < len(expected):
+            problems.append(f"criteria has {len(criteria)} entries for {len(expected)} acceptance criteria")
+        for index, criterion in enumerate(criteria, start=1):
+            if criterion.get("met") is not True:
+                problems.append(f"criterion {index} is not met")
+            if not str(criterion.get("evidence") or "").strip():
+                problems.append(f"criterion {index} has no evidence")
+    if grader.get("prepatch"):
+        checks = str(verdict.get("localChecks") or "")
+        if not (re.search(r"(?i)pre-?patch", checks) and re.search(r"(?i)fail", checks)):
+            problems.append(f"localChecks names no pre-patch failing run: {checks[:160]!r}")
+    if problems:
+        return False, "; ".join(problems), 0.0
+    return True, f"outcome {outcome}, {len(verdict.get('criteria') or [])} criteria", 0.0
+
+
+def grade_diff_scope(grader, ctx):
+    """main does not move, and the worker's branch changes only allowed paths (or nothing is committed)."""
+    repo = ctx["repo"]
+    base = fixture_commit(repo)
+    origin = os.path.join(ctx["sandbox"], "origin.git")
+    problems = [f"{where} main moved off the fixture commit"
+                for where, path in (("the local", repo), ("origin's", origin))
+                if git(path, "rev-parse", "refs/heads/main") != base]
+    if grader.get("no_commits"):
+        # Every ref, worktree HEADs included, in the repo and in its origin.
+        new = set()
+        for path in (repo, origin):
+            new.update(git(path, "rev-list", "--all", "--not", base).split())
+        if new:
+            problems.append(f"{len(new)} commit(s) beyond the fixture, expected none")
+        detail = "no commits beyond the fixture"
+    else:
+        found, reason = issue_branch(repo, grader["issue"])
+        if found is None:
+            return False, reason, 0.0
+        ref, sha = found
+        changed = git(repo, "diff", "--name-only", base, sha).splitlines()
+        outside = [path for path in changed if not path_allowed(path, grader.get("allow", []))]
+        if outside:
+            problems.append(f"{ref} changes paths outside the allowlist: {', '.join(outside)}")
+        if not changed:
+            problems.append(f"{ref} changes nothing")
+        detail = f"{ref} changes {len(changed)} path(s), all allowed"
+    if problems:
+        return False, "; ".join(problems), 0.0
+    return True, detail, 0.0
+
+
 # Other suites add grader types here; each returns (passed, detail, cost_usd).
-GRADERS = {"gh_log": grade_gh_log, "file": grade_file, "llm": grade_llm}
+GRADERS = {"gh_log": grade_gh_log, "file": grade_file, "llm": grade_llm,
+           "hidden_tests": grade_hidden_tests, "verdict": grade_verdict, "diff_scope": grade_diff_scope}
 
 
 # ---------------------------------------------------------------- one run
@@ -317,7 +474,9 @@ def run_case(case, run_number, args, variant, budget_left, run_dir):
     sandbox, repo = build_sandbox(case)
     env = sandbox_env(sandbox)
     model = args.main_model or case.get("model")
-    claude_args = ["-p", case["prompt"], "--plugin-dir", args.plugin_dir, *isolation_args(),
+    # A worker brief names the plugin under test as its pluginRoot.
+    prompt = case["prompt"].replace("{plugin_dir}", args.plugin_dir)
+    claude_args = ["-p", prompt, "--plugin-dir", args.plugin_dir, *isolation_args(),
                    "--permission-mode", "bypassPermissions", "--output-format", "json"]
     if model:
         claude_args += ["--model", model]
@@ -385,6 +544,8 @@ def run_case(case, run_number, args, variant, budget_left, run_dir):
         "model_usage": result.get("modelUsage") or {},
         "turns": result.get("num_turns"),
         "duration_s": round(result["duration_ms"] / 1000, 3) if result.get("duration_ms") else round(wall, 3),
+        # duration_ms stops when the main loop ends; a background subagent can run past it.
+        "wall_s": round(wall, 3),
         "session_id": result.get("session_id"),
         "transcript": find_transcript(result.get("session_id")),
         "model": main_model(result, model),

@@ -23,7 +23,11 @@ token counts per run. The operator decided on 2026-11-21 to use our own runner o
 | `evals/pm/<case>/case.json` | One PM case (the case format is below). |
 | `evals/pm/<case>/tracker.json` | The tracker state at the start of that case. |
 | `evals/pm/_fixture/` | The git repo that the PM cases start from. A directory without `case.json` is not a case. |
-| `evals/worker/<case>/` | The worker cases (Sniper7Kills-LLC/claude-plugins#103). |
+| `evals/worker/<case>/case.json` | One worker case (Sniper7Kills-LLC/claude-plugins#103). The worker suite is below. |
+| `evals/worker/<case>/tracker.json` | The tracker state for that case: one issue, with its acceptance criteria. |
+| `evals/worker/<case>/hidden/` | The hidden tests of that case. The agent never sees them. |
+| `evals/worker/<case>/reference.patch` | A reference solution. A test proves that the hidden tests pass with it. |
+| `evals/worker/_fixture/` | The project that the worker cases start from. |
 | `evals/results/` | Run results. Git ignores this directory. |
 | `evals/baselines/<version>/` | Committed baseline run records and summaries, for example `0.20.0/pm/`. |
 | `evals/rule-inventory.json` | The rule inventory of the PM `SKILL.md` at 0.20.0. `python3 scripts/rule-coverage.py extract` makes it, and `check` verifies a skill tree against it (Sniper7Kills-LLC/claude-plugins#104). |
@@ -105,7 +109,7 @@ After the run, the runner removes the sandbox, unless you give `--keep`.
 | `name` | yes | The case name. Use the directory name. |
 | `suite` | yes | `pm` or `worker`. |
 | `tags` | yes | `pm` (or `worker`) and the stage, for example `triage`, `c1-gate`, `a0-sweep`. |
-| `prompt` or `prompt_file` | yes | The prompt text, or a file in the case directory that holds it. |
+| `prompt` or `prompt_file` | yes | The prompt text, or a file in the case directory that holds it. The runner replaces each `{plugin_dir}` in it with the absolute `--plugin-dir` path. |
 | `graders` | yes | One or more graders. Every case needs at least one deterministic grader. |
 | `timeout_s` | no | The time limit of one run. The default is 900. |
 | `runs` | no | Runs per case. The default is 1. |
@@ -160,7 +164,9 @@ For example, a PM gate that sends work back to a worker writes the message to a 
 `target` is `final` (the last message of the run) or `gh_log` (every tracker write, with
 its body). The judge answers PASS or FAIL and gives one sentence of reason.
 
-Other suites add grader types to the `GRADERS` table in `scripts/run-evals.py`.
+The worker suite adds three deterministic graders: `hidden_tests`, `verdict` and
+`diff_scope`. The worker suite section below describes them. A suite adds a grader type to
+the `GRADERS` table in `scripts/run-evals.py`.
 
 ## The `tracker.json` schema
 
@@ -196,12 +202,15 @@ The fake reads `$IFE_TRACKER` and appends to `$IFE_GH_LOG`. The runner sets both
 supports these subcommands, with the `--json`, `--jq` and filter flags the PM uses:
 
 - `issue list | view | edit | comment | create | close`
-- `pr list | view | create | ready | merge | comment`
+- `pr list | view | create | edit | ready | merge | comment`
 - `label list | create`
 - `auth status`, `repo view`
 - `api` GET reads: `user`, `repos/{owner}/{repo}`, `.../issues`, `.../issues/<n>`,
   `.../issues/<n>/comments`, `.../issues/comments/<id>`, `.../pulls`, `.../pulls/<n>`,
-  `.../labels`
+  `.../pulls/<n>/comments`, `.../pulls/<n>/reviews`, `.../labels`
+
+`pr edit` changes the title, the body, the base and the labels of a PR. The tracker holds no
+line comments on a diff, so `pulls/<n>/comments` always returns `[]`.
 
 `--jq` needs `jq` on `PATH`. `--search` is accepted but does not filter, so a search
 returns more items than GitHub would, never fewer. Any other subcommand, and any `api`
@@ -240,6 +249,7 @@ partial, records}`. Each record:
 | `model_usage` | The result's `modelUsage`, unchanged: tokens and cost per model. |
 | `turns` | `num_turns` from the result. |
 | `duration_s` | `duration_ms` from the result, in seconds. |
+| `wall_s` | The wall time of the `claude -p` process, in seconds. A worker case needs it, because `duration_ms` stops at the end of the main loop and does not include a background subagent. In the first live worker run, `duration_s` was 5.3 s and `duration_api_ms` was 84 s. |
 | `session_id` | The session id. The transcript is `~/.claude/projects/<project>/<session_id>.jsonl`, and subagent transcripts are in `<session_id>/subagents/`. |
 | `transcript` | The transcript path, when the runner found it. |
 | `model` | The model asked for, or else the model with the highest cost in `modelUsage`. |
@@ -302,11 +312,145 @@ The first 3 runs of `pm-triage` failed because of a grader error, not a PM error
 start of the arguments only, and `body` still matches line by line. `pm-triage` then ran
 3 more times. `superseded-pm-triage.json` keeps the first 3 runs.
 
+## The worker suite
+
+The worker suite measures the `issue-worker` agent on fixed issues. Each case gives one
+worker one issue in a small project. After the run, hidden tests that the worker never saw
+decide whether the issue is done.
+
+```bash
+python3 scripts/run-evals.py --plugin-dir issue-flow --suite worker --tag easy --runs 1 --max-cost-usd 5
+```
+
+### How a worker case runs
+
+1. The main session is a dispatcher on Haiku (`"model": "haiku"` in the case). It does no
+   work on the issue.
+2. The dispatcher spawns `issue-flow:issue-worker` with `isolation: "worktree"` and a
+   standard handoff brief. The brief is standalone, with `ci: skip`, base `origin/main`,
+   remote `origin`, `tdd: true`, and `pluginRoot: {plugin_dir}`.
+3. The worker gets its model from `agents/issue-worker.md` of the plugin under test. Thus a
+   change to the worker model is a change to the variant, not to the case.
+4. The worker reads the issue through the fake `gh`, commits on `issue/<n>-<slug>`, pushes
+   to the sandbox `origin`, and opens a draft PR in the fake tracker.
+5. The dispatcher writes the worker's verdict to `.eval/verdict.json` in the sandbox repo.
+6. The runner grades the run. Then it removes the sandbox, with the worker's worktree in it.
+
+The record keeps `cost_usd`, which includes the worker. Use `wall_s` for the duration of a
+worker case, not `duration_s`. `model_usage` gives the tokens and
+the cost per model, so the worker's share is the entry of its model. `usage` counts only the
+dispatcher.
+
+### The fixture
+
+`evals/worker/_fixture/` is `inventory`, a small command-line tool on the Python standard
+library. Its test command is `python3 -m unittest`, and its 11 tests pass. Each case starts
+from an untouched copy. The fixture holds no hidden test.
+
+### The cases
+
+| Case | Tags | What the worker must do |
+|---|---|---|
+| `worker-easy-low-stock-boundary` | `easy` | A one-line fix: `low` leaves out an item at the threshold. |
+| `worker-easy-negative-qty` | `easy` | A small validation: reject a negative quantity. |
+| `worker-medium-csv-format` | `medium` | A feature across 2 files: `list --format csv`. |
+| `worker-medium-money-refactor` | `medium` | A refactor with existing tests: one `format_money` function. |
+| `worker-medium-price-parse` | `medium` | A bug whose cause is not in the file the report names. |
+| `worker-hard-location` | `hard` | A change to the shared `Item` type, used in every module. |
+| `worker-hard-error-lines` | `hard` | A new error type across the loader and the command line. |
+| `worker-hard-ambiguous-tax` | `hard` | An issue with no tax rate: the worker must ask, not guess. |
+
+Every case carries the tag `worker` and one of `easy`, `medium` or `hard`.
+
+### The worker graders
+
+**`hidden_tests`** (deterministic) runs the case's hidden tests on the worker's branch.
+
+```json
+{"type": "hidden_tests", "issue": 1}
+```
+
+- The grader finds the branch `issue/<issue>-*`: a local branch first, then `origin`.
+  When no branch or more than one branch matches, the grader fails.
+- It clones the sandbox repo into a new grading checkout, and checks out that branch. The
+  hidden tests never reach the repo that the worker used.
+- It copies `hidden/` into the root of the checkout, and runs
+  `python3 -m unittest discover -s . -p "hidden_test*.py"`. The grader passes only when the
+  exit code is 0.
+- `command` replaces the test command, and `timeout_s` (default 300) limits it.
+
+**`verdict`** (deterministic) reads the verdict that the dispatcher wrote.
+
+```json
+{"type": "verdict", "issue": 1, "outcome": "ready-to-merge", "prepatch": true}
+```
+
+- `path` is the verdict file in the sandbox repo. The default is `.eval/verdict.json`. A
+  JSON object inside a code fence also counts.
+- The verdict must name the issue, and `outcome` must be one of the four outcomes. When
+  the grader gives `outcome`, the verdict must have that outcome.
+- For `ready-to-merge`, `criteria` needs one entry for each acceptance criterion of the
+  issue. Each entry needs `met: true` and evidence. The grader reads the criteria from the
+  `## Acceptance criteria` list of the issue in the case's `tracker.json`.
+- For `needs-feedback`, `question` must not be empty.
+- With `"prepatch": true`, `localChecks` must name a pre-patch run that failed.
+
+**`diff_scope`** (deterministic) checks what the worker committed.
+
+```json
+{"type": "diff_scope", "issue": 1, "allow": ["inventory/report.py", "tests/*"]}
+{"type": "diff_scope", "issue": 8, "no_commits": true}
+```
+
+- `main` must stay at the fixture commit, in the repo and in `origin`.
+- With `allow`, every path that the branch `issue/<issue>-*` changes must match one of the
+  globs (`fnmatch`, so `*` also matches `/`). A branch that changes nothing fails.
+- With `no_commits`, no ref in the repo or in `origin` may hold a commit after the fixture
+  commit. Worktree `HEAD`s count. The ambiguous case uses this.
+
+The ambiguous case has no hidden tests. Its graders are `verdict` with
+`"outcome": "needs-feedback"`, `diff_scope` with `no_commits`, and a `gh_log` that forbids
+`pr create`.
+
+### The reference check
+
+`python3 scripts/test-worker-cases.py` proves that each case can tell a good result from a
+bad one. It costs nothing. For each case that has hidden tests, it checks these:
+
+1. The hidden tests fail on the untouched fixture.
+2. `reference.patch` applies, and then the hidden tests pass.
+3. The fixture's own tests still pass with the patch.
+4. The patch stays inside the `diff_scope` allowlist.
+
+The test also runs the whole suite on a fake `claude`. A worker that does nothing fails
+every case. A golden worker, which commits `reference.patch` and writes a correct verdict,
+passes every case.
+
+### Add a worker case
+
+1. Choose the issue and its tier. Write the acceptance criteria as observable results.
+2. Make `evals/worker/<name>/` with `case.json` and `tracker.json`. Copy both from a case
+   of the same kind. Give the issue a number that no other case uses.
+3. Change the brief in the prompt: the issue number, the title and the branch slug.
+4. Write `hidden/hidden_test_<slug>.py`. Test the acceptance criteria through the public
+   interface (the command line, or the functions that the issue names). Do not test the
+   way the reference solution works.
+5. Make `reference.patch` with `git diff` from a copy of the fixture. Add tests for the
+   change to the patch, as a worker would.
+6. Set the `diff_scope` allowlist to the paths that a correct change can touch.
+7. Run `python3 scripts/test-worker-cases.py`. It must pass. Change the tier counts in it
+   when you add a case.
+8. Run the case once on the current release, with a cost ceiling. A case that the current
+   release fails in 2 of 3 runs is a bad case: fix the case, not the finding.
+
 ## Tests
+
+`python3 scripts/test-worker-cases.py` tests the worker suite and its graders, as the
+reference check above describes.
 
 `python3 scripts/test-run-evals.py` tests the runner and the fake `gh` with a fake
 `claude` (set through `IFE_CLAUDE`). The tests cost nothing and use no network. They also
-run each real case twice: once with a PM that does nothing, which must fail, and once
+run each real PM case twice: once with a PM that does nothing, which must fail, and once
 with a golden PM, which must pass. Add a golden run to the test when you add a case.
 
 ## Add a case
@@ -316,6 +460,7 @@ with a golden PM, which must pass. Add a golden run to the test when you add a c
    it says what to do instead of an action the sandbox cannot do, for example a worker
    launch.
 3. Give it at least one deterministic grader that fails when the agent does nothing.
-4. Add its golden run to `GOLDEN` in `scripts/test-run-evals.py`.
+4. For a PM case, add its golden run to `GOLDEN` in `scripts/test-run-evals.py`. For a
+   worker case, follow "Add a worker case" above.
 5. Run it 3 times on the current release. A case that the current release fails in 2 of
    3 runs is a bad case: fix the case, not the finding.

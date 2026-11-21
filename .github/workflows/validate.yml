@@ -64,6 +64,9 @@ jobs:
       - name: Test the eval runner and the fake gh
         run: python3 scripts/test-run-evals.py
 
+      - name: Test the worker eval cases and their graders
+        run: python3 scripts/test-worker-cases.py
+
       - name: Test the rule-coverage check
         run: python3 scripts/test-rule-coverage.py
 
