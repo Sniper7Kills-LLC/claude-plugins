@@ -356,7 +356,7 @@ becomes its result. But the harness also notifies the caller at once, marked int
 ("stopped with background work of its own still running"), carrying whatever the
 subagent last said. So end that turn with a one-line status that cannot be read as a
 verdict — `waiting on CI for PR #<n>` — and send the verdict only after reading the
-finished shell's output. The PM ignores the interim notification (the PM's stage-c-integrate.md, *Reading a
+finished shell's output. The PM ignores the interim notification (SKILL.md, *Reading a
 worker notification*). A watch
 you launched and walked away from is not a watch.
 
@@ -470,7 +470,7 @@ the right remote or branch) before reading the count at all.
 A hit means the commit is **suppressed**, usually by a token folded in from a squash body
 rather than one anybody typed. Push one clean trigger — `git commit --allow-empty -m "<subject>"`,
 one `-m`, subject only, no body — check the message you are about to push with the loose
-pre-push grep (the PM's stage-c-integrate.md, Stage C2 step 1), then watch the new SHA.
+pre-push grep (SKILL.md stage C2 step 1), then watch the new SHA.
 
 No hit means nothing in the message suppressed anything. **Re-poll once before escalating.**
 The `pending:none` window above is 60 seconds, and a busy self-hosted runner that registers
@@ -557,7 +557,7 @@ A green or red check can exist with zero jobs having run — see the measured
 failure modes above. `issue-flow/scripts/verify_ci_ran.py` mechanizes the
 check: it fetches runs for a SHA (via `gh` for GitHub, the Actions REST API
 for Gitea) and requires retrievable log bytes, not just a status field,
-before reporting `ran: true`. Use it at the point the PM's CI step (stage-c-integrate.md, Stage C2 step 3)
+before reporting `ran: true`. Use it at the point SKILL.md's CI section
 requires it — before trusting any check as evidence the commit was tested.
 
 ## Capability gaps

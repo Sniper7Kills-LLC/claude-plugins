@@ -153,12 +153,6 @@ The autonomous loop. It has two roles.
   `issue-flow:deploy-verifier` checks the live site in a real browser. The deploy
   *watch* is not an agent — it is one background shell command per merge.
 
-The PM loads a short `SKILL.md`: the roles, the core invariants, the hard rules and a map
-of the phases. The steps of each phase are in their own file under
-`skills/issue-flow/references/` (`phase-0-preflight.md`, `stage-a-sweep-triage.md` to
-`stage-e-report.md`). The PM reads a phase file when that phase starts, so a session does
-not carry the steps of the phases it does not run.
-
 One worker's life, end to end:
 
 ```mermaid

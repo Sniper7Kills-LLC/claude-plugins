@@ -284,14 +284,14 @@ def digest(cwd):
         lines.append("- remote: none detected (no fetch run)")
 
     leftovers = leftover_worktrees(root)
-    # Not "leftovers": a parked issue's tree is kept on purpose (phase-0-preflight.md, Phase 0
+    # Not "leftovers": a parked issue's tree is kept on purpose (SKILL.md Phase 0
     # step 12), and only the tracker knows which issues are parked.
     lines.append(
         "- worktrees from an earlier session: "
         + (
             "; ".join(leftovers)
             + " — check each issue's status before removing: a parked issue's tree"
-            " is kept on purpose (phase-0-preflight.md, Phase 0 step 12)"
+            " is kept on purpose (SKILL.md Phase 0 step 12)"
             if leftovers
             else "none"
         )

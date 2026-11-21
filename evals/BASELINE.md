@@ -179,7 +179,8 @@ takes the majority of votes (Sniper7Kills-LLC/claude-plugins#117) on both sides.
 - On this case, the batch head made 24% fewer tracker calls, but used 17% more PM tokens,
   5.3 more turns and 13% more cost than 0.20.0. The split PM skill
   (Sniper7Kills-LLC/claude-plugins#107) is the likely cause, because the session reads
-  several stage files. This measurement does not test that.
+  several stage files. This measurement does not test that. On this result the operator
+  reverted #107 before batch #115 merged; the batch ships one `SKILL.md`, as in 0.20.0.
 - The one score below 1.00 is 0.20.0 run 2: the judge found the questions on #63 too
   generic. The deterministic graders passed.
 - The first version of the case gave #51 weak evidence for one criterion. The 0.20.0 PM

@@ -82,7 +82,7 @@ durable record — an Architecture Decision Record:
   `superseded by NNNN`), `## Context` (the forces, with issue/PR links), `## Decision`
   (one sentence, active voice), `## Consequences` (what this rules out, what it commits
   the project to). STE throughout.
-- Written by the PM at the batch gate (stage-c-integrate.md, C2 step 8), committed with the batch's
+- Written by the PM at the batch gate (SKILL.md C2 step 8), committed with the batch's
   other spec bookkeeping — never rewritten later; a reversed decision gets a new ADR
   that supersedes the old one.
 - What earns one: a decision that would be re-litigated by someone who cannot see this

@@ -72,7 +72,7 @@ full autonomous-loop text, and nothing in it tells the fork to stop after one
 issue. Measured in a live run (PR #49): a fork dispatched for one issue kept
 running the PM loop for 52 minutes — it claimed and built two more issues from
 another epic and merged straight to `dev`. A runaway fork writes to the
-repository, so the prose rule in `references/stage-b-schedule.md` Stage B step 5 is enforced here too.
+repository, so the prose rule in `SKILL.md` Stage B step 5 is enforced here too.
 
 Forks themselves are a legitimate harness feature, so only a **build-shaped**
 fork is denied: one whose prompt carries at least `BRIEF_THRESHOLD` of the
@@ -153,7 +153,7 @@ FORK_REASON = (
     "**Dispatch the build to `issue-flow:issue-worker` instead**, with "
     "`isolation: \"worktree\"` (plus `name: \"worker-<issue>\"` where the tool offers it), "
     "passing the same brief "
-    "(stage-b-schedule.md, Stage B step 5). A worker starts with no PM context and does only what "
+    "(SKILL.md Stage B step 5). A worker starts with no PM context and does only what "
     "the brief says.\n"
     "\n"
     "Not a build? The prompt matched the handoff-brief layout. Reword it, or turn this "

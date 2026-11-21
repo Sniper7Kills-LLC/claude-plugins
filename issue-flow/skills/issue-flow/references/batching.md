@@ -98,7 +98,7 @@ how the batch's knowledge outlives it.
 **The PM relays the urgent ones.** A worker reads the log when it starts, so the log only
 ever reaches workers that start *after* a finding lands. For anyone already running, the
 push is the only channel — and the PM decides on the **targeted tracking-issue read that follows every worker completion**
-(stage-a-sweep-triage.md, Stage A) whether a live sibling needs it now.
+(SKILL.md, Stage A) whether a live sibling needs it now.
 
 Push it if either is true:
 
@@ -202,7 +202,7 @@ unchanged.
    and re-anchor the watch **when this is the last member**, and otherwise leave the branch
    CI-free and let the gate (step 2 of the batch checklist) re-trigger once on the final
    head — a trigger per late member burns one full run each, which is the cost the batch
-   model exists to avoid (stage-c-integrate.md, Stage C1 step 4b).
+   model exists to avoid (SKILL.md Stage C1 step 4b).
 4. Member → `forge.issue.status.set <m> status:batched`, which **removes `status:in-review`
    in the same operation** (at most one `status:` label per issue — a bare
    `forge.issue.label.add` leaves it in two states and breaks status queries); tick the
@@ -246,7 +246,7 @@ Batch complete = every member `status:batched` or terminally parked.
 3. Optional **batch review**: one subagent reviews the whole integration→dev diff for
    cross-member integration problems (interface drift between members, duplicate
    migrations, conflicting config). Cheap — no CI involved.
-4. CI failure → fix worker, `isolation: "worktree"` with `base: <remote>/<integration-branch>` (it watches CI, so it can send an interim notification first — stage-c-integrate.md, *Reading a worker notification*); interim commits may
+4. CI failure → fix worker, `isolation: "worktree"` with `base: <remote>/<integration-branch>` (it watches CI, so it can send an interim notification first — SKILL.md, *Reading a worker notification*); interim commits may
    `[skip ci]`; final push re-runs CI. CI red for pre-existing/base reasons → `blocked`.
 5. Conflict vs dev (another batch landed first) → resolve once here; semantic → park.
 6. Merge `--merge` (preserves per-member squashed commits; `--squash` only if the

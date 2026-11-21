@@ -114,7 +114,7 @@ Measured on 2.1.284 (isolated parents; unnamed un-isolated children that slept 2
   a background `Bash` still running notified at once, marked interim ("stopped with
   background work of its own still running"). It was woken when the shell exited, and a
   second notification carried its new reply. So a worker waiting on its CI watch produces
-  an interim notification the PM must not read as a verdict (stage-c-integrate.md, *Reading a worker
+  an interim notification the PM must not read as a verdict (SKILL.md, *Reading a worker
   notification*). This replaces
   the earlier note that an ended worker is never re-invoked when its watch finishes.
 - **The worktree guard reads every `Bash` command an isolated agent runs, and refuses
@@ -177,7 +177,7 @@ Two consequences the PM should treat as load-bearing:
    (exporting it from a tool call does nothing). `ask` exists but is interactive-only —
    a background agent hangs on the prompt, which is worse than the refusal. The same
    hook also denies a `subagent_type: "fork"` spawn that carries the handoff brief
-   (stage-b-schedule.md, Stage B step 5), under its own switch, `ISSUE_FLOW_FORK_GUARD`, so turning
+   (SKILL.md Stage B step 5), under its own switch, `ISSUE_FLOW_FORK_GUARD`, so turning
    named peers back on does not turn fork dispatch back on.
 2. **Unnamed un-isolated helpers are reachable and do notify.** `code-auditor`,
    `ux-explorer` and `deploy-verifier` are spawned without isolation and
@@ -267,7 +267,7 @@ drop a context that has grown expensive, and resuming the same agent keeps exact
 thing being discarded. Same brief, `base: <remote>/issue/<number>-<slug>`, the verdict's
 `remaining` text appended — and reap the old worktree first (see
 [Teardown](#teardown-is-still-the-pms-job)); the replacement gets a fresh one from the
-harness and re-checks-out the published branch. See Stage C1 in `stage-c-integrate.md`.
+harness and re-checks-out the published branch. See Stage C1 in `SKILL.md`.
 
 This also means a leftover worktree from a previous session **cannot be resumed in place**:
 no new agent can be placed into it, and its own agent is gone. Adopt that work from the
@@ -322,7 +322,7 @@ harness branch, so `%(worktreepath)` is set and the sweep keeps it.
 A batch member parked on `needs-feedback` or `blocked` keeps its tree until the batch
 gate's sweep. A standalone or hotfix issue has no batch gate, so without a rule its tree
 waits for the Stop sweep, and a long session collects one per parked issue. Remove it
-when it parks (stage-c-integrate.md, C1, `needs-feedback` and `blocked`):
+when it parks (SKILL.md C1, `needs-feedback` and `blocked`):
 
 ```bash
 [ -z "$(git -C <worktree> status --porcelain)" ] \
