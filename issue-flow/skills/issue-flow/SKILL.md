@@ -159,7 +159,8 @@ scheduled sweep. Between events, idle but available.
 **Each phase keeps its steps in its own reference file.** The heading of each stage below
 names that file. Read the file before you do any step of the stage: the paragraph under
 the heading is a map, not the procedure. Read a file once per session, and read it again
-after a context compaction. Put the read in the same message as the first tool calls of
+after a context compaction. After a compaction, also re-run Phase 0 recovery (step 12)
+before you continue. Put the read in the same message as the first tool calls of
 the stage that do not depend on it (Core invariant 5), so that the read costs no turn of
 its own.
 

@@ -6,7 +6,7 @@
         --pattern "def foo" --expect-sha abc123 --json
 
 A locate-pass or review agent's "this does not exist" is only as good as the
-ref it read. Two measured failures (see SKILL.md's locate-pass section) were
+ref it read. Two measured failures (see the locate pass in the PM's stage-b-schedule.md) were
 both a truthful report against a stale or wrong ref: main instead of the
 batch's integration branch, or a working tree one merge behind origin. This
 does the same check with `git grep` against a pinned ref, so a claim about

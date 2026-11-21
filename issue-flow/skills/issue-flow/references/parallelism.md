@@ -2,7 +2,7 @@
 
 issue-flow runs faster by fanning work out to subagents and by carrying **multiple
 issues in flight at once**, each isolated in its own git worktree. This file is the
-reference for *how* and *when* to parallelize. The phase instructions in `SKILL.md`
+reference for *how* and *when* to parallelize. The phase instructions in `SKILL.md` and its phase files
 point here.
 
 ## The one rule that makes hybrid safe
@@ -158,7 +158,7 @@ elsewhere. Treat "possibly several machines" above as describing that
 accidental-overlap case, not a supported feature, until a real multi-PM mode
 exists.
 
-**Reverse skew has no reconciliation.** The Invariant 6 sweep (SKILL.md,
+**Reverse skew has no reconciliation.** The Invariant 6 sweep (stage-a-sweep-triage.md,
 Stage A0/A) re-derives an issue's `status:`/assignee from the forge on every
 cycle, but it never reads a CAS ref — so a ref left `claimed` after a crashed
 or abandoned worker, with the forge already showing the issue unassigned, is

@@ -246,7 +246,7 @@ Batch complete = every member `status:batched` or terminally parked.
 3. Optional **batch review**: one subagent reviews the whole integration→dev diff for
    cross-member integration problems (interface drift between members, duplicate
    migrations, conflicting config). Cheap — no CI involved.
-4. CI failure → fix worker, `isolation: "worktree"` with `base: <remote>/<integration-branch>` (it watches CI, so it can send an interim notification first — SKILL.md, *Reading a worker notification*); interim commits may
+4. CI failure → fix worker, `isolation: "worktree"` with `base: <remote>/<integration-branch>` (it watches CI, so it can send an interim notification first — stage-c-integrate.md, *Reading a worker notification*); interim commits may
    `[skip ci]`; final push re-runs CI. CI red for pre-existing/base reasons → `blocked`.
 5. Conflict vs dev (another batch landed first) → resolve once here; semantic → park.
 6. Merge `--merge` (preserves per-member squashed commits; `--squash` only if the

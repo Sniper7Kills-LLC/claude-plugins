@@ -30,7 +30,7 @@ as claimed.
 
 This replaces the "re-read the issue's labels and assignees, hope nobody
 raced you" pattern (references/parallelism.md's Claim race section) and the
-self-checking batch-swap gate (SKILL.md's batch-swap section) with a check
+self-checking batch-swap gate (the PM's stage-c-integrate.md batch gate) with a check
 whose correctness is a property of git's push return value, not an agent's
 belief that it did the swap.
 """
