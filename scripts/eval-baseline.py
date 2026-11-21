@@ -12,27 +12,34 @@ The script does three things:
    and keeps that report as `agents`. `tokens` is {main, subagents}: the sum of the four
    token counts of the main agent, and of every other agent.
 2. It clears the local paths: `transcript` and `sandbox` become null, and
-   `variant.plugin_dir` becomes the --label text.
+   `variant.plugin_dir` becomes the --label text. A record with no `effort` takes the
+   `effort` of the results. Then it scans the whole output for a local path (`/Users/`,
+   `/home/`, `/private/`, `/var/folders/`). When it finds one, it writes nothing and
+   exits 2.
 3. It writes summary.json, with the numbers per case and for the suite.
 
 The record's `cost_usd` stays the cost that governs. The `agents` cost is an estimate
 from pricing.json, kept only for the per-agent breakdown.
 
 Exit codes: 0 when every record has its transcript, 1 when one or more do not, 2 for
-bad input. The output is written in both of the first two cases.
+bad input or a local path in the output. The output is written only for 0 and 1.
 """
 
 import argparse
-import glob
+import importlib.util
 import json
 import os
+import re
 import subprocess
 import sys
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 USAGE = os.path.join(ROOT, "issue-flow", "scripts", "usage.py")
-PROJECTS_ROOT = os.path.join(os.path.expanduser("~"), ".claude", "projects")
-TOKEN_FIELDS = ("input", "output", "cache_read", "cache_write")
+_spec = importlib.util.spec_from_file_location("usage", USAGE)
+usage = importlib.util.module_from_spec(_spec)
+_spec.loader.exec_module(usage)
+# A committed baseline must hold no path of the machine that made it.
+LOCAL_PATH = re.compile(r"/(?:Users|home|private|var/folders)/")
 
 
 def find_transcript(record, projects_root):
@@ -43,8 +50,20 @@ def find_transcript(record, projects_root):
     session_id = record.get("session_id")
     if not session_id:
         return None
-    found = glob.glob(os.path.join(projects_root, "*", f"{session_id}.jsonl"))
+    found = usage.session_transcripts(session_id, projects_root)
     return found[0] if found else None
+
+
+def local_paths(value, where="$"):
+    """Yield (location, text) for each string in `value` that holds a local path."""
+    if isinstance(value, dict):
+        for key, item in value.items():
+            yield from local_paths(item, f"{where}.{key}")
+    elif isinstance(value, list):
+        for index, item in enumerate(value):
+            yield from local_paths(item, f"{where}[{index}]")
+    elif isinstance(value, str) and LOCAL_PATH.search(value):
+        yield where, value
 
 
 def agent_report(transcript):
@@ -56,8 +75,8 @@ def agent_report(transcript):
 
 
 def token_split(report):
-    main = sum(agent[field] for agent in report["agents"] if agent["type"] == "main" for field in TOKEN_FIELDS)
-    rest = sum(agent[field] for agent in report["agents"] if agent["type"] != "main" for field in TOKEN_FIELDS)
+    main = sum(agent[field] for agent in report["agents"] if agent["type"] == "main" for field in usage.TOKEN_FIELDS)
+    rest = sum(agent[field] for agent in report["agents"] if agent["type"] != "main" for field in usage.TOKEN_FIELDS)
     return {"main": main, "subagents": rest}
 
 
@@ -99,7 +118,7 @@ def main(argv=None):
     parser.add_argument("results", help="the results directory of run-evals.py")
     parser.add_argument("--out", required=True, help="the baseline directory to write")
     parser.add_argument("--label", required=True, help="the text that replaces variant.plugin_dir")
-    parser.add_argument("--projects-root", default=PROJECTS_ROOT, help="default: ~/.claude/projects")
+    parser.add_argument("--projects-root", default=usage.PROJECTS_ROOT, help="default: ~/.claude/projects")
     args = parser.parse_args(argv)
 
     path = os.path.join(args.results, "results.json")
@@ -121,6 +140,8 @@ def main(argv=None):
             record["tokens"] = token_split(record["agents"])
         record["transcript"] = None
         record["sandbox"] = None
+        # The records of 0.20.0 predate the per-record effort; the top-level value is theirs too.
+        record.setdefault("effort", results.get("effort"))
         record["variant"] = {**record.get("variant", {}), "plugin_dir": args.label}
     results["variant"] = {**results.get("variant", {}), "plugin_dir": args.label}
 
@@ -142,6 +163,13 @@ def main(argv=None):
         "cases": {case: summarize(records) for case, records in sorted(cases.items())},
     }
 
+    found = list(local_paths({"results.json": results, "summary.json": summary}))
+    if found:
+        for where, text in found:
+            print(f"error: local path in {where}: {text[:200]!r}", file=sys.stderr)
+        print(f"error: {len(found)} local path(s) in the output; nothing written. Clear them in the "
+              "results, or extend the script to clear that field.", file=sys.stderr)
+        return 2
     os.makedirs(args.out, exist_ok=True)
     with open(os.path.join(args.out, "results.json"), "w", encoding="utf-8") as handle:
         json.dump(results, handle, indent=2)
