@@ -51,8 +51,13 @@ tokens per run.
 - A token count is the sum of input, output, cache-read and cache-write tokens.
 - "Main tokens" is the record's `usage`: the PM loop only. The PM rule compares this
   number.
-- "Subagent tokens" is the `modelUsage` sum minus `usage`. Two cases spawned a Haiku
-  cross-check subagent in some runs.
+- "Subagent tokens" comes from `issue-flow/scripts/usage.py`, by `session_id` (`agents`
+  and `tokens` in each record). Two cases spawned a Haiku cross-check subagent in some
+  runs.
+- `scripts/eval-baseline.py` added `agents`, `tokens`, the per-record `effort` and
+  `suite_means` to the PM baseline on 2026-11-21, after the runs. All 18 transcripts were
+  still on the machine of the runs. The per-agent cost agrees with `cost_usd` on every PM
+  run. The mean cost in `summary.json` is `cost_usd` only; the judges are not in it.
 - The PM records were made before `wall_s` existed, so the duration is `duration_s`. A PM
   case has no background agent, so `duration_s` is its full time.
 - The first 3 runs of `pm-triage` failed because of a grader error. `evals/README.md`
@@ -106,6 +111,12 @@ keeps the first 3 runs.
 - **No headroom on scores.** Every case of both suites passes 3/3 on 0.20.0. A candidate
   can only equal or lose to the baseline on scores, so the decision rules depend on the
   token and cost checks.
+- **The PM token margin.** The PM rule needs mean PM tokens at least 10% lower, on 3-run
+  means: at most 235k per run against the 261k of this baseline. The operator set the
+  margin on 2026-11-21, because one run can differ from its case mean by more than 20%
+  (`pm-triage`: 186,639 tokens in one dogfood run, 244,830 in the 3-run mean).
+  `scripts/eval-compare.py` refuses a candidate with fewer cases or fewer runs per case
+  than this baseline (exit 5).
 - **The runs inherited a Claude Code session.** The worker suite started from a Claude
   Code session, and the runner passes the environment of that session to each run,
   `CLAUDE_EFFORT=medium` included. The effect on the results is not measured.
@@ -115,7 +126,8 @@ keeps the first 3 runs.
   by where it starts.
 - **Effort.** `results.json` and `summary.json` of both suites now record
   `"effort": "medium"`. The records were made before the runner passed `--effort`, so this
-  value is added afterwards. The evidence for `medium`: the host session had
+  value is added afterwards. Each PM record also has `effort`, copied from the top level
+  by `scripts/eval-baseline.py`; the worker records have it at the top level only. The evidence for `medium`: the host session had
   `CLAUDE_EFFORT=medium`, and `claude-opus-5-5` and `claude-haiku-5-5` default to `medium`
   (https://code.claude.com/docs/en/model-config). `--setting-sources project,local` kept
   the host's user settings out, and #113 found no `CLAUDE_CODE_EFFORT_LEVEL` in the host

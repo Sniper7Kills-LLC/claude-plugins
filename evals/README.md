@@ -47,7 +47,7 @@ python3 scripts/run-evals.py --plugin-dir issue-flow --suite pm
 | `--tag <tag>` | Run only the cases that carry the tag, for example `c1-gate`. |
 | `--runs N` | Runs per case. Without it, each case uses its own `runs` value. |
 | `--out <dir>` | The results directory. The default is `evals/results/<UTC time>/`. |
-| `--max-cost-usd X` | The cost ceiling for the whole invocation (see "Cost"). |
+| `--max-cost-usd X` | The cost ceiling of this one invocation, not of a suite or a day: each new invocation starts again at $0 (see "Cost"). |
 | `--main-model <id>` | The model of the run. It overrides the model of the case. |
 | `--effort low\|medium\|high\|xhigh\|max` | The effort level of each run. The default is `medium`, the effort of the 0.20.0 baselines. See "Effort". |
 | `--keep` | Keep each sandbox, and write its path into the run record. |
@@ -62,6 +62,30 @@ python3 scripts/run-evals.py --plugin-dir /tmp/if-0.20.0/issue-flow --suite pm -
 The runner runs one case at a time. The exit code is 0 when every run passes and the
 ceiling did not stop the suite, 1 when not, and 2 for a bad flag or a bad case file.
 
+## Quick start: a smoke test
+
+A smoke test runs one case of each suite once. It shows that the runner, the sandbox and
+the plugin work. It costs about $1 (the dogfood run of 2026-11-21 cost $0.77 for both).
+
+Give the inner plugin directory, `<worktree>/issue-flow`, not the worktree root. A
+directory without `.claude-plugin/plugin.json` stops the runner with exit 2.
+
+```bash
+python3 scripts/run-evals.py --plugin-dir <worktree>/issue-flow --suite pm \
+    --case pm-triage --runs 1 --max-cost-usd 2 --out evals/results/smoke-pm
+python3 scripts/run-evals.py --plugin-dir <worktree>/issue-flow --suite worker \
+    --case worker-easy-negative-qty --runs 1 --max-cost-usd 2 --out evals/results/smoke-worker
+```
+
+`--max-cost-usd` applies to each invocation by itself, so these two commands can spend up
+to $4 together.
+
+A smoke test is not a decision. `scripts/eval-compare.py` refuses a candidate that has
+fewer cases or fewer runs per case than the baseline, and exits 5 with "smoke test only,
+not a decision". One run of a case can differ from the 3-run mean by more than the
+margins of the decision rules. In the dogfood run, one `pm-triage` run used 186,639 PM
+tokens against a baseline mean of 244,830, with no change to the plugin.
+
 ## Safety: what a run can touch
 
 Each run happens in a new temporary directory, the sandbox:
@@ -72,6 +96,13 @@ Each run happens in a new temporary directory, the sandbox:
 - `evals/fakegh/` is first on `PATH`, so `gh` is the fake.
 - `GH_TOKEN` and `GITHUB_TOKEN` are a fake token, and `GH_CONFIG_DIR` is an empty
   directory. If a run calls a real `gh` by its full path, the real `gh` cannot log in.
+- Git reads no host config: `GIT_CONFIG_GLOBAL=/dev/null` and `GIT_CONFIG_NOSYSTEM=1`.
+  Thus the run has no credential helper, no `url.*.insteadOf` and no signing key of the
+  host. `GIT_SSH_COMMAND=false` makes every ssh remote fail, and `GIT_TERMINAL_PROMPT=0`
+  stops git from asking for a password. The run commits as `eval <eval@example.invalid>`.
+- `plugin/` is a copy of `--plugin-dir`, without `.git`. The run loads the copy, and
+  `{plugin_dir}` in a prompt names the copy. A run in `bypassPermissions` mode can change
+  its plugin files, but not the files of the plugin under test.
 
 The runner also isolates the run from the host's Claude Code setup:
 
@@ -82,6 +113,31 @@ The runner also isolates the run from the host's Claude Code setup:
 - `--strict-mcp-config` keeps every MCP server out.
 - `--permission-mode bypassPermissions` lets the run work without a person. This is safe
   only because of the sandbox. Never point a run at a real checkout.
+
+A live check on 2026-11-21 (Claude Code 2.1.330, one Haiku run for $0.002 with the runner's
+own flags and environment) found that `--setting-sources project,local` keeps these out
+of a run:
+
+- The user's `~/.claude/CLAUDE.md`. The run found no CLAUDE.md or memory text in its
+  context.
+- The user agents in `~/.claude/agents/`. The `Agent` tool listed only the built-in agents
+  and the agents of `--plugin-dir`.
+- The user skills in `~/.claude/skills/`. The run listed only the built-in skills and the
+  skills of `--plugin-dir`.
+
+Auto-memory stays on: the system prompt names a memory directory for the sandbox project.
+That directory is new and empty for each sandbox, so no host memory reaches the run. No
+extra flag is necessary. If a later Claude Code version changes this, add `--bare` or a
+`CLAUDE_CONFIG_DIR` of its own to the run, and check the login again.
+
+The runner itself also runs commands in the sandbox, after the agent can change it: git to
+build the sandbox and to grade, and the hidden tests. These get a minimal environment:
+`PATH`, `TMPDIR`, `LANG`, a `HOME` in the sandbox, the git variables above and no host
+secret. The runner's git also gets `-c core.hooksPath=/dev/null -c core.fsmonitor=false
+-c core.pager=cat`, and `diff_scope` uses `git diff --no-ext-diff`. Thus a hook, an
+fsmonitor or a diff driver that the agent writes into `.git/config` does not run on the
+host. The hidden tests run the agent's code by design, but in a separate clone and with no
+host secret.
 
 After the run, the runner removes the sandbox, unless you give `--keep`.
 
@@ -106,7 +162,9 @@ variable that is not in it, add the variable to `KEEP_ENV`. Google application-d
 credentials (`GOOGLE_APPLICATION_CREDENTIALS`) are not in the list.
 
 The runner then sets `IFE_TRACKER`, `IFE_GH_LOG`, `GH_TOKEN`, `GITHUB_TOKEN`,
-`GH_CONFIG_DIR` and `GH_PROMPT_DISABLED` for the fake `gh`.
+`GH_CONFIG_DIR` and `GH_PROMPT_DISABLED` for the fake `gh`. It also sets
+`GIT_CONFIG_GLOBAL`, `GIT_CONFIG_NOSYSTEM`, `GIT_SSH_COMMAND`, `GIT_TERMINAL_PROMPT` and
+the `GIT_AUTHOR_*` and `GIT_COMMITTER_*` identity, as "Safety" above describes.
 
 The run gets no other `CLAUDE*` or `ANTHROPIC_*` variable from the host. A Claude Code
 session sets these for its Bash commands and hooks, and they are the reason for the
@@ -165,7 +223,7 @@ the `effort` of its agent definition or, when there is none, at the default of i
 | `suite` | yes | `pm` or `worker`. |
 | `tags` | yes | `pm` (or `worker`) and the stage, for example `triage`, `c1-gate`, `a0-sweep`. |
 | `prompt` or `prompt_file` | yes | The prompt text, or a file in the case directory that holds it. The runner replaces each `{plugin_dir}` in it with the absolute `--plugin-dir` path. |
-| `graders` | yes | One or more graders. Every case needs at least one deterministic grader. |
+| `graders` | yes | One or more graders. Every case needs at least one deterministic grader: the runner refuses a case with only `llm` graders (exit 2). |
 | `timeout_s` | no | The time limit of one run. The default is 900. |
 | `runs` | no | Runs per case. The default is 1. |
 | `fixture` | no | The directory to copy into `repo/`, relative to the case. Without it, `repo/` holds only a `README.md`. |
@@ -287,8 +345,8 @@ The runner writes `<out>/results.json` after each run, and one directory per run
 `<out>/<case>/run-<k>/` holds `record.json`, `claude-stdout.json`, `claude-stderr.txt`,
 `gh-log.jsonl` and the final `tracker.json`.
 
-`results.json` is `{suite, variant, started, finished, max_cost_usd, total_cost_usd,
-partial, records}`. Each record:
+`results.json` is `{suite, variant, effort, started, finished, max_cost_usd,
+total_cost_usd, partial, records}`. Each record:
 
 | Key | Meaning |
 |---|---|
@@ -309,7 +367,7 @@ partial, records}`. Each record:
 | `session_id` | The session id. The transcript is `~/.claude/projects/<project>/<session_id>.jsonl`, and subagent transcripts are in `<session_id>/subagents/`. |
 | `transcript` | The transcript path, when the runner found it. |
 | `model` | The model asked for, or else the model with the highest cost in `modelUsage`. |
-| `error` | `null`, or why the run failed: a timeout, output that is not a result, or an error result. |
+| `error` | `null`, or why the run failed: a timeout, output that is not a result, or an error result. A timeout or output that is not a result gives a run with no result: `session_id` is null and `cost_usd` is 0, which is not its real cost. |
 | `sandbox` | The kept sandbox path with `--keep`, else `null`. |
 
 ## Cost
@@ -368,8 +426,14 @@ The script changes each record in three ways:
 - `variant.plugin_dir` becomes the `--label` text, and `transcript` and `sandbox` become
   null.
 
+- A record with no `effort` takes the `effort` of `results.json`.
+
 It also writes `summary.json`. The exit code is 1 when a run has no transcript. Then that
 record has `agents: null`.
+
+Before it writes, the script scans the whole output for a local path: `/Users/`,
+`/home/`, `/private/` or `/var/folders/`. When it finds one, it names the field, writes
+nothing and exits 2. A grader `detail` can hold a sandbox path, for example.
 
 ### Compare a candidate with the baseline
 
@@ -387,19 +451,38 @@ record has `agents: null`.
    ```
 
 `eval-compare.py` reads `suite` from both results and applies the decision rule of that
-suite (Sniper7Kills-LLC/claude-plugins#106). It uses only the cases that both sides ran,
-and names the others. Each threshold is inclusive.
+suite (Sniper7Kills-LLC/claude-plugins#106). Each threshold is inclusive.
 
 | Rule | The verdict is `ship` only when |
 |---|---|
 | `pm` | No deterministic grader has a lower pass rate on any case than in the baseline. |
 | | The mean score is not more than 0.05 below the baseline. A higher score passes. |
-| | The PM tokens per run are lower. These are the four counts of `usage`, the main loop only. |
+| | The mean PM tokens per run are at least 10% lower, on 3-run means. These are the four counts of `usage`, the main loop only. |
 | `worker` | The hidden-test pass rate is not more than 5 points below the baseline. |
 | | The mean `cost_usd` per run is at least 40% lower. |
 
+The operator set the 10% margin on 2026-11-21. Before, "fewer tokens" was enough, and a
+dogfood run gave `ship` for a candidate that was the baseline itself: one run of
+186,639 PM tokens against a 3-run mean of 244,830. The PM rule needs at least 3 runs per
+case on both sides.
+
+The script refuses an incomplete candidate, and exits 5 with "smoke test only, not a
+decision":
+
+- The candidate did not run a case of the baseline.
+- The candidate has `partial: true`: the cost ceiling stopped it.
+- The candidate has fewer runs of a case than the baseline.
+
+A case that only the candidate ran is left out, and the report names it.
+
+A run with no result (a timeout, or output that is not a result object) counts as a
+failed run in the hidden-test pass rate, even when its branch passes the hidden tests. Its
+cost is not known, so the cost means leave it out. The report gives the count of these
+runs for each side.
+
 If the worker rule fails, the script gives the numbers per tier (`easy`, `medium`, `hard`).
-It reads the tiers from the tags in `evals/worker/<case>/case.json`. Then it tries the
+It reads the tiers from the tags in `evals/worker/<case>/case.json`. When `--evals-dir`
+has no `case.json` for a compared case, the script refuses and exits 5. Then it tries the
 hybrid: the baseline runs on the cases tagged `hard`, and the candidate runs on the rest. The
 verdict is `hybrid` only when the hybrid meets the same two checks. Otherwise it is
 `do not ship`. The hidden-test pass rate counts only the runs that have a `hidden_tests`
@@ -409,8 +492,9 @@ Before the rules, the script compares the `effort` of the two results. When they
 or one result has no `effort`, it refuses and exits 5. Run the candidate with the
 `--effort` of the baseline. The 0.20.0 baselines are `medium`.
 
-The exit code is 0 for `ship`, 1 for `do not ship`, 3 for `hybrid`, 2 for bad input and 5
-for a different or unknown effort.
+The exit code is 0 for `ship`, 1 for `do not ship`, 3 for `hybrid`, 2 for bad input, and 5
+for a refusal: a different or unknown effort, an incomplete candidate, or a missing case
+file.
 `--json` prints the full report. `--rule pm|worker` replaces the rule of the suite.
 
 The report also flags each run whose `agents` cost is more than 10% from its `cost_usd`.
@@ -575,6 +659,34 @@ passes every case.
    when you add a case.
 8. Run the case once on the current release, with a cost ceiling. A case that the current
    release fails in 2 of 3 runs is a bad case: fix the case, not the finding.
+
+## Usage report per agent
+
+`issue-flow/scripts/usage.py` reports the tokens, the turns and the estimated cost of each
+agent of a session, from the local transcripts. It reads files only.
+
+```bash
+python3 issue-flow/scripts/usage.py --session <session-id>
+python3 issue-flow/scripts/usage.py --session <session-id> --json
+python3 issue-flow/scripts/usage.py --since 2026-11-21T00:00:00Z
+python3 issue-flow/scripts/usage.py --transcript ~/.claude/projects/<project>/<session-id>.jsonl
+```
+
+- `--session <id>` finds `<id>.jsonl` in any project under `~/.claude/projects/`. The id
+  of an eval run is the `session_id` of its record in `results.json`. The id of the
+  session you are in is `CLAUDE_CODE_SESSION_ID` in the environment of its Bash commands,
+  and `claude --resume` lists the ids of earlier sessions.
+- `--json` prints the report as JSON: `agents` (one row per agent, with `type`, `id`,
+  `model`, `turns`, the four token counts and `cost_usd`) and `totals`. `eval-baseline.py`
+  keeps this output as the record's `agents`.
+- `--since <ISO time>` reports every session of the project of the current directory,
+  and counts only requests at or after that time. `--project-dir` gives another project.
+- `--transcript <path>` reads one main transcript file and its subagents. Repeat it for
+  more files.
+
+The main transcript is the agent of type `main`, the PM in an issue-flow session. The cost
+is an estimate at the prices in `issue-flow/scripts/pricing.json`. `cost_usd` from
+`claude -p` still governs the decision rules.
 
 ## Tests
 
