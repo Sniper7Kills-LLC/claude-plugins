@@ -53,14 +53,14 @@ def worker_record(case, run, hidden=True, cost=1.0):
     }
 
 
-def write_results(name, suite, records, effort="medium"):
+def write_results(name, suite, records, effort="medium", partial=False):
     """Write a results directory in the runner's format; effort None leaves the key out."""
     directory = os.path.join(TMP, name)
     os.makedirs(directory, exist_ok=True)
     results = {"suite": suite, "variant": {"plugin_dir": None, "git_sha": "abc", "version": name},
                **({"effort": effort} if effort else {}),
                "started": "20261121T000000Z", "finished": "20261121T010000Z", "max_cost_usd": None,
-               "total_cost_usd": sum(r["cost_usd"] for r in records), "partial": False,
+               "total_cost_usd": sum(r["cost_usd"] for r in records), "partial": partial,
                "records": records}
     with open(os.path.join(directory, "results.json"), "w") as handle:
         json.dump(results, handle)
@@ -77,14 +77,15 @@ def make_evals_dir():
     return directory
 
 
-def compare(baseline, candidate, *extra):
+def compare(baseline, candidate, *extra, evals_dir=None):
     result = subprocess.run([sys.executable, SCRIPT, baseline, candidate, "--json",
-                             "--evals-dir", EVALS, *extra],
+                             "--evals-dir", evals_dir or EVALS, *extra],
                             capture_output=True, text=True)
     try:
         report = json.loads(result.stdout)
     except ValueError:
         report = {"verdict": None, "raw": result.stdout + result.stderr}
+    report.setdefault("stderr", result.stderr)
     return result.returncode, report
 
 
@@ -121,14 +122,34 @@ def test_pm_rule():
     print("PM rule")
     base = pm_suite("pm-base", score=1.0, tokens=1000)
 
-    code, report = compare(base, pm_suite("pm-ship", score=1.0, tokens=999))
-    check("PM: fewer tokens, same scores -> ship", report.get("verdict") == "ship", report)
+    # The operator's margin (2026-11-21): the candidate's mean PM tokens are at least 10% lower.
+    code, report = compare(base, pm_suite("pm-ship", score=1.0, tokens=900))
+    check("PM: exactly 10% fewer tokens, same scores -> ship (the margin is inclusive)",
+          report.get("verdict") == "ship", report)
     check("PM: ship exits 0", code == 0, code)
+    check("PM: the token check names the 10% margin",
+          check_named(report, "pm_tokens_at_least_10pct_lower") is True, report)
 
-    code, report = compare(base, pm_suite("pm-same-tokens", score=1.0, tokens=1000))
-    check("PM: equal tokens -> do not ship", report.get("verdict") == "do not ship", report)
-    check("PM: the token check fails at equal tokens", check_named(report, "pm_tokens_lower") is False, report)
+    code, report = compare(base, pm_suite("pm-tokens-901", score=1.0, tokens=901))
+    check("PM: 9.9% fewer tokens -> do not ship", report.get("verdict") == "do not ship", report)
+    check("PM: the token check fails under the 10% margin",
+          check_named(report, "pm_tokens_at_least_10pct_lower") is False, report)
     check("PM: do not ship exits 1", code == 1, code)
+
+    _, report = compare(base, pm_suite("pm-tokens-999", score=1.0, tokens=999))
+    check("PM: one token fewer is noise -> do not ship", report.get("verdict") == "do not ship", report)
+
+    _, report = compare(base, pm_suite("pm-same-tokens", score=1.0, tokens=1000))
+    check("PM: equal tokens -> do not ship", report.get("verdict") == "do not ship", report)
+
+    # The dogfood run: one run at 186,639 tokens against a 3-run mean of 244,830 gave `ship`.
+    records = [pm_record(case, 1, tokens=900) for case in PM_CASES]
+    code, report = compare(base, write_results("pm-one-run", "pm", records))
+    check("PM: a candidate with 1 run per case is refused with exit 5", code == 5, (code, report))
+    one = [pm_record(case, 1, tokens=1000) for case in PM_CASES]
+    code, report = compare(write_results("pm-base-one-run", "pm", one), write_results("pm-one-run-b", "pm", records))
+    check("PM: the PM rule needs 3-run means on both sides, so 1 run each is refused with exit 5",
+          code == 5 and "3 runs" in report.get("stderr", ""), (code, report))
 
     _, report = compare(base, pm_suite("pm-drop-005", score=0.95, tokens=900))
     check("PM: mean score 0.05 lower -> ship (the threshold is inclusive)",
@@ -176,6 +197,43 @@ def worker_suite(name, hidden_fail=None, cost=None, runs=20):
     return write_results(name, "worker", records)
 
 
+def no_result(record):
+    """Make a record look like a run with no result object: a timeout."""
+    record.update(error="timeout after 900s", session_id=None, cost_usd=0.0)
+    return record
+
+
+def worker_suite_with_no_result(name, cost, no_result_runs, hidden=True):
+    """Three cases at `cost`; the first `no_result_runs` runs of w-easy have no result."""
+    records = []
+    for case in TIERS:
+        for run in range(1, 21):
+            record = worker_record(case, run, hidden=hidden, cost=cost)
+            if case == "w-easy" and run <= no_result_runs:
+                no_result(record)
+            records.append(record)
+    return write_results(name, "worker", records)
+
+
+def test_no_result_runs():
+    print("runs with no result")
+    base = worker_suite("nr-base")
+    # 57 runs at $6.10 is a 39% cut. Three $0 timeouts in the mean would make it a 42% cut.
+    _, report = compare(base, worker_suite_with_no_result("nr-cost", 6.1, 3))
+    check("worker: a run with no result is not a $0 cost in the mean",
+          check_named(report, "cost_at_least_40pct_lower") is False, report)
+    check("worker: the report counts the runs with no result",
+          report.get("no_result_runs", {}).get("candidate") == 3, report.get("no_result_runs"))
+    # Four timeouts whose branch passed the hidden tests still count as failed runs: 56/60 is 6.7 points.
+    _, report = compare(base, worker_suite_with_no_result("nr-hidden", 6.0, 4))
+    check("worker: a run with no result counts as a failed run",
+          check_named(report, "hidden_pass_within_5_points") is False, report)
+    # Three are exactly 5 points, and the other 57 runs give a 40% cut: ship.
+    _, report = compare(base, worker_suite_with_no_result("nr-ship", 6.0, 3))
+    check("worker: three failed runs and a 40% cut on the runs with a result -> ship",
+          report.get("verdict") == "ship", report)
+
+
 def test_worker_rule():
     print("worker rule")
     # 60 runs at $10 each. One failed run in 60 is 1.67 points; three are exactly 5.
@@ -220,6 +278,14 @@ def test_worker_rule():
     check("worker: a hybrid under 40% cheaper -> do not ship",
           report.get("verdict") == "do not ship", report)
 
+    # Without the case files there are no tiers, and a hybrid with no hard case is a silent `do not ship`.
+    empty = os.path.join(TMP, "empty-evals")
+    os.makedirs(empty, exist_ok=True)
+    code, report = compare(base, worker_suite("w-no-tags", hidden_fail={"w-hard": 20}, cost={c: 1.0 for c in TIERS}),
+                           evals_dir=empty)
+    check("worker: an --evals-dir without the case files exits 5", code == 5, (code, report))
+    check("worker: the refusal names the missing case file", "case.json" in report.get("stderr", ""), report)
+
 
 # ---------------------------------------------------------------- output and input
 
@@ -248,10 +314,31 @@ def test_output_and_input():
     code, report = compare(os.path.join(base, "results.json"), pm_suite("o-cand3", tokens=900))
     check("a results.json path is accepted", report.get("verdict") == "ship", report)
 
-    # A case that only one side ran is left out, and the report says so.
+    # An incomplete candidate is a smoke test: the script refuses it.
     records = [pm_record("pm-a", run, tokens=900) for run in (1, 2, 3)]
-    _, report = compare(base, write_results("o-partial", "pm", records))
-    check("a case missing from the candidate is named", "pm-b" in report.get("missing_cases", []), report)
+    code, report = compare(base, write_results("o-missing", "pm", records))
+    check("a case missing from the candidate exits 5", code == 5, (code, report))
+    check("the refusal says it is a smoke test", "smoke test only, not a decision" in report.get("stderr", ""),
+          report)
+    check("the refusal names the missing case", "pm-b" in report.get("stderr", ""), report)
+
+    records = [pm_record(case, run, tokens=900) for case in PM_CASES for run in (1, 2, 3)]
+    code, report = compare(base, write_results("o-partial", "pm", records, partial=True))
+    check("a partial candidate exits 5", code == 5, (code, report))
+    check("the partial refusal says it is a smoke test",
+          "smoke test only, not a decision" in report.get("stderr", ""), report)
+
+    records = [pm_record(case, run, tokens=900) for case in PM_CASES for run in (1, 2, 3)]
+    records += [pm_record(case, 4, tokens=1000) for case in PM_CASES]
+    more = write_results("o-base-4", "pm", records)
+    code, report = compare(more, pm_suite("o-cand-3", tokens=800))
+    check("a candidate with fewer runs per case than the baseline exits 5", code == 5, (code, report))
+
+    # A case that only the candidate ran is left out, and the report says so.
+    records = [pm_record(case, run, tokens=900) for case in PM_CASES + ["pm-new"] for run in (1, 2, 3)]
+    code, report = compare(base, write_results("o-extra", "pm", records))
+    check("a case only the candidate ran is named and left out",
+          code == 0 and "pm-new" in report.get("missing_cases", []), (code, report))
 
     # Decision 5: the run cost governs; a per-agent sum more than 10% off is flagged.
     records = []
@@ -292,6 +379,7 @@ EVALS = make_evals_dir()
 try:
     test_pm_rule()
     test_worker_rule()
+    test_no_result_runs()
     test_effort()
     test_output_and_input()
 finally:

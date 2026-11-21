@@ -299,6 +299,12 @@ def test_judge_is_reported_never_passing():
         args = call["argv"]
         check("the judge runs claude -p on haiku with no tools",
               args[:5] == ["-p", "--model", "haiku", "--tools", ""], repr(args))
+        settings = json.loads(args[args.index("--settings") + 1]) if "--settings" in args else {}
+        check("the judge keeps the host's plugins, user settings and MCP servers out",
+              "--strict-mcp-config" in args and "--no-session-persistence" in args
+              and args[args.index("--setting-sources") + 1] == "project,local"
+              and settings.get("enabledPlugins", {}).get("issue-flow@sniper7kills") is False
+              if "--setting-sources" in args else False, repr(args))
         check("the judge prompt quotes the rule",
               "Only merge a member when its criteria are met." in args[-1], repr(args))
         check("the judge reads the phase's text on stdin",

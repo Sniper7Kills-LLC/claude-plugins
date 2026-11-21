@@ -453,8 +453,11 @@ def test_do_nothing_worker_fails_every_case():
     check(all(r["error"] is None for r in records), f"no case errors, got {[r['error'] for r in records]}")
     check(all(r["ok"] is False for r in records), "a worker that does nothing fails every case")
     check(result.returncode == 1, f"a failing suite exits 1, got {result.returncode}")
-    check(captures and all("{plugin_dir}" not in c["argv"][1] and plugin in c["argv"][1] for c in captures),
-          "the runner puts the plugin path into the prompt in place of {plugin_dir}")
+    # Each run loads a copy of the plugin, and the prompt names that copy.
+    check(captures and all("{plugin_dir}" not in c["argv"][1]
+                           and c["argv"][c["argv"].index("--plugin-dir") + 1] in c["argv"][1]
+                           and c["argv"][c["argv"].index("--plugin-dir") + 1] != plugin for c in captures),
+          "the runner puts the path of the plugin copy into the prompt in place of {plugin_dir}")
 
 
 def test_golden_worker_passes_every_case():

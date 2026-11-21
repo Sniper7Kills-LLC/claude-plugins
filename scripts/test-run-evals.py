@@ -14,6 +14,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import time
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 RUNNER = os.path.join(ROOT, "scripts", "run-evals.py")
@@ -207,6 +208,9 @@ if judge:
                       "total_cost_usd": 0.01, "usage": {}, "num_turns": 1,
                       "duration_ms": 10, "session_id": "judge"}))
     sys.exit(0)
+if conf.get("FAKE_PLUGIN_WRITE") and "--plugin-dir" in argv:
+    with open(os.path.join(argv[argv.index("--plugin-dir") + 1], conf["FAKE_PLUGIN_WRITE"]), "w") as handle:
+        handle.write("changed by the run\n")
 for call in json.loads(conf.get("FAKE_PM_ACTIONS", "[]")):
     subprocess.run(["gh", *call], stdout=subprocess.DEVNULL)
 for path, text in json.loads(conf.get("FAKE_PM_FILES", "{}")).items():
@@ -327,8 +331,7 @@ def test_runner_happy_path():
         if main:
             argv = main[0]["argv"]
             check(argv[:2] == ["-p", "Triage the backlog."], f"the prompt goes to -p, got {argv[:2]}")
-            for flag, value in (("--plugin-dir", os.path.join(root, "plugin")), ("--output-format", "json"),
-                                ("--permission-mode", "bypassPermissions")):
+            for flag, value in (("--output-format", "json"), ("--permission-mode", "bypassPermissions")):
                 check(flag in argv and argv[argv.index(flag) + 1] == value, f"{flag} {value} is passed, got {argv}")
             check("--strict-mcp-config" in argv, f"MCP servers are off, got {argv}")
             settings = json.loads(argv[argv.index("--settings") + 1]) if "--settings" in argv else {}
@@ -346,6 +349,10 @@ def test_runner_happy_path():
             check(main[0]["GH_TOKEN"] and main[0]["GH_TOKEN"] != os.environ.get("GH_TOKEN"),
                   "GH_TOKEN is a fake token, so a real gh cannot authenticate")
             check(not os.path.exists(main[0]["cwd"]), "the sandbox is removed after the run")
+            given = argv[argv.index("--plugin-dir") + 1] if "--plugin-dir" in argv else ""
+            check(given and os.path.realpath(given) != os.path.realpath(os.path.join(root, "plugin")),
+                  f"the run gets a copy of the plugin, not the plugin directory, got {given}")
+            check(given and not os.path.exists(given), f"the plugin copy is removed with the sandbox, got {given}")
     finally:
         shutil.rmtree(root, ignore_errors=True)
 
@@ -563,10 +570,157 @@ def test_effort_is_passed_and_recorded():
         shutil.rmtree(root, ignore_errors=True)
 
 
+GIT_ISOLATION = {"GIT_CONFIG_GLOBAL": os.devnull, "GIT_CONFIG_NOSYSTEM": "1",
+                 "GIT_SSH_COMMAND": "false", "GIT_TERMINAL_PROMPT": "0"}
+
+
+def test_git_isolation_env():
+    root = tempfile.mkdtemp(prefix="run-evals-test-")
+    try:
+        build_evals(root)
+        result, _, captures = run_runner(root, {"FAKE_PM_ACTIONS": GOOD_ACTIONS, "FAKE_PM_FILES": GOOD_FILES})
+        check(len(captures) == 2, f"the case and its judge both run, got {len(captures)}: {result.stderr}")
+        for capture in captures:
+            env = capture.get("env", {})
+            who = "the judge" if capture["judge"] else "the run"
+            wrong = {name: env.get(name) for name, value in GIT_ISOLATION.items() if env.get(name) != value}
+            check(not wrong, f"{who} gets no host git config, no ssh and no git prompt, got {wrong}")
+            check(env.get("GIT_AUTHOR_NAME") and env.get("GIT_COMMITTER_EMAIL"),
+                  f"{who} has a git identity without the host config, got {env.get('GIT_AUTHOR_NAME')}")
+    finally:
+        shutil.rmtree(root, ignore_errors=True)
+
+
+def test_plugin_copy_protects_the_plugin():
+    root = tempfile.mkdtemp(prefix="run-evals-test-")
+    try:
+        case = dict(CASE, prompt="Read {plugin_dir}/README.md.")
+        build_evals(root, case)
+        result, _, captures = run_runner(root, {"FAKE_PM_ACTIONS": GOOD_ACTIONS, "FAKE_PM_FILES": GOOD_FILES,
+                                                "FAKE_PLUGIN_WRITE": "planted.txt"})
+        check(not os.path.exists(os.path.join(root, "plugin", "planted.txt")),
+              f"a run that writes into its --plugin-dir does not change the plugin under test: {result.stderr}")
+        main = [c for c in captures if not c["judge"]]
+        check(main, "the case runs")
+        if main:
+            argv = main[0]["argv"]
+            given = argv[argv.index("--plugin-dir") + 1]
+            check(argv[1] == f"Read {given}/README.md.",
+                  f"{{plugin_dir}} in the prompt names the copy that the run loads, got {argv[1]!r}")
+    finally:
+        shutil.rmtree(root, ignore_errors=True)
+
+
+def planted_repo(root):
+    """A repo whose .git/config runs a marker script from core.fsmonitor and from a post-checkout hook."""
+    repo = os.path.join(root, "repo")
+    marker = os.path.join(root, "planted-code-ran")
+    hooks = os.path.join(root, "hooks")
+    os.makedirs(hooks)
+    script = f"#!/bin/sh\necho ran >> {marker}\n"
+    for name in ("post-checkout", "fsmonitor"):
+        with open(os.path.join(hooks, name), "w") as handle:
+            handle.write(script)
+        os.chmod(os.path.join(hooks, name), 0o755)
+    env = dict(os.environ, GIT_AUTHOR_NAME="t", GIT_AUTHOR_EMAIL="t@example.invalid",
+               GIT_COMMITTER_NAME="t", GIT_COMMITTER_EMAIL="t@example.invalid")
+    os.makedirs(repo)
+    for args in (["init", "-q", "-b", "main"], ["commit", "-q", "--allow-empty", "-m", "x"],
+                 ["config", "core.hooksPath", hooks], ["config", "core.fsmonitor", os.path.join(hooks, "fsmonitor")]):
+        subprocess.run(["git", "-c", "commit.gpgsign=false", *args], cwd=repo, env=env, check=True,
+                       capture_output=True)
+    return repo, marker
+
+
+def test_agent_repo_cannot_run_code_on_the_host():
+    runner = load_runner()
+    root = tempfile.mkdtemp(prefix="run-evals-test-")
+    saved = {name: os.environ.get(name) for name in ("GIT_DIR", "ANTHROPIC_API_KEY")}
+    try:
+        repo, marker = planted_repo(root)
+        runner.git(repo, "status", "--porcelain")
+        runner.git(repo, "checkout", "-q", "-b", "issue/1-x")
+        check(not os.path.exists(marker), "the runner's git ignores a hook and an fsmonitor that the agent planted")
+
+        # A host variable such as GIT_DIR must not redirect the runner's git.
+        os.environ["GIT_DIR"] = os.path.join(root, "not-a-repo")
+        try:
+            head = runner.git(repo, "rev-parse", "--abbrev-ref", "HEAD")
+        except RuntimeError as error:
+            head = repr(error)
+        check(head == "issue/1-x", f"the runner's git takes no host GIT_* variable, got {head}")
+        del os.environ["GIT_DIR"]
+
+        # The hidden tests run the agent's code; they get no host secret.
+        os.environ["ANTHROPIC_API_KEY"] = "sk-host-secret"
+        dump = os.path.join(root, "hidden-env.json")
+        case_dir = os.path.join(root, "case")
+        os.makedirs(os.path.join(case_dir, "hidden"))
+        with open(os.path.join(case_dir, "hidden", "hidden_test_env.py"), "w") as handle:
+            handle.write("import json, os, unittest\n"
+                         f"json.dump(dict(os.environ), open({dump!r}, 'w'))\n"
+                         "class T(unittest.TestCase):\n    def test_ok(self):\n        pass\n")
+        ctx = {"repo": repo, "sandbox": root, "case": {"dir": case_dir}}
+        passed, detail, _ = runner.grade_hidden_tests({"type": "hidden_tests", "issue": 1}, ctx)
+        check(passed, f"the hidden tests run on the branch, got {detail}")
+        env = {}
+        if os.path.exists(dump):
+            with open(dump) as handle:
+                env = json.load(handle)
+        check(env and "ANTHROPIC_API_KEY" not in env, f"the hidden tests get no host secret, got {sorted(env)[:20]}")
+        check(not os.path.exists(marker), "the grading clone runs no hook that the agent planted")
+    finally:
+        for name, value in saved.items():
+            if value is None:
+                os.environ.pop(name, None)
+            else:
+                os.environ[name] = value
+        shutil.rmtree(root, ignore_errors=True)
+
+
+def test_a_case_needs_a_deterministic_grader():
+    root = tempfile.mkdtemp(prefix="run-evals-test-")
+    try:
+        build_evals(root, dict(CASE, graders=[{"type": "llm", "target": "final", "rubric": "x"}]))
+        result, _, captures = run_runner(root, {})
+        check(result.returncode == 2 and "deterministic" in result.stderr and not captures,
+              f"a case with only an llm grader is a bad case file, got exit {result.returncode}: {result.stderr}")
+    finally:
+        shutil.rmtree(root, ignore_errors=True)
+
+
+def test_run_claude_timeout():
+    runner = load_runner()
+    root = tempfile.mkdtemp(prefix="run-evals-test-")
+    saved = os.environ.get("IFE_CLAUDE")
+    try:
+        child_marker = os.path.join(root, "child-still-ran")
+        slow = os.path.join(root, "slow-claude")
+        with open(slow, "w") as handle:
+            # The child outlives its parent unless the whole process group is stopped.
+            handle.write(f"#!/bin/sh\n(sleep 3; touch {child_marker}) &\nsleep 30\n")
+        os.chmod(slow, 0o755)
+        os.environ["IFE_CLAUDE"] = slow
+        started = time.time()
+        code, stdout, _, timed_out = runner.run_claude(["-p", "x"], root, {"PATH": os.environ["PATH"]}, 1)
+        check(timed_out is True and time.time() - started < 10,
+              f"run_claude stops a run at its time limit, got timed_out={timed_out}")
+        check(runner.parse_result(stdout) is None, "a stopped run has no result object")
+        time.sleep(4)
+        check(not os.path.exists(child_marker), "run_claude stops the children of a stopped run too")
+    finally:
+        if saved is None:
+            os.environ.pop("IFE_CLAUDE", None)
+        else:
+            os.environ["IFE_CLAUDE"] = saved
+        shutil.rmtree(root, ignore_errors=True)
+
+
 def test_readme_names_the_environment():
     with open(os.path.join(EVALS, "README.md")) as handle:
         readme = handle.read()
-    for name in ("CLAUDE_CODE_SESSION_ID", "CLAUDE_CODE_CHILD_NOTES_DIR", "CLAUDE_CODE_MESSAGING_",
+    for name in ("GIT_CONFIG_GLOBAL", "GIT_CONFIG_NOSYSTEM", "GIT_SSH_COMMAND", "GIT_TERMINAL_PROMPT",
+                 "CLAUDE_CODE_SESSION_ID", "CLAUDE_CODE_CHILD_NOTES_DIR", "CLAUDE_CODE_MESSAGING_",
                  "CLAUDE_EFFORT", "CLAUDE_CODE_EFFORT_LEVEL", "CLAUDECODE", "ANTHROPIC_API_KEY",
                  "CLAUDE_CODE_OAUTH_TOKEN", "CLAUDE_CONFIG_DIR", "HTTPS_PROXY", "--effort"):
         check(f"`{name}" in readme, f"evals/README.md names {name}")
@@ -575,7 +729,9 @@ def test_readme_names_the_environment():
 for test in (test_fake_gh, test_runner_happy_path, test_runner_failures_and_ceiling,
              test_args_anchor_ignores_body_lines, test_ordered_and_model, test_real_pm_suite,
              test_real_cases_can_pass, test_host_session_env_is_dropped, test_effort_is_passed_and_recorded,
-             test_readme_names_the_environment):
+             test_readme_names_the_environment, test_git_isolation_env, test_plugin_copy_protects_the_plugin,
+             test_agent_repo_cannot_run_code_on_the_host, test_a_case_needs_a_deterministic_grader,
+             test_run_claude_timeout):
     try:
         test()
     except Exception as error:  # a crash in one test must not hide the others

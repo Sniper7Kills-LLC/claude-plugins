@@ -98,6 +98,7 @@ def test_annotate_strip_and_summary():
     check("the label replaces plugin_dir", data["variant"]["plugin_dir"] == "issue-flow (tag issue-flow--v0.20.0)"
           and first["variant"]["plugin_dir"] == data["variant"]["plugin_dir"], data["variant"])
     check("the session id stays", first["session_id"] == SESSION, first)
+    check("a record without effort takes the effort of the results", first.get("effort") == "high", first)
 
     summary = load(os.path.join(out, "summary.json"))
     case = summary["cases"]["w-a"]
@@ -126,9 +127,25 @@ def test_missing_transcript():
     check("the record keeps agents null", data["records"][0].get("agents") is None, data["records"][0])
 
 
+def test_local_path_refused():
+    print("local path scan")
+    for path in ("/Users/someone/wt/x.py", "/home/someone/x", "/private/tmp/ife-abc/repo",
+                 "/var/folders/pj/T/ife-abc"):
+        leaky = record("w-c", 1, "no-such-session")
+        leaky["graders"][0]["detail"] = f"hidden tests in {path} failed"
+        out = os.path.join(TMP, "out-leak")
+        shutil.rmtree(out, ignore_errors=True)
+        result = run(write_input([leaky]), "--out", out, "--label", "x", "--projects-root", os.path.join(TMP, "empty"))
+        check(f"a local path {path.split('/')[1]}/ in the output exits 2", result.returncode == 2,
+              (result.returncode, result.stderr))
+        check(f"the refusal names where {path.split('/')[1]}/ is", "graders" in result.stderr, result.stderr)
+        check(f"nothing is written when {path.split('/')[1]}/ is in the output", not os.path.exists(out), out)
+
+
 try:
     test_annotate_strip_and_summary()
     test_missing_transcript()
+    test_local_path_refused()
 finally:
     shutil.rmtree(TMP, ignore_errors=True)
 
