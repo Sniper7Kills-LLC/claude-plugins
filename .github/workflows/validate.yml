@@ -64,5 +64,8 @@ jobs:
       - name: Test the rule-coverage check
         run: python3 scripts/test-rule-coverage.py
 
+      - name: Test the usage report
+        run: python3 scripts/test-usage.py
+
       - name: Validate manifests, frontmatter and links
         run: python3 scripts/validate-manifests.py
