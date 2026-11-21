@@ -366,7 +366,7 @@ def test_baseline_tree():
           repr(inventory.get("baseline")))
     check("the inventory holds a real number of rules", len(rules) > 100, str(len(rules)))
     check("every rule has a known phase",
-          all(r["phase"] in rc.PHASES for r in rules),
+          all(r["phase"] in ("global", "0", "A0", "A", "B", "C", "C1", "C2", "D", "E") for r in rules),
           repr(sorted({r["phase"] for r in rules})))
     check("every Stage of the loop has rules",
           {"0", "A0", "A", "B", "C", "C1", "C2", "D", "E", "global"}

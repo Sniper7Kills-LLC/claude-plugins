@@ -19,6 +19,7 @@ import argparse
 import datetime
 import fnmatch
 import glob
+import importlib.util
 import json
 import os
 import re
@@ -59,6 +60,17 @@ KEEP_ENV_PREFIXES = ("LC_", "AWS_", "ANTHROPIC_BEDROCK_", "ANTHROPIC_VERTEX_", "
                      "ANTHROPIC_AWS_", "ANTHROPIC_GOOGLE_CLOUD_", "VERTEX_REGION_")
 SANDBOX_GIT = {"GIT_AUTHOR_NAME": "eval", "GIT_AUTHOR_EMAIL": "eval@example.invalid",
                "GIT_COMMITTER_NAME": "eval", "GIT_COMMITTER_EMAIL": "eval@example.invalid"}
+# No host git config (so no credential helper, url rewrite or signing key), no ssh, and no
+# prompt. A run that pushes can then reach only a remote that needs no login: the sandbox origin.
+GIT_ISOLATION = {"GIT_CONFIG_GLOBAL": os.devnull, "GIT_CONFIG_NOSYSTEM": "1",
+                 "GIT_SSH_COMMAND": "false", "GIT_TERMINAL_PROMPT": "0"}
+# The agent can write the repo's .git/config. These settings stop the code it names from
+# running when the runner itself calls git there.
+GIT_SAFE_CONFIG = ("-c", "core.hooksPath=" + os.devnull, "-c", "core.fsmonitor=false",
+                   "-c", "core.pager=cat")
+_usage_spec = importlib.util.spec_from_file_location("usage", os.path.join(ROOT, "issue-flow", "scripts", "usage.py"))
+usage_report = importlib.util.module_from_spec(_usage_spec)
+_usage_spec.loader.exec_module(usage_report)
 
 
 class CaseError(Exception):
@@ -108,14 +120,24 @@ def validate_case(case, path):
     for grader in case["graders"]:
         if grader.get("type") not in GRADERS:
             raise CaseError(f"{path}: unknown grader type {grader.get('type')!r}")
+    if all(grader["type"] == "llm" for grader in case["graders"]):
+        raise CaseError(f"{path}: a case needs at least one deterministic grader; an llm grader is only a second score")
 
 
 # ---------------------------------------------------------------- sandbox
 
 
+def minimal_env(home):
+    """The environment of a command the runner starts in the sandbox: no host secret, no host git setup."""
+    env = {name: os.environ[name] for name in ("PATH", "TMPDIR", "LANG") if name in os.environ}
+    env.update(HOME=home, XDG_CONFIG_HOME=os.devnull, **GIT_ISOLATION, **SANDBOX_GIT)
+    return env
+
+
 def git(cwd, *args):
-    result = subprocess.run(["git", *args], cwd=cwd, capture_output=True, text=True,
-                            env=dict(os.environ, **SANDBOX_GIT))
+    """Run git in a sandbox repo that the agent can change, so no code it planted runs."""
+    result = subprocess.run(["git", *GIT_SAFE_CONFIG, *args], cwd=cwd, capture_output=True, text=True,
+                            env=minimal_env(os.devnull))
     if result.returncode != 0:
         raise RuntimeError(f"git {' '.join(args)} failed in the sandbox: {result.stderr.strip()}")
     return result.stdout.strip()
@@ -153,10 +175,13 @@ def host_env_kept(name):
 
 
 def sandbox_env(sandbox):
-    """The run's environment: the allowed host variables, the fake gh first on PATH, no usable GitHub token.
+    """The run's environment: the allowed host variables, the fake gh, and git with no host setup.
 
     The environment starts from an allowlist. A host Claude Code session sets CLAUDE_* variables
     for its commands, and a run that got them would write to the host session's paths.
+    The fake gh is first on PATH, and GH_TOKEN and GITHUB_TOKEN are a fake token. Git reads no
+    global or system config, so it has no credential helper; ssh for git fails, and git never
+    prompts. The run can still start a program by its full path; the sandbox does not stop that.
     """
     env = {name: value for name, value in os.environ.items() if host_env_kept(name)}
     env.update(
@@ -165,6 +190,7 @@ def sandbox_env(sandbox):
         IFE_GH_LOG=os.path.join(sandbox, "gh-log.jsonl"),
         GH_TOKEN=FAKE_TOKEN, GITHUB_TOKEN=FAKE_TOKEN,
         GH_CONFIG_DIR=os.path.join(sandbox, "gh-config"), GH_PROMPT_DISABLED="1",
+        **GIT_ISOLATION, **SANDBOX_GIT,
     )
     return env
 
@@ -369,8 +395,10 @@ def grade_hidden_tests(grader, ctx):
         for entry in sorted(os.listdir(hidden)):
             shutil.copy(os.path.join(hidden, entry), checkout)
         try:
+            # The tests run the agent's code, so they get no host variable but the basics.
             result = subprocess.run(grader.get("command") or HIDDEN_COMMAND, cwd=checkout,
-                                    capture_output=True, text=True, timeout=grader.get("timeout_s", 300))
+                                    capture_output=True, text=True, timeout=grader.get("timeout_s", 300),
+                                    env=minimal_env(ctx["sandbox"]))
         except subprocess.TimeoutExpired:
             return False, f"the hidden tests on {ref} ran past {grader.get('timeout_s', 300)}s", 0.0
     finally:
@@ -453,7 +481,7 @@ def grade_diff_scope(grader, ctx):
         if found is None:
             return False, reason, 0.0
         ref, sha = found
-        changed = git(repo, "diff", "--name-only", base, sha).splitlines()
+        changed = git(repo, "diff", "--no-ext-diff", "--name-only", base, sha).splitlines()
         outside = [path for path in changed if not path_allowed(path, grader.get("allow", []))]
         if outside:
             problems.append(f"{ref} changes paths outside the allowlist: {', '.join(outside)}")
@@ -493,21 +521,17 @@ def main_model(result, requested):
     return max(usage, key=lambda name: usage[name].get("costUSD") or usage[name].get("outputTokens") or 0)
 
 
-def find_transcript(session_id):
-    if not session_id:
-        return None
-    found = glob.glob(os.path.expanduser(f"~/.claude/projects/*/{session_id}.jsonl"))
-    return found[0] if found else None
-
-
 def run_case(case, run_number, args, variant, budget_left, run_dir):
     """Run one case once and return its record."""
     sandbox, repo = build_sandbox(case)
+    # A run in bypassPermissions mode can write its plugin files; it gets a copy of its own.
+    plugin = os.path.join(sandbox, "plugin")
+    shutil.copytree(args.plugin_dir, plugin, symlinks=True, ignore=shutil.ignore_patterns(".git"))
     env = sandbox_env(sandbox)
     model = args.main_model or case.get("model")
     # A worker brief names the plugin under test as its pluginRoot.
-    prompt = case["prompt"].replace("{plugin_dir}", args.plugin_dir)
-    claude_args = ["-p", prompt, "--plugin-dir", args.plugin_dir, *isolation_args(),
+    prompt = case["prompt"].replace("{plugin_dir}", plugin)
+    claude_args = ["-p", prompt, "--plugin-dir", plugin, *isolation_args(),
                    "--permission-mode", "bypassPermissions", "--output-format", "json",
                    "--effort", args.effort]
     if model:
@@ -579,7 +603,8 @@ def run_case(case, run_number, args, variant, budget_left, run_dir):
         # duration_ms stops when the main loop ends; a background subagent can run past it.
         "wall_s": round(wall, 3),
         "session_id": result.get("session_id"),
-        "transcript": find_transcript(result.get("session_id")),
+        "transcript": next(iter(usage_report.session_transcripts(result["session_id"])), None)
+                      if result.get("session_id") else None,
         "model": main_model(result, model),
         "error": error,
         "sandbox": kept,

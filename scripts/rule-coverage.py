@@ -40,7 +40,6 @@ DEFAULT_PATH = "issue-flow/skills/issue-flow/SKILL.md"
 DEFAULT_INVENTORY = os.path.join(ROOT, "evals", "rule-inventory.json")
 DEFAULT_SKILL_DIR = os.path.join(ROOT, "issue-flow", "skills", "issue-flow")
 
-PHASES = ("global", "0", "A0", "A", "B", "C", "C1", "C2", "D", "E")
 # A C1 or C2 rule is reachable from the Stage C section too, because that
 # section is the one the reader is in when either gate applies.
 PARENT_PHASE = {"C1": "C", "C2": "C"}
@@ -234,7 +233,11 @@ def judge_rule(rule, text, claude_bin):
         "reason on the second line.\n\nRule: %s" % (rule["phase"], rule["text"]))
     try:
         result = subprocess.run(
-            [claude_bin, "-p", "--model", "haiku", "--tools", "", prompt],
+            # The same isolation as the judge of scripts/run-evals.py: no host plugin,
+            # user setting or MCP server reaches the answer.
+            [claude_bin, "-p", "--model", "haiku", "--tools", "", "--no-session-persistence",
+             "--settings", json.dumps({"enabledPlugins": {"issue-flow@sniper7kills": False}}),
+             "--setting-sources", "project,local", "--strict-mcp-config", prompt],
             input=text, capture_output=True, text=True, timeout=300)
     except (OSError, subprocess.TimeoutExpired) as error:
         return "error %s" % error

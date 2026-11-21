@@ -331,22 +331,31 @@ def format_table(report, pricing):
     return "\n".join(out)
 
 
+class SelectionError(Exception):
+    """The arguments select no transcript."""
+
+
+def session_transcripts(session_id, projects_root=PROJECTS_ROOT):
+    """Return the main transcripts of `session_id` in any project under `projects_root`, sorted."""
+    return sorted(glob.glob(os.path.join(projects_root, "*", session_id + ".jsonl")))
+
+
 def find_transcripts(args, since):
-    """Return the main transcripts the arguments select, or raise SystemExit with a message."""
+    """Return the main transcripts the arguments select; raise SelectionError when there are none."""
     if args.transcript:
         missing = [path for path in args.transcript if not os.path.isfile(path)]
         if missing:
-            raise SystemExit(f"usage.py: no such transcript: {', '.join(missing)}")
+            raise SelectionError(f"usage.py: no such transcript: {', '.join(missing)}")
         return args.transcript
     if args.session:
-        found = sorted(glob.glob(os.path.join(args.projects_root, "*", args.session + ".jsonl")))
+        found = session_transcripts(args.session, args.projects_root)
         if not found:
-            raise SystemExit(f"usage.py: no transcript for session {args.session} under {args.projects_root}")
+            raise SelectionError(f"usage.py: no transcript for session {args.session} under {args.projects_root}")
         return found
     if since is not None:
         project = args.project_dir or os.path.join(args.projects_root, project_dir_name(os.getcwd()))
         if not os.path.isdir(project):
-            raise SystemExit(f"usage.py: no project directory {project}")
+            raise SelectionError(f"usage.py: no project directory {project}")
         selected = []
         cutoff = since.timestamp()
         for path in sorted(glob.glob(os.path.join(project, "*.jsonl"))):
@@ -355,7 +364,7 @@ def find_transcripts(args, since):
             if any(os.path.getmtime(item) >= cutoff for item in related):
                 selected.append(path)
         return selected
-    raise SystemExit("usage.py: give --transcript, --session, or --since")
+    raise SelectionError("usage.py: give --transcript, --session, or --since")
 
 
 def main(argv=None):
@@ -377,7 +386,7 @@ def main(argv=None):
             parser.error(f"--since is not an ISO 8601 time: {args.since}")
     try:
         transcripts = find_transcripts(args, since)
-    except SystemExit as error:
+    except SelectionError as error:
         print(error, file=sys.stderr)
         return 2
     pricing = load_pricing(args.pricing)
