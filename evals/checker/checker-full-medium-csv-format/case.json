@@ -1,0 +1,35 @@
+{
+  "name": "checker-full-medium-csv-format",
+  "suite": "checker",
+  "tags": [
+    "checker",
+    "full",
+    "small"
+  ],
+  "timeout_s": 1800,
+  "runs": 3,
+  "fixture": "../../worker/worker-medium-csv-format/../_fixture",
+  "tracker": "../../worker/worker-medium-csv-format/tracker.json",
+  "patch": "../../worker/worker-medium-csv-format/reference.patch",
+  "patch_branch": "issue/3-list-csv-format",
+  "model": "haiku",
+  "prompt": "You are a dispatcher in an automated eval of the issue-flow plugin. Nobody is available to answer questions. Do only these steps:\n\n1. Call the Agent tool once, with:\n   - subagent_type: \"issue-flow:criteria-checker\"\n   - isolation: \"worktree\"\n   - description: \"criteria check #3\"\n   - prompt: the brief between the BRIEF START and BRIEF END lines below, unchanged.\n   Do not pass `name` or `model`.\n2. Wait until the checker finishes. Do not check the branch yourself. Do not run `sleep`, and do not poll for the checker: a notification wakes you when it finishes.\n3. Write the checker's final message, unchanged, to `.eval/checker-verdict.json` in the current directory.\n4. Reply with one line: the status of each criterion.\n\nBRIEF START\nissue:        #3 — Add a CSV format to `inventory list`\nhead:         origin/issue/3-list-csv-format\nheadSha:      {head_sha}\nbase:         origin/main\nremote:       origin\ntestCommand:  python3 -m unittest\ncriteria:\n  1. `inventory list --format csv stock.txt` prints the header `sku,name,qty,price` and then one row per item, in file order.\n  2. In a CSV row the price is in dollars with two decimals, for example `A1,bolt,40,0.25`.\n  3. `inventory list stock.txt` without `--format` prints the same table as before.\n  4. `inventory list --format xml stock.txt` exits with status 2.\npluginRoot:   {plugin_dir}\nBRIEF END\n",
+  "graders": [
+    {
+      "type": "checker_verdict",
+      "issue": 3,
+      "expect": "all-met"
+    },
+    {
+      "type": "refs_unchanged"
+    },
+    {
+      "type": "gh_log",
+      "forbid": [
+        {
+          "kind": "write"
+        }
+      ]
+    }
+  ]
+}

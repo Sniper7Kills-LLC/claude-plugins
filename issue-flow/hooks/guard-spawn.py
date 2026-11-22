@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""PreToolUse guard: refuse the two `Agent` spawn shapes issue-flow has seen go wrong.
+"""PreToolUse guard: refuse the `Agent` spawn shapes that break issue-flow's rules.
 
 Wired by `issue-flow/hooks/hooks.json`, which Claude Code loads automatically for
 an installed plugin. It reads the PreToolUse payload on stdin and returns a deny
@@ -7,7 +7,10 @@ decision, with the fix in the reason, for an `Agent` (or legacy `Task`) call tha
 
 1. passes `name:` **without** `isolation:` (strands the caller — below), or
 2. is a **fork** (`subagent_type: "fork"`) whose prompt is an issue-flow handoff
-   brief (runs away — see "Fork dispatch" further down).
+   brief (runs away — see "Fork dispatch" further down), or
+3. passes `model` to an issue-flow agent, other than the one Opus escalation,
+   or sends an escalation brief to a worker without `model: "opus"`
+   (see "Model override" at the end).
 
 Why this is worth a hook rather than another paragraph of documentation
 (measured on Claude Code 2.1.232, issue #25):
@@ -98,6 +101,36 @@ named peer sessions back on keeps the fork check. The same session-start rule
 applies — set it in `.claude/settings.json`:
 
     { "env": { "ISSUE_FLOW_FORK_GUARD": "off" } }
+
+Model override (issue #120)
+---------------------------
+An issue-flow agent's tier is the `model:` line of its definition, and SKILL.md
+tells the PM never to pass `model` when it spawns one. A `model` value replaces
+that line for the spawn, so the definition stops being the source of truth.
+
+The one exception: a Sonnet worker that failed its issue gets one Opus attempt
+on the same branch (SKILL.md Stage C1). That spawn is
+`subagent_type: "issue-flow:issue-worker"` with `model: "opus"`, and its brief
+carries an `escalation:` field at the start of a line, with the reason after the
+colon. The guard allows exactly that shape. It denies every other `model` value
+on an `issue-flow:` agent type, the declared tier included.
+
+The reverse check (issue #121): an `issue-flow:issue-worker` spawn whose brief
+carries the `escalation:` field, but whose `model` is not `opus`, is denied too. No
+`model` counts as not opus. A `checkpoint` of the Opus worker is the same attempt,
+so its replacement keeps `model: "opus"` and the field. Without the model, the
+replacement runs on Sonnet again, and nothing else reports it.
+
+The check reads only `issue-flow:` agent types. A worker spawns its own children
+as general-purpose agents with `model: "sonnet"` (agents/issue-worker.md), and
+the agents of another plugin are not issue-flow's business, so those pass.
+Measured on Claude Code 2.1.330: the `Agent` call reaches this hook with
+`tool_input.model` set to the value the caller passed (`"opus"`).
+
+`ISSUE_FLOW_MODEL_GUARD` controls this check on its own, with the same values
+(`deny` default, `ask`, `off`). Set it in `.claude/settings.json`:
+
+    { "env": { "ISSUE_FLOW_MODEL_GUARD": "off" } }
 """
 
 import json
@@ -162,7 +195,51 @@ FORK_REASON = (
     '    "env": { "ISSUE_FLOW_FORK_GUARD": "off" }'
 )
 
-APPROVE_PREFIX = "issue-flow spawn guard (approve only if deliberate):"
+# The escalation field of SKILL.md Stage C1: a label at the start of a line, with
+# the markup that BRIEF_FIELD accepts, and a reason after the colon. A value that
+# starts with `<` is the template's placeholder, not a reason.
+ESCALATION_FIELD = re.compile(
+    r"^[\s>*_`#|\"+-]*(?:\d+[.)][ \t]*)?escalation[*_`\"]*[ \t]*[:=|][*_`\" \t]*[^\s<]",
+    re.IGNORECASE | re.MULTILINE,
+)
+ESCALATION_AGENT = "issue-flow:issue-worker"
+ESCALATION_MODEL = "opus"
+
+MODEL_REASON = (
+    "issue-flow spawn guard: this Agent call passes `model` to an issue-flow agent "
+    "(`AGENT`). Its tier is the `model:` line of its definition, and a `model` value "
+    "replaces that line for this spawn. SKILL.md: never pass `opts.model` when you spawn "
+    "an issue-flow agent.\n"
+    "\n"
+    "**Drop `model`.** The agent then runs on the tier that its definition declares.\n"
+    "\n"
+    "The one exception is the Opus escalation of a failed worker (SKILL.md Stage C1): "
+    "`subagent_type: \"issue-flow:issue-worker\"`, `model: \"opus\"`, and a brief with "
+    "an `escalation:` line that names the reason and the checker's findings. Only that "
+    "shape passes.\n"
+    "\n"
+    "To turn this check off, put this in the project's .claude/settings.json and start a "
+    "new session:\n"
+    '    "env": { "ISSUE_FLOW_MODEL_GUARD": "off" }'
+)
+
+ESCALATION_MODEL_REASON = (
+    "issue-flow spawn guard: this Agent call spawns `issue-flow:issue-worker` with an "
+    "`escalation:` field in its brief, but without `model: \"opus\"`. A brief with that "
+    "field is the Opus escalation of SKILL.md Stage C1, and that attempt runs on Opus only. "
+    "A `checkpoint` of the Opus worker is the same attempt: its replacement keeps "
+    "`model: \"opus\"` and the same `escalation:` field. Without the model, the replacement "
+    "runs on Sonnet, the tier that already failed the issue.\n"
+    "\n"
+    "**Pass `model: \"opus\"`** and keep the `escalation:` field. If this spawn is not an "
+    "escalation, remove the `escalation:` field and pass no `model`.\n"
+    "\n"
+    "To turn this check off, put this in the project's .claude/settings.json and start a "
+    "new session:\n"
+    '    "env": { "ISSUE_FLOW_MODEL_GUARD": "off" }'
+)
+
+APPROVE_PREFIX ="issue-flow spawn guard (approve only if deliberate):"
 
 
 def mode(variable):
@@ -223,6 +300,30 @@ def check_name(tool_input):
     return verdict(guard, REASON)
 
 
+def check_model(tool_input):
+    guard = mode("ISSUE_FLOW_MODEL_GUARD")
+    if guard == "off":
+        return None
+    kind = tool_input.get("subagent_type")
+    if not isinstance(kind, str):
+        return None
+    kind = kind.strip()
+    if not kind.lower().startswith("issue-flow:"):
+        return None
+    model = tool_input.get("model")
+    model = model.strip().lower() if isinstance(model, str) else ""
+    prompt = tool_input.get("prompt")
+    if kind == ESCALATION_AGENT and isinstance(prompt, str) and ESCALATION_FIELD.search(prompt):
+        # The reverse check (issue #121): an escalation brief without Opus is a
+        # replacement that fell back to Sonnet, the tier that failed the issue.
+        if model == ESCALATION_MODEL:
+            return None
+        return verdict(guard, ESCALATION_MODEL_REASON)
+    if not model:
+        return None
+    return verdict(guard, MODEL_REASON.replace("AGENT", kind, 1))
+
+
 def decide(payload):
     """Return (permissionDecision, reason), or None to stay out of the way."""
     if payload.get("tool_name") not in SPAWN_TOOLS:
@@ -232,7 +333,7 @@ def decide(payload):
         return None
     # The fork check runs first: a runaway fork writes to the repository, a
     # stranded peer only loses a result.
-    return check_fork(tool_input) or check_name(tool_input)
+    return check_fork(tool_input) or check_name(tool_input) or check_model(tool_input)
 
 
 def main():

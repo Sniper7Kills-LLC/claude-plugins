@@ -1,0 +1,197 @@
+{
+  "superseded_because": "the gh_log args regex used re.M, so `^4\\b` matched a body line that starts with '4.'; fixed in scripts/run-evals.py, and the case was run again",
+  "records": [
+    {
+      "case": "pm-triage",
+      "run": 1,
+      "variant": {
+        "plugin_dir": "issue-flow (git worktree of tag issue-flow--v0.20.0)",
+        "git_sha": "c3974fe577b7ce45383f564c3ed54b5a99080a9d",
+        "version": "0.20.0"
+      },
+      "ok": false,
+      "score": 0.5,
+      "graders": [
+        {
+          "type": "gh_log",
+          "passed": false,
+          "detail": "forbidden issue comment (seq 11: issue comment 2 --body Triage: status:needs-feedback. This issue does not give enough data to start work. Please answer these questions:\n\n1. Which command gives the wrong output? Give the full command line (for example `widgets count`).\n2. What output did you get? Paste it exactly.\n3. What output did you expect?\n4. How often does it occur, and what input or data makes it occur? Give steps to make it occur again.\n5. Which version or commit did you use?)"
+        },
+        {
+          "type": "llm",
+          "passed": true,
+          "detail": "PASS The comment on issue #2 asks specific, targeted questions, including which command is wrong with a full command line, the exact actual output versus the expected output, and steps to reproduce, so it would make the issue buildable rather than being a generic request for more detail."
+        }
+      ],
+      "deterministic": {
+        "passed": 0,
+        "total": 1
+      },
+      "llm": {
+        "passed": 1,
+        "total": 1
+      },
+      "cost_usd": 0.4408932,
+      "judge_cost_usd": 0.000775,
+      "usage": {
+        "input": 10,
+        "output": 1205,
+        "cache_read": 196406,
+        "cache_write": 47184
+      },
+      "model_usage": {
+        "claude-opus-5-5": {
+          "inputTokens": 10,
+          "outputTokens": 1205,
+          "cacheReadInputTokens": 196406,
+          "cacheCreationInputTokens": 47184,
+          "webSearchRequests": 0,
+          "costUSD": 0.4408932,
+          "contextWindow": 1000000,
+          "maxOutputTokens": 128000,
+          "thinkingTokens": 119,
+          "cacheCreationEphemeral5mInputTokens": 0,
+          "cacheCreationEphemeral1hInputTokens": 47184,
+          "canonicalModel": "claude-opus-5-5",
+          "provider": "firstParty",
+          "costBasis": "list"
+        }
+      },
+      "turns": 6,
+      "duration_s": 21.366,
+      "session_id": "52736999-af4c-4ff2-a165-387c5db29635",
+      "transcript": null,
+      "model": "claude-opus-5-5",
+      "error": null,
+      "sandbox": null
+    },
+    {
+      "case": "pm-triage",
+      "run": 2,
+      "variant": {
+        "plugin_dir": "issue-flow (git worktree of tag issue-flow--v0.20.0)",
+        "git_sha": "c3974fe577b7ce45383f564c3ed54b5a99080a9d",
+        "version": "0.20.0"
+      },
+      "ok": false,
+      "score": 0.5,
+      "graders": [
+        {
+          "type": "gh_log",
+          "passed": false,
+          "detail": "forbidden issue comment (seq 9: issue comment 2 --body Triage: this issue is not clear enough to start work. Please answer these questions:\n\n1. Which command gives the wrong output? For example, `widgets count <path>`.\n2. What input gives the wrong output? Please attach or describe the file, and give the exact command.\n3. What output did you see, and what output did you expect?\n4. How often does it occur? Does the same input always give the wrong output, or only sometimes?\n\nWhen you answer, we will set this issue to `status:ready`.)"
+        },
+        {
+          "type": "llm",
+          "passed": true,
+          "detail": "PASS The comment on issue #2 asks specific questions that would make the issue buildable: which command gives the wrong output, the exact input and command, expected versus actual output, and whether the failure is consistent."
+        }
+      ],
+      "deterministic": {
+        "passed": 0,
+        "total": 1
+      },
+      "llm": {
+        "passed": 1,
+        "total": 1
+      },
+      "cost_usd": 0.43818640000000003,
+      "judge_cost_usd": 0.000831,
+      "usage": {
+        "input": 10,
+        "output": 1000,
+        "cache_read": 196732,
+        "cache_write": 47350
+      },
+      "model_usage": {
+        "claude-opus-5-5": {
+          "inputTokens": 10,
+          "outputTokens": 1000,
+          "cacheReadInputTokens": 196732,
+          "cacheCreationInputTokens": 47350,
+          "webSearchRequests": 0,
+          "costUSD": 0.43818640000000003,
+          "contextWindow": 1000000,
+          "maxOutputTokens": 128000,
+          "thinkingTokens": 96,
+          "cacheCreationEphemeral5mInputTokens": 0,
+          "cacheCreationEphemeral1hInputTokens": 47350,
+          "canonicalModel": "claude-opus-5-5",
+          "provider": "firstParty",
+          "costBasis": "list"
+        }
+      },
+      "turns": 6,
+      "duration_s": 19.016,
+      "session_id": "598770af-f0d9-495e-b8ae-fab7fcdfb9df",
+      "transcript": null,
+      "model": "claude-opus-5-5",
+      "error": null,
+      "sandbox": null
+    },
+    {
+      "case": "pm-triage",
+      "run": 3,
+      "variant": {
+        "plugin_dir": "issue-flow (git worktree of tag issue-flow--v0.20.0)",
+        "git_sha": "c3974fe577b7ce45383f564c3ed54b5a99080a9d",
+        "version": "0.20.0"
+      },
+      "ok": false,
+      "score": 0.5,
+      "graders": [
+        {
+          "type": "gh_log",
+          "passed": false,
+          "detail": "forbidden issue comment (seq 9: issue comment 2 --body Triage: this issue is not clear enough to start work. Please answer these questions:\n\n1. Which command gives the wrong output? For example, `widgets count <path>`.\n2. What input gives the wrong output? Give the path or a small example file.\n3. What output do you get, and what output do you expect?\n4. Does the wrong output occur each time with that input, or only sometimes? If only sometimes, what changes between the runs?\n\nThe issue has the label `status:needs-feedback` until we get the answers.)"
+        },
+        {
+          "type": "llm",
+          "passed": true,
+          "detail": "PASS The comment on issue #2 asks specific questions that would make the issue buildable: which command gives the wrong output, the exact input, expected versus actual output, and whether the failure is reproducible."
+        }
+      ],
+      "deterministic": {
+        "passed": 0,
+        "total": 1
+      },
+      "llm": {
+        "passed": 1,
+        "total": 1
+      },
+      "cost_usd": 0.44396740000000007,
+      "judge_cost_usd": 0.000824,
+      "usage": {
+        "input": 10,
+        "output": 1186,
+        "cache_read": 196917,
+        "cache_write": 47603
+      },
+      "model_usage": {
+        "claude-opus-5-5": {
+          "inputTokens": 10,
+          "outputTokens": 1186,
+          "cacheReadInputTokens": 196917,
+          "cacheCreationInputTokens": 47603,
+          "webSearchRequests": 0,
+          "costUSD": 0.44396740000000007,
+          "contextWindow": 1000000,
+          "maxOutputTokens": 128000,
+          "thinkingTokens": 80,
+          "cacheCreationEphemeral5mInputTokens": 0,
+          "cacheCreationEphemeral1hInputTokens": 47603,
+          "canonicalModel": "claude-opus-5-5",
+          "provider": "firstParty",
+          "costBasis": "list"
+        }
+      },
+      "turns": 6,
+      "duration_s": 26.464,
+      "session_id": "d3ae30ff-9d53-4813-99d0-d0f6916217e7",
+      "transcript": null,
+      "model": "claude-opus-5-5",
+      "error": null,
+      "sandbox": null
+    }
+  ]
+}

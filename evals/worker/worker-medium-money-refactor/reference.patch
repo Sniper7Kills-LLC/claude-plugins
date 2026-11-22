@@ -1,0 +1,67 @@
+diff --git a/inventory/cli.py b/inventory/cli.py
+index da43b4c..e011e41 100644
+--- a/inventory/cli.py
++++ b/inventory/cli.py
+@@ -3,6 +3,7 @@
+ import argparse
+ 
+ from . import items, report
++from .money import format_money
+ 
+ 
+ def build_parser():
+@@ -24,8 +25,7 @@ def main(argv=None):
+         for item in stock:
+             print(report.format_line(item))
+     elif args.command == "total":
+-        cents = report.total_value(stock)
+-        print(f"${cents // 100}.{cents % 100:02d}")
++        print(format_money(report.total_value(stock)))
+     else:
+         for item in report.low_stock(stock, args.threshold):
+             print(report.format_line(item))
+diff --git a/inventory/money.py b/inventory/money.py
+new file mode 100644
+index 0000000..ef3a559
+--- /dev/null
++++ b/inventory/money.py
+@@ -0,0 +1,6 @@
++"""Format amounts of money."""
++
++
++def format_money(cents):
++    """Return an amount in cents as dollars, in the form ``$D.CC``."""
++    return f"${cents // 100}.{cents % 100:02d}"
+diff --git a/inventory/report.py b/inventory/report.py
+index 527a1ab..3dd3b87 100644
+--- a/inventory/report.py
++++ b/inventory/report.py
+@@ -1,5 +1,7 @@
+ """Totals and lists over Items."""
+ 
++from .money import format_money
++
+ 
+ def total_value(items):
+     """Return the value of all items, in cents."""
+@@ -13,5 +15,4 @@ def low_stock(items, threshold):
+ 
+ def format_line(item):
+     """Return one table row for an item: sku, name, quantity and unit price."""
+-    price = f"${item.price // 100}.{item.price % 100:02d}"
+-    return f"{item.sku:<6} {item.name:<12} {item.qty:>5} {price:>9}"
++    return f"{item.sku:<6} {item.name:<12} {item.qty:>5} {format_money(item.price):>9}"
+diff --git a/tests/test_money.py b/tests/test_money.py
+new file mode 100644
+index 0000000..e31db4d
+--- /dev/null
++++ b/tests/test_money.py
+@@ -0,0 +1,8 @@
++import unittest
++
++from inventory.money import format_money
++
++
++class MoneyTest(unittest.TestCase):
++    def test_pads_the_cents(self):
++        self.assertEqual(format_money(5), "$0.05")

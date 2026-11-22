@@ -1,0 +1,3673 @@
+{
+  "suite": "worker",
+  "variant": {
+    "plugin_dir": "issue-flow (branch issue/109-sonnet-worker: 0.20.0 plus the eval harness, issue-worker model: sonnet)",
+    "git_sha": "1f96b464fcf426f99c4537a8c23f23aa02f92a5e",
+    "version": "0.20.0"
+  },
+  "effort": "medium",
+  "started": "20261121T212328Z",
+  "finished": "20261121T213626Z",
+  "max_cost_usd": 25.0,
+  "total_cost_usd": 2.305836,
+  "partial": false,
+  "records": [
+    {
+      "case": "worker-easy-low-stock-boundary",
+      "run": 1,
+      "variant": {
+        "plugin_dir": "issue-flow (branch issue/109-sonnet-worker: 0.20.0 plus the eval harness, issue-worker model: sonnet)",
+        "git_sha": "1f96b464fcf426f99c4537a8c23f23aa02f92a5e",
+        "version": "0.20.0"
+      },
+      "effort": "medium",
+      "ok": true,
+      "score": 1.0,
+      "graders": [
+        {
+          "type": "hidden_tests",
+          "passed": true,
+          "detail": "hidden tests on refs/heads/issue/1-low-stock-boundary 800eb870: pass: Ran 2 tests in 0.028s | OK"
+        },
+        {
+          "type": "verdict",
+          "passed": true,
+          "detail": "outcome ready-to-merge, 2 criteria"
+        },
+        {
+          "type": "diff_scope",
+          "passed": true,
+          "detail": "refs/heads/issue/1-low-stock-boundary changes 3 path(s), all allowed"
+        },
+        {
+          "type": "gh_log",
+          "passed": true,
+          "detail": "0 expected, 1 forbidden"
+        }
+      ],
+      "deterministic": {
+        "passed": 4,
+        "total": 4
+      },
+      "llm": {
+        "passed": 0,
+        "total": 0
+      },
+      "cost_usd": 0.17632281000000002,
+      "judge_cost_usd": 0.0,
+      "usage": {
+        "input": 4,
+        "output": 1368,
+        "cache_read": 49934,
+        "cache_write": 3043
+      },
+      "model_usage": {
+        "claude-haiku-5-5": {
+          "inputTokens": 8,
+          "outputTokens": 1975,
+          "cacheReadInputTokens": 84901,
+          "cacheCreationInputTokens": 15358,
+          "webSearchRequests": 0,
+          "costUSD": 0.004908910000000001,
+          "contextWindow": 1000000,
+          "maxOutputTokens": 128000,
+          "thinkingTokens": 312,
+          "cacheCreationEphemeral5mInputTokens": 0,
+          "cacheCreationEphemeral1hInputTokens": 15358,
+          "canonicalModel": "claude-haiku-5-5",
+          "provider": "firstParty",
+          "costBasis": "list"
+        },
+        "claude-sonnet-5-5": {
+          "inputTokens": 24,
+          "outputTokens": 4011,
+          "cacheReadInputTokens": 370709,
+          "cacheCreationInputTokens": 37674,
+          "webSearchRequests": 0,
+          "costUSD": 0.17141389999999998,
+          "contextWindow": 1000000,
+          "maxOutputTokens": 128000,
+          "thinkingTokens": 172,
+          "cacheCreationEphemeral5mInputTokens": 37674,
+          "cacheCreationEphemeral1hInputTokens": 0,
+          "canonicalModel": "claude-sonnet-5-5",
+          "provider": "firstParty",
+          "costBasis": "list"
+        }
+      },
+      "turns": 2,
+      "duration_s": 5.512,
+      "wall_s": 38.299,
+      "session_id": "d7c34e78-36f3-4502-9b83-f87cd3a1916a",
+      "transcript": null,
+      "model": "haiku",
+      "error": null,
+      "sandbox": null,
+      "agents": {
+        "agents": [
+          {
+            "type": "main",
+            "id": "d7c34e78-36f3-4502-9b83-f87cd3a1916a",
+            "turns": 4,
+            "input": 8,
+            "output": 1975,
+            "cache_read": 84901,
+            "cache_write": 15358,
+            "model": "claude-haiku-5-5",
+            "cost_usd": 0.004909
+          },
+          {
+            "type": "issue-flow:issue-worker",
+            "id": "a5b7afe38fe1e6571",
+            "turns": 12,
+            "input": 24,
+            "output": 4011,
+            "cache_read": 370709,
+            "cache_write": 37674,
+            "model": "claude-sonnet-5-5",
+            "cost_usd": 0.171414
+          }
+        ],
+        "totals": {
+          "turns": 16,
+          "input": 32,
+          "output": 5986,
+          "cache_read": 455610,
+          "cache_write": 53032,
+          "cost_usd": 0.176323,
+          "unpriced_models": [],
+          "skipped_lines": 0,
+          "by_type": {
+            "main": {
+              "agents": 1,
+              "turns": 4,
+              "input": 8,
+              "output": 1975,
+              "cache_read": 84901,
+              "cache_write": 15358,
+              "cost_usd": 0.004909
+            },
+            "issue-flow:issue-worker": {
+              "agents": 1,
+              "turns": 12,
+              "input": 24,
+              "output": 4011,
+              "cache_read": 370709,
+              "cache_write": 37674,
+              "cost_usd": 0.171414
+            }
+          }
+        },
+        "pricing_date": "2026-11-21"
+      },
+      "tokens": {
+        "main": 102242,
+        "subagents": 412418
+      }
+    },
+    {
+      "case": "worker-easy-low-stock-boundary",
+      "run": 2,
+      "variant": {
+        "plugin_dir": "issue-flow (branch issue/109-sonnet-worker: 0.20.0 plus the eval harness, issue-worker model: sonnet)",
+        "git_sha": "1f96b464fcf426f99c4537a8c23f23aa02f92a5e",
+        "version": "0.20.0"
+      },
+      "effort": "medium",
+      "ok": true,
+      "score": 1.0,
+      "graders": [
+        {
+          "type": "hidden_tests",
+          "passed": true,
+          "detail": "hidden tests on refs/heads/issue/1-low-stock-boundary 1047a9b2: pass: Ran 2 tests in 0.026s | OK"
+        },
+        {
+          "type": "verdict",
+          "passed": true,
+          "detail": "outcome ready-to-merge, 2 criteria"
+        },
+        {
+          "type": "diff_scope",
+          "passed": true,
+          "detail": "refs/heads/issue/1-low-stock-boundary changes 3 path(s), all allowed"
+        },
+        {
+          "type": "gh_log",
+          "passed": true,
+          "detail": "0 expected, 1 forbidden"
+        }
+      ],
+      "deterministic": {
+        "passed": 4,
+        "total": 4
+      },
+      "llm": {
+        "passed": 0,
+        "total": 0
+      },
+      "cost_usd": 0.10252069,
+      "judge_cost_usd": 0.0,
+      "usage": {
+        "input": 4,
+        "output": 901,
+        "cache_read": 49903,
+        "cache_write": 2363
+      },
+      "model_usage": {
+        "claude-haiku-5-5": {
+          "inputTokens": 8,
+          "outputTokens": 1517,
+          "cacheReadInputTokens": 84919,
+          "cacheCreationInputTokens": 14741,
+          "webSearchRequests": 0,
+          "costUSD": 0.00455669,
+          "contextWindow": 1000000,
+          "maxOutputTokens": 128000,
+          "thinkingTokens": 0,
+          "cacheCreationEphemeral5mInputTokens": 0,
+          "cacheCreationEphemeral1hInputTokens": 14741,
+          "canonicalModel": "claude-haiku-5-5",
+          "provider": "firstParty",
+          "costBasis": "list"
+        },
+        "claude-sonnet-5-5": {
+          "inputTokens": 20,
+          "outputTokens": 2972,
+          "cacheReadInputTokens": 313190,
+          "cacheCreationInputTokens": 14754,
+          "webSearchRequests": 0,
+          "costUSD": 0.09796400000000001,
+          "contextWindow": 1000000,
+          "maxOutputTokens": 128000,
+          "thinkingTokens": 235,
+          "cacheCreationEphemeral5mInputTokens": 14754,
+          "cacheCreationEphemeral1hInputTokens": 0,
+          "canonicalModel": "claude-sonnet-5-5",
+          "provider": "firstParty",
+          "costBasis": "list"
+        }
+      },
+      "turns": 2,
+      "duration_s": 3.574,
+      "wall_s": 29.635,
+      "session_id": "f7b1f03d-c78f-44ec-a1bf-ba4bbc680ff5",
+      "transcript": null,
+      "model": "haiku",
+      "error": null,
+      "sandbox": null,
+      "agents": {
+        "agents": [
+          {
+            "type": "main",
+            "id": "f7b1f03d-c78f-44ec-a1bf-ba4bbc680ff5",
+            "turns": 4,
+            "input": 8,
+            "output": 1517,
+            "cache_read": 84919,
+            "cache_write": 14741,
+            "model": "claude-haiku-5-5",
+            "cost_usd": 0.004557
+          },
+          {
+            "type": "issue-flow:issue-worker",
+            "id": "ad8bb62d191257769",
+            "turns": 10,
+            "input": 20,
+            "output": 2972,
+            "cache_read": 313190,
+            "cache_write": 14754,
+            "model": "claude-sonnet-5-5",
+            "cost_usd": 0.097964
+          }
+        ],
+        "totals": {
+          "turns": 14,
+          "input": 28,
+          "output": 4489,
+          "cache_read": 398109,
+          "cache_write": 29495,
+          "cost_usd": 0.102521,
+          "unpriced_models": [],
+          "skipped_lines": 0,
+          "by_type": {
+            "main": {
+              "agents": 1,
+              "turns": 4,
+              "input": 8,
+              "output": 1517,
+              "cache_read": 84919,
+              "cache_write": 14741,
+              "cost_usd": 0.004557
+            },
+            "issue-flow:issue-worker": {
+              "agents": 1,
+              "turns": 10,
+              "input": 20,
+              "output": 2972,
+              "cache_read": 313190,
+              "cache_write": 14754,
+              "cost_usd": 0.097964
+            }
+          }
+        },
+        "pricing_date": "2026-11-21"
+      },
+      "tokens": {
+        "main": 101185,
+        "subagents": 330936
+      }
+    },
+    {
+      "case": "worker-easy-low-stock-boundary",
+      "run": 3,
+      "variant": {
+        "plugin_dir": "issue-flow (branch issue/109-sonnet-worker: 0.20.0 plus the eval harness, issue-worker model: sonnet)",
+        "git_sha": "1f96b464fcf426f99c4537a8c23f23aa02f92a5e",
+        "version": "0.20.0"
+      },
+      "effort": "medium",
+      "ok": true,
+      "score": 1.0,
+      "graders": [
+        {
+          "type": "hidden_tests",
+          "passed": true,
+          "detail": "hidden tests on refs/heads/issue/1-low-stock-boundary 2d952131: pass: Ran 2 tests in 0.031s | OK"
+        },
+        {
+          "type": "verdict",
+          "passed": true,
+          "detail": "outcome ready-to-merge, 2 criteria"
+        },
+        {
+          "type": "diff_scope",
+          "passed": true,
+          "detail": "refs/heads/issue/1-low-stock-boundary changes 2 path(s), all allowed"
+        },
+        {
+          "type": "gh_log",
+          "passed": true,
+          "detail": "0 expected, 1 forbidden"
+        }
+      ],
+      "deterministic": {
+        "passed": 4,
+        "total": 4
+      },
+      "llm": {
+        "passed": 0,
+        "total": 0
+      },
+      "cost_usd": 0.09849114,
+      "judge_cost_usd": 0.0,
+      "usage": {
+        "input": 4,
+        "output": 1160,
+        "cache_read": 49817,
+        "cache_write": 2716
+      },
+      "model_usage": {
+        "claude-haiku-5-5": {
+          "inputTokens": 8,
+          "outputTokens": 1769,
+          "cacheReadInputTokens": 84784,
+          "cacheCreationInputTokens": 15031,
+          "webSearchRequests": 0,
+          "costUSD": 0.00473934,
+          "contextWindow": 1000000,
+          "maxOutputTokens": 128000,
+          "thinkingTokens": 232,
+          "cacheCreationEphemeral5mInputTokens": 0,
+          "cacheCreationEphemeral1hInputTokens": 15031,
+          "canonicalModel": "claude-haiku-5-5",
+          "provider": "firstParty",
+          "costBasis": "list"
+        },
+        "claude-sonnet-5-5": {
+          "inputTokens": 20,
+          "outputTokens": 2976,
+          "cacheReadInputTokens": 310643,
+          "cacheCreationInputTokens": 13155,
+          "webSearchRequests": 0,
+          "costUSD": 0.09375180000000001,
+          "contextWindow": 1000000,
+          "maxOutputTokens": 128000,
+          "thinkingTokens": 86,
+          "cacheCreationEphemeral5mInputTokens": 13155,
+          "cacheCreationEphemeral1hInputTokens": 0,
+          "canonicalModel": "claude-sonnet-5-5",
+          "provider": "firstParty",
+          "costBasis": "list"
+        }
+      },
+      "turns": 2,
+      "duration_s": 4.702,
+      "wall_s": 30.227,
+      "session_id": "98dbf079-1149-48b2-92de-8a413bd65987",
+      "transcript": null,
+      "model": "haiku",
+      "error": null,
+      "sandbox": null,
+      "agents": {
+        "agents": [
+          {
+            "type": "main",
+            "id": "98dbf079-1149-48b2-92de-8a413bd65987",
+            "turns": 4,
+            "input": 8,
+            "output": 1769,
+            "cache_read": 84784,
+            "cache_write": 15031,
+            "model": "claude-haiku-5-5",
+            "cost_usd": 0.004739
+          },
+          {
+            "type": "issue-flow:issue-worker",
+            "id": "ab0334e6c4a0b9db9",
+            "turns": 10,
+            "input": 20,
+            "output": 2976,
+            "cache_read": 310643,
+            "cache_write": 13155,
+            "model": "claude-sonnet-5-5",
+            "cost_usd": 0.093752
+          }
+        ],
+        "totals": {
+          "turns": 14,
+          "input": 28,
+          "output": 4745,
+          "cache_read": 395427,
+          "cache_write": 28186,
+          "cost_usd": 0.098491,
+          "unpriced_models": [],
+          "skipped_lines": 0,
+          "by_type": {
+            "main": {
+              "agents": 1,
+              "turns": 4,
+              "input": 8,
+              "output": 1769,
+              "cache_read": 84784,
+              "cache_write": 15031,
+              "cost_usd": 0.004739
+            },
+            "issue-flow:issue-worker": {
+              "agents": 1,
+              "turns": 10,
+              "input": 20,
+              "output": 2976,
+              "cache_read": 310643,
+              "cache_write": 13155,
+              "cost_usd": 0.093752
+            }
+          }
+        },
+        "pricing_date": "2026-11-21"
+      },
+      "tokens": {
+        "main": 101592,
+        "subagents": 326794
+      }
+    },
+    {
+      "case": "worker-easy-negative-qty",
+      "run": 1,
+      "variant": {
+        "plugin_dir": "issue-flow (branch issue/109-sonnet-worker: 0.20.0 plus the eval harness, issue-worker model: sonnet)",
+        "git_sha": "1f96b464fcf426f99c4537a8c23f23aa02f92a5e",
+        "version": "0.20.0"
+      },
+      "effort": "medium",
+      "ok": true,
+      "score": 1.0,
+      "graders": [
+        {
+          "type": "hidden_tests",
+          "passed": true,
+          "detail": "hidden tests on refs/heads/issue/2-reject-negative-qty 45de4442: pass: Ran 2 tests in 0.000s | OK"
+        },
+        {
+          "type": "verdict",
+          "passed": true,
+          "detail": "outcome ready-to-merge, 2 criteria"
+        },
+        {
+          "type": "diff_scope",
+          "passed": true,
+          "detail": "refs/heads/issue/2-reject-negative-qty changes 3 path(s), all allowed"
+        },
+        {
+          "type": "gh_log",
+          "passed": true,
+          "detail": "0 expected, 1 forbidden"
+        }
+      ],
+      "deterministic": {
+        "passed": 4,
+        "total": 4
+      },
+      "llm": {
+        "passed": 0,
+        "total": 0
+      },
+      "cost_usd": 0.07069353,
+      "judge_cost_usd": 0.0,
+      "usage": {
+        "input": 4,
+        "output": 1024,
+        "cache_read": 49746,
+        "cache_write": 2570
+      },
+      "model_usage": {
+        "claude-haiku-5-5": {
+          "inputTokens": 8,
+          "outputTokens": 1642,
+          "cacheReadInputTokens": 84713,
+          "cacheCreationInputTokens": 14897,
+          "webSearchRequests": 0,
+          "costUSD": 0.00464833,
+          "contextWindow": 1000000,
+          "maxOutputTokens": 128000,
+          "thinkingTokens": 107,
+          "cacheCreationEphemeral5mInputTokens": 0,
+          "cacheCreationEphemeral1hInputTokens": 14897,
+          "canonicalModel": "claude-haiku-5-5",
+          "provider": "firstParty",
+          "costBasis": "list"
+        },
+        "claude-sonnet-5-5": {
+          "inputTokens": 14,
+          "outputTokens": 2494,
+          "cacheReadInputTokens": 187772,
+          "cacheCreationInputTokens": 8920,
+          "webSearchRequests": 0,
+          "costUSD": 0.0660452,
+          "contextWindow": 1000000,
+          "maxOutputTokens": 128000,
+          "thinkingTokens": 67,
+          "cacheCreationEphemeral5mInputTokens": 8920,
+          "cacheCreationEphemeral1hInputTokens": 0,
+          "canonicalModel": "claude-sonnet-5-5",
+          "provider": "firstParty",
+          "costBasis": "list"
+        }
+      },
+      "turns": 3,
+      "duration_s": 3.872,
+      "wall_s": 25.756,
+      "session_id": "37a3512d-bb1f-485e-9f6e-b4bd1fd7727d",
+      "transcript": null,
+      "model": "haiku",
+      "error": null,
+      "sandbox": null,
+      "agents": {
+        "agents": [
+          {
+            "type": "main",
+            "id": "37a3512d-bb1f-485e-9f6e-b4bd1fd7727d",
+            "turns": 4,
+            "input": 8,
+            "output": 1642,
+            "cache_read": 84713,
+            "cache_write": 14897,
+            "model": "claude-haiku-5-5",
+            "cost_usd": 0.004648
+          },
+          {
+            "type": "issue-flow:issue-worker",
+            "id": "a0f5fb122c14e9231",
+            "turns": 7,
+            "input": 14,
+            "output": 2494,
+            "cache_read": 187772,
+            "cache_write": 8920,
+            "model": "claude-sonnet-5-5",
+            "cost_usd": 0.066045
+          }
+        ],
+        "totals": {
+          "turns": 11,
+          "input": 22,
+          "output": 4136,
+          "cache_read": 272485,
+          "cache_write": 23817,
+          "cost_usd": 0.070694,
+          "unpriced_models": [],
+          "skipped_lines": 0,
+          "by_type": {
+            "main": {
+              "agents": 1,
+              "turns": 4,
+              "input": 8,
+              "output": 1642,
+              "cache_read": 84713,
+              "cache_write": 14897,
+              "cost_usd": 0.004648
+            },
+            "issue-flow:issue-worker": {
+              "agents": 1,
+              "turns": 7,
+              "input": 14,
+              "output": 2494,
+              "cache_read": 187772,
+              "cache_write": 8920,
+              "cost_usd": 0.066045
+            }
+          }
+        },
+        "pricing_date": "2026-11-21"
+      },
+      "tokens": {
+        "main": 101260,
+        "subagents": 199200
+      }
+    },
+    {
+      "case": "worker-easy-negative-qty",
+      "run": 2,
+      "variant": {
+        "plugin_dir": "issue-flow (branch issue/109-sonnet-worker: 0.20.0 plus the eval harness, issue-worker model: sonnet)",
+        "git_sha": "1f96b464fcf426f99c4537a8c23f23aa02f92a5e",
+        "version": "0.20.0"
+      },
+      "effort": "medium",
+      "ok": true,
+      "score": 1.0,
+      "graders": [
+        {
+          "type": "hidden_tests",
+          "passed": true,
+          "detail": "hidden tests on refs/heads/issue/2-reject-negative-qty 93521561: pass: Ran 2 tests in 0.000s | OK"
+        },
+        {
+          "type": "verdict",
+          "passed": true,
+          "detail": "outcome ready-to-merge, 2 criteria"
+        },
+        {
+          "type": "diff_scope",
+          "passed": true,
+          "detail": "refs/heads/issue/2-reject-negative-qty changes 3 path(s), all allowed"
+        },
+        {
+          "type": "gh_log",
+          "passed": true,
+          "detail": "0 expected, 1 forbidden"
+        }
+      ],
+      "deterministic": {
+        "passed": 4,
+        "total": 4
+      },
+      "llm": {
+        "passed": 0,
+        "total": 0
+      },
+      "cost_usd": 0.10239238000000002,
+      "judge_cost_usd": 0.0,
+      "usage": {
+        "input": 4,
+        "output": 1180,
+        "cache_read": 49866,
+        "cache_write": 2875
+      },
+      "model_usage": {
+        "claude-haiku-5-5": {
+          "inputTokens": 8,
+          "outputTokens": 1801,
+          "cacheReadInputTokens": 84838,
+          "cacheCreationInputTokens": 15212,
+          "webSearchRequests": 0,
+          "costUSD": 0.00479208,
+          "contextWindow": 1000000,
+          "maxOutputTokens": 128000,
+          "thinkingTokens": 181,
+          "cacheCreationEphemeral5mInputTokens": 0,
+          "cacheCreationEphemeral1hInputTokens": 15212,
+          "canonicalModel": "claude-haiku-5-5",
+          "provider": "firstParty",
+          "costBasis": "list"
+        },
+        "claude-sonnet-5-5": {
+          "inputTokens": 18,
+          "outputTokens": 3363,
+          "cacheReadInputTokens": 282268,
+          "cacheCreationInputTokens": 14283,
+          "webSearchRequests": 0,
+          "costUSD": 0.0976003,
+          "contextWindow": 1000000,
+          "maxOutputTokens": 128000,
+          "thinkingTokens": 38,
+          "cacheCreationEphemeral5mInputTokens": 14283,
+          "cacheCreationEphemeral1hInputTokens": 0,
+          "canonicalModel": "claude-sonnet-5-5",
+          "provider": "firstParty",
+          "costBasis": "list"
+        }
+      },
+      "turns": 3,
+      "duration_s": 4.787,
+      "wall_s": 31.02,
+      "session_id": "d2cfd7f1-f1b0-43cb-bbb7-25961c59cffd",
+      "transcript": null,
+      "model": "haiku",
+      "error": null,
+      "sandbox": null,
+      "agents": {
+        "agents": [
+          {
+            "type": "main",
+            "id": "d2cfd7f1-f1b0-43cb-bbb7-25961c59cffd",
+            "turns": 4,
+            "input": 8,
+            "output": 1801,
+            "cache_read": 84838,
+            "cache_write": 15212,
+            "model": "claude-haiku-5-5",
+            "cost_usd": 0.004792
+          },
+          {
+            "type": "issue-flow:issue-worker",
+            "id": "a337c92ad51f85fe7",
+            "turns": 9,
+            "input": 18,
+            "output": 3363,
+            "cache_read": 282268,
+            "cache_write": 14283,
+            "model": "claude-sonnet-5-5",
+            "cost_usd": 0.0976
+          }
+        ],
+        "totals": {
+          "turns": 13,
+          "input": 26,
+          "output": 5164,
+          "cache_read": 367106,
+          "cache_write": 29495,
+          "cost_usd": 0.102392,
+          "unpriced_models": [],
+          "skipped_lines": 0,
+          "by_type": {
+            "main": {
+              "agents": 1,
+              "turns": 4,
+              "input": 8,
+              "output": 1801,
+              "cache_read": 84838,
+              "cache_write": 15212,
+              "cost_usd": 0.004792
+            },
+            "issue-flow:issue-worker": {
+              "agents": 1,
+              "turns": 9,
+              "input": 18,
+              "output": 3363,
+              "cache_read": 282268,
+              "cache_write": 14283,
+              "cost_usd": 0.0976
+            }
+          }
+        },
+        "pricing_date": "2026-11-21"
+      },
+      "tokens": {
+        "main": 101859,
+        "subagents": 299932
+      }
+    },
+    {
+      "case": "worker-easy-negative-qty",
+      "run": 3,
+      "variant": {
+        "plugin_dir": "issue-flow (branch issue/109-sonnet-worker: 0.20.0 plus the eval harness, issue-worker model: sonnet)",
+        "git_sha": "1f96b464fcf426f99c4537a8c23f23aa02f92a5e",
+        "version": "0.20.0"
+      },
+      "effort": "medium",
+      "ok": true,
+      "score": 1.0,
+      "graders": [
+        {
+          "type": "hidden_tests",
+          "passed": true,
+          "detail": "hidden tests on refs/heads/issue/2-reject-negative-qty 9843454e: pass: Ran 2 tests in 0.000s | OK"
+        },
+        {
+          "type": "verdict",
+          "passed": true,
+          "detail": "outcome ready-to-merge, 2 criteria"
+        },
+        {
+          "type": "diff_scope",
+          "passed": true,
+          "detail": "refs/heads/issue/2-reject-negative-qty changes 3 path(s), all allowed"
+        },
+        {
+          "type": "gh_log",
+          "passed": true,
+          "detail": "0 expected, 1 forbidden"
+        }
+      ],
+      "deterministic": {
+        "passed": 4,
+        "total": 4
+      },
+      "llm": {
+        "passed": 0,
+        "total": 0
+      },
+      "cost_usd": 0.0753812,
+      "judge_cost_usd": 0.0,
+      "usage": {
+        "input": 4,
+        "output": 1291,
+        "cache_read": 49844,
+        "cache_write": 2894
+      },
+      "model_usage": {
+        "claude-haiku-5-5": {
+          "inputTokens": 8,
+          "outputTokens": 1902,
+          "cacheReadInputTokens": 84810,
+          "cacheCreationInputTokens": 15213,
+          "webSearchRequests": 0,
+          "costUSD": 0.0048425,
+          "contextWindow": 1000000,
+          "maxOutputTokens": 128000,
+          "thinkingTokens": 336,
+          "cacheCreationEphemeral5mInputTokens": 0,
+          "cacheCreationEphemeral1hInputTokens": 15213,
+          "canonicalModel": "claude-haiku-5-5",
+          "provider": "firstParty",
+          "costBasis": "list"
+        },
+        "claude-sonnet-5-5": {
+          "inputTokens": 16,
+          "outputTokens": 2622,
+          "cacheReadInputTokens": 217942,
+          "cacheCreationInputTokens": 8997,
+          "webSearchRequests": 0,
+          "costUSD": 0.0705387,
+          "contextWindow": 1000000,
+          "maxOutputTokens": 128000,
+          "thinkingTokens": 166,
+          "cacheCreationEphemeral5mInputTokens": 8997,
+          "cacheCreationEphemeral1hInputTokens": 0,
+          "canonicalModel": "claude-sonnet-5-5",
+          "provider": "firstParty",
+          "costBasis": "list"
+        }
+      },
+      "turns": 2,
+      "duration_s": 5.171,
+      "wall_s": 27.158,
+      "session_id": "59d3bf31-8df3-4c58-aea2-5b338016e7af",
+      "transcript": null,
+      "model": "haiku",
+      "error": null,
+      "sandbox": null,
+      "agents": {
+        "agents": [
+          {
+            "type": "main",
+            "id": "59d3bf31-8df3-4c58-aea2-5b338016e7af",
+            "turns": 4,
+            "input": 8,
+            "output": 1902,
+            "cache_read": 84810,
+            "cache_write": 15213,
+            "model": "claude-haiku-5-5",
+            "cost_usd": 0.004842
+          },
+          {
+            "type": "issue-flow:issue-worker",
+            "id": "a0c266c16dae4603d",
+            "turns": 8,
+            "input": 16,
+            "output": 2622,
+            "cache_read": 217942,
+            "cache_write": 8997,
+            "model": "claude-sonnet-5-5",
+            "cost_usd": 0.070539
+          }
+        ],
+        "totals": {
+          "turns": 12,
+          "input": 24,
+          "output": 4524,
+          "cache_read": 302752,
+          "cache_write": 24210,
+          "cost_usd": 0.075381,
+          "unpriced_models": [],
+          "skipped_lines": 0,
+          "by_type": {
+            "main": {
+              "agents": 1,
+              "turns": 4,
+              "input": 8,
+              "output": 1902,
+              "cache_read": 84810,
+              "cache_write": 15213,
+              "cost_usd": 0.004842
+            },
+            "issue-flow:issue-worker": {
+              "agents": 1,
+              "turns": 8,
+              "input": 16,
+              "output": 2622,
+              "cache_read": 217942,
+              "cache_write": 8997,
+              "cost_usd": 0.070539
+            }
+          }
+        },
+        "pricing_date": "2026-11-21"
+      },
+      "tokens": {
+        "main": 101933,
+        "subagents": 229577
+      }
+    },
+    {
+      "case": "worker-hard-ambiguous-tax",
+      "run": 1,
+      "variant": {
+        "plugin_dir": "issue-flow (branch issue/109-sonnet-worker: 0.20.0 plus the eval harness, issue-worker model: sonnet)",
+        "git_sha": "1f96b464fcf426f99c4537a8c23f23aa02f92a5e",
+        "version": "0.20.0"
+      },
+      "effort": "medium",
+      "ok": true,
+      "score": 1.0,
+      "graders": [
+        {
+          "type": "verdict",
+          "passed": true,
+          "detail": "outcome needs-feedback, 1 criteria"
+        },
+        {
+          "type": "diff_scope",
+          "passed": true,
+          "detail": "no commits beyond the fixture"
+        },
+        {
+          "type": "gh_log",
+          "passed": true,
+          "detail": "0 expected, 2 forbidden"
+        }
+      ],
+      "deterministic": {
+        "passed": 3,
+        "total": 3
+      },
+      "llm": {
+        "passed": 0,
+        "total": 0
+      },
+      "cost_usd": 0.05176721,
+      "judge_cost_usd": 0.0,
+      "usage": {
+        "input": 4,
+        "output": 1105,
+        "cache_read": 49714,
+        "cache_write": 2606
+      },
+      "model_usage": {
+        "claude-haiku-5-5": {
+          "inputTokens": 8,
+          "outputTokens": 1709,
+          "cacheReadInputTokens": 84681,
+          "cacheCreationInputTokens": 14904,
+          "webSearchRequests": 0,
+          "costUSD": 0.00468291,
+          "contextWindow": 1000000,
+          "maxOutputTokens": 128000,
+          "thinkingTokens": 94,
+          "cacheCreationEphemeral5mInputTokens": 0,
+          "cacheCreationEphemeral1hInputTokens": 14904,
+          "canonicalModel": "claude-haiku-5-5",
+          "provider": "firstParty",
+          "costBasis": "list"
+        },
+        "claude-sonnet-5-5": {
+          "inputTokens": 10,
+          "outputTokens": 1289,
+          "cacheReadInputTokens": 130218,
+          "cacheCreationInputTokens": 8461,
+          "webSearchRequests": 0,
+          "costUSD": 0.0470843,
+          "contextWindow": 1000000,
+          "maxOutputTokens": 128000,
+          "thinkingTokens": 72,
+          "cacheCreationEphemeral5mInputTokens": 8461,
+          "cacheCreationEphemeral1hInputTokens": 0,
+          "canonicalModel": "claude-sonnet-5-5",
+          "provider": "firstParty",
+          "costBasis": "list"
+        }
+      },
+      "turns": 2,
+      "duration_s": 4.24,
+      "wall_s": 18.763,
+      "session_id": "25bbfa68-ee24-4ad1-880c-69fc14413a5b",
+      "transcript": null,
+      "model": "haiku",
+      "error": null,
+      "sandbox": null,
+      "agents": {
+        "agents": [
+          {
+            "type": "main",
+            "id": "25bbfa68-ee24-4ad1-880c-69fc14413a5b",
+            "turns": 4,
+            "input": 8,
+            "output": 1709,
+            "cache_read": 84681,
+            "cache_write": 14904,
+            "model": "claude-haiku-5-5",
+            "cost_usd": 0.004683
+          },
+          {
+            "type": "issue-flow:issue-worker",
+            "id": "a32fb275052af3850",
+            "turns": 5,
+            "input": 10,
+            "output": 1289,
+            "cache_read": 130218,
+            "cache_write": 8461,
+            "model": "claude-sonnet-5-5",
+            "cost_usd": 0.047084
+          }
+        ],
+        "totals": {
+          "turns": 9,
+          "input": 18,
+          "output": 2998,
+          "cache_read": 214899,
+          "cache_write": 23365,
+          "cost_usd": 0.051767,
+          "unpriced_models": [],
+          "skipped_lines": 0,
+          "by_type": {
+            "main": {
+              "agents": 1,
+              "turns": 4,
+              "input": 8,
+              "output": 1709,
+              "cache_read": 84681,
+              "cache_write": 14904,
+              "cost_usd": 0.004683
+            },
+            "issue-flow:issue-worker": {
+              "agents": 1,
+              "turns": 5,
+              "input": 10,
+              "output": 1289,
+              "cache_read": 130218,
+              "cache_write": 8461,
+              "cost_usd": 0.047084
+            }
+          }
+        },
+        "pricing_date": "2026-11-21"
+      },
+      "tokens": {
+        "main": 101302,
+        "subagents": 139978
+      }
+    },
+    {
+      "case": "worker-hard-ambiguous-tax",
+      "run": 2,
+      "variant": {
+        "plugin_dir": "issue-flow (branch issue/109-sonnet-worker: 0.20.0 plus the eval harness, issue-worker model: sonnet)",
+        "git_sha": "1f96b464fcf426f99c4537a8c23f23aa02f92a5e",
+        "version": "0.20.0"
+      },
+      "effort": "medium",
+      "ok": true,
+      "score": 1.0,
+      "graders": [
+        {
+          "type": "verdict",
+          "passed": true,
+          "detail": "outcome needs-feedback, 1 criteria"
+        },
+        {
+          "type": "diff_scope",
+          "passed": true,
+          "detail": "no commits beyond the fixture"
+        },
+        {
+          "type": "gh_log",
+          "passed": true,
+          "detail": "0 expected, 2 forbidden"
+        }
+      ],
+      "deterministic": {
+        "passed": 3,
+        "total": 3
+      },
+      "llm": {
+        "passed": 0,
+        "total": 0
+      },
+      "cost_usd": 0.05177663,
+      "judge_cost_usd": 0.0,
+      "usage": {
+        "input": 4,
+        "output": 1238,
+        "cache_read": 49647,
+        "cache_write": 2734
+      },
+      "model_usage": {
+        "claude-haiku-5-5": {
+          "inputTokens": 8,
+          "outputTokens": 1857,
+          "cacheReadInputTokens": 84613,
+          "cacheCreationInputTokens": 15033,
+          "webSearchRequests": 0,
+          "costUSD": 0.00478203,
+          "contextWindow": 1000000,
+          "maxOutputTokens": 128000,
+          "thinkingTokens": 189,
+          "cacheCreationEphemeral5mInputTokens": 0,
+          "cacheCreationEphemeral1hInputTokens": 15033,
+          "canonicalModel": "claude-haiku-5-5",
+          "provider": "firstParty",
+          "costBasis": "list"
+        },
+        "claude-sonnet-5-5": {
+          "inputTokens": 6,
+          "outputTokens": 1062,
+          "cacheReadInputTokens": 75576,
+          "cacheCreationInputTokens": 11522,
+          "webSearchRequests": 0,
+          "costUSD": 0.0469946,
+          "contextWindow": 1000000,
+          "maxOutputTokens": 128000,
+          "thinkingTokens": 56,
+          "cacheCreationEphemeral5mInputTokens": 11522,
+          "cacheCreationEphemeral1hInputTokens": 0,
+          "canonicalModel": "claude-sonnet-5-5",
+          "provider": "firstParty",
+          "costBasis": "list"
+        }
+      },
+      "turns": 3,
+      "duration_s": 4.988,
+      "wall_s": 16.63,
+      "session_id": "120bfb92-00ab-4436-9eec-41e828593f81",
+      "transcript": null,
+      "model": "haiku",
+      "error": null,
+      "sandbox": null,
+      "agents": {
+        "agents": [
+          {
+            "type": "main",
+            "id": "120bfb92-00ab-4436-9eec-41e828593f81",
+            "turns": 4,
+            "input": 8,
+            "output": 1857,
+            "cache_read": 84613,
+            "cache_write": 15033,
+            "model": "claude-haiku-5-5",
+            "cost_usd": 0.004782
+          },
+          {
+            "type": "issue-flow:issue-worker",
+            "id": "aeab9565cb2defc46",
+            "turns": 3,
+            "input": 6,
+            "output": 1062,
+            "cache_read": 75576,
+            "cache_write": 11522,
+            "model": "claude-sonnet-5-5",
+            "cost_usd": 0.046995
+          }
+        ],
+        "totals": {
+          "turns": 7,
+          "input": 14,
+          "output": 2919,
+          "cache_read": 160189,
+          "cache_write": 26555,
+          "cost_usd": 0.051777,
+          "unpriced_models": [],
+          "skipped_lines": 0,
+          "by_type": {
+            "main": {
+              "agents": 1,
+              "turns": 4,
+              "input": 8,
+              "output": 1857,
+              "cache_read": 84613,
+              "cache_write": 15033,
+              "cost_usd": 0.004782
+            },
+            "issue-flow:issue-worker": {
+              "agents": 1,
+              "turns": 3,
+              "input": 6,
+              "output": 1062,
+              "cache_read": 75576,
+              "cache_write": 11522,
+              "cost_usd": 0.046995
+            }
+          }
+        },
+        "pricing_date": "2026-11-21"
+      },
+      "tokens": {
+        "main": 101511,
+        "subagents": 88166
+      }
+    },
+    {
+      "case": "worker-hard-ambiguous-tax",
+      "run": 3,
+      "variant": {
+        "plugin_dir": "issue-flow (branch issue/109-sonnet-worker: 0.20.0 plus the eval harness, issue-worker model: sonnet)",
+        "git_sha": "1f96b464fcf426f99c4537a8c23f23aa02f92a5e",
+        "version": "0.20.0"
+      },
+      "effort": "medium",
+      "ok": true,
+      "score": 1.0,
+      "graders": [
+        {
+          "type": "verdict",
+          "passed": true,
+          "detail": "outcome needs-feedback, 1 criteria"
+        },
+        {
+          "type": "diff_scope",
+          "passed": true,
+          "detail": "no commits beyond the fixture"
+        },
+        {
+          "type": "gh_log",
+          "passed": true,
+          "detail": "0 expected, 2 forbidden"
+        }
+      ],
+      "deterministic": {
+        "passed": 3,
+        "total": 3
+      },
+      "llm": {
+        "passed": 0,
+        "total": 0
+      },
+      "cost_usd": 0.039526769999999996,
+      "judge_cost_usd": 0.0,
+      "usage": {
+        "input": 4,
+        "output": 1072,
+        "cache_read": 49662,
+        "cache_write": 2539
+      },
+      "model_usage": {
+        "claude-haiku-5-5": {
+          "inputTokens": 8,
+          "outputTokens": 1691,
+          "cacheReadInputTokens": 84627,
+          "cacheCreationInputTokens": 14841,
+          "webSearchRequests": 0,
+          "costUSD": 0.00466077,
+          "contextWindow": 1000000,
+          "maxOutputTokens": 128000,
+          "thinkingTokens": 167,
+          "cacheCreationEphemeral5mInputTokens": 0,
+          "cacheCreationEphemeral1hInputTokens": 14841,
+          "canonicalModel": "claude-haiku-5-5",
+          "provider": "firstParty",
+          "costBasis": "list"
+        },
+        "claude-sonnet-5-5": {
+          "inputTokens": 6,
+          "outputTokens": 986,
+          "cacheReadInputTokens": 70865,
+          "cacheCreationInputTokens": 7163,
+          "webSearchRequests": 0,
+          "costUSD": 0.034866,
+          "contextWindow": 1000000,
+          "maxOutputTokens": 128000,
+          "thinkingTokens": 80,
+          "cacheCreationEphemeral5mInputTokens": 7163,
+          "cacheCreationEphemeral1hInputTokens": 0,
+          "canonicalModel": "claude-sonnet-5-5",
+          "provider": "firstParty",
+          "costBasis": "list"
+        }
+      },
+      "turns": 2,
+      "duration_s": 4.429,
+      "wall_s": 15.901,
+      "session_id": "78cc8980-172e-431e-b6ed-75e1e1a75803",
+      "transcript": null,
+      "model": "haiku",
+      "error": null,
+      "sandbox": null,
+      "agents": {
+        "agents": [
+          {
+            "type": "main",
+            "id": "78cc8980-172e-431e-b6ed-75e1e1a75803",
+            "turns": 4,
+            "input": 8,
+            "output": 1691,
+            "cache_read": 84627,
+            "cache_write": 14841,
+            "model": "claude-haiku-5-5",
+            "cost_usd": 0.004661
+          },
+          {
+            "type": "issue-flow:issue-worker",
+            "id": "a5e5a60d5118561ba",
+            "turns": 3,
+            "input": 6,
+            "output": 986,
+            "cache_read": 70865,
+            "cache_write": 7163,
+            "model": "claude-sonnet-5-5",
+            "cost_usd": 0.034866
+          }
+        ],
+        "totals": {
+          "turns": 7,
+          "input": 14,
+          "output": 2677,
+          "cache_read": 155492,
+          "cache_write": 22004,
+          "cost_usd": 0.039527,
+          "unpriced_models": [],
+          "skipped_lines": 0,
+          "by_type": {
+            "main": {
+              "agents": 1,
+              "turns": 4,
+              "input": 8,
+              "output": 1691,
+              "cache_read": 84627,
+              "cache_write": 14841,
+              "cost_usd": 0.004661
+            },
+            "issue-flow:issue-worker": {
+              "agents": 1,
+              "turns": 3,
+              "input": 6,
+              "output": 986,
+              "cache_read": 70865,
+              "cache_write": 7163,
+              "cost_usd": 0.034866
+            }
+          }
+        },
+        "pricing_date": "2026-11-21"
+      },
+      "tokens": {
+        "main": 101167,
+        "subagents": 79020
+      }
+    },
+    {
+      "case": "worker-hard-error-lines",
+      "run": 1,
+      "variant": {
+        "plugin_dir": "issue-flow (branch issue/109-sonnet-worker: 0.20.0 plus the eval harness, issue-worker model: sonnet)",
+        "git_sha": "1f96b464fcf426f99c4537a8c23f23aa02f92a5e",
+        "version": "0.20.0"
+      },
+      "effort": "medium",
+      "ok": true,
+      "score": 1.0,
+      "graders": [
+        {
+          "type": "hidden_tests",
+          "passed": true,
+          "detail": "hidden tests on refs/heads/issue/7-stock-file-errors 6b676c06: pass: Ran 4 tests in 0.106s | OK"
+        },
+        {
+          "type": "verdict",
+          "passed": true,
+          "detail": "outcome ready-to-merge, 4 criteria"
+        },
+        {
+          "type": "diff_scope",
+          "passed": true,
+          "detail": "refs/heads/issue/7-stock-file-errors changes 5 path(s), all allowed"
+        },
+        {
+          "type": "gh_log",
+          "passed": true,
+          "detail": "0 expected, 1 forbidden"
+        }
+      ],
+      "deterministic": {
+        "passed": 4,
+        "total": 4
+      },
+      "llm": {
+        "passed": 0,
+        "total": 0
+      },
+      "cost_usd": 0.12017099,
+      "judge_cost_usd": 0.0,
+      "usage": {
+        "input": 4,
+        "output": 1502,
+        "cache_read": 50191,
+        "cache_write": 3424
+      },
+      "model_usage": {
+        "claude-haiku-5-5": {
+          "inputTokens": 8,
+          "outputTokens": 2125,
+          "cacheReadInputTokens": 85169,
+          "cacheCreationInputTokens": 15763,
+          "webSearchRequests": 0,
+          "costUSD": 0.005067589999999999,
+          "contextWindow": 1000000,
+          "maxOutputTokens": 128000,
+          "thinkingTokens": 261,
+          "cacheCreationEphemeral5mInputTokens": 0,
+          "cacheCreationEphemeral1hInputTokens": 15763,
+          "canonicalModel": "claude-haiku-5-5",
+          "provider": "firstParty",
+          "costBasis": "list"
+        },
+        "claude-sonnet-5-5": {
+          "inputTokens": 20,
+          "outputTokens": 5418,
+          "cacheReadInputTokens": 293934,
+          "cacheCreationInputTokens": 12596,
+          "webSearchRequests": 0,
+          "costUSD": 0.1151034,
+          "contextWindow": 1000000,
+          "maxOutputTokens": 128000,
+          "thinkingTokens": 358,
+          "cacheCreationEphemeral5mInputTokens": 12596,
+          "cacheCreationEphemeral1hInputTokens": 0,
+          "canonicalModel": "claude-sonnet-5-5",
+          "provider": "firstParty",
+          "costBasis": "list"
+        }
+      },
+      "turns": 2,
+      "duration_s": 5.497,
+      "wall_s": 44.599,
+      "session_id": "0a549e88-69e3-4406-b8c2-09dffb5a670e",
+      "transcript": null,
+      "model": "haiku",
+      "error": null,
+      "sandbox": null,
+      "agents": {
+        "agents": [
+          {
+            "type": "main",
+            "id": "0a549e88-69e3-4406-b8c2-09dffb5a670e",
+            "turns": 4,
+            "input": 8,
+            "output": 2125,
+            "cache_read": 85169,
+            "cache_write": 15763,
+            "model": "claude-haiku-5-5",
+            "cost_usd": 0.005068
+          },
+          {
+            "type": "issue-flow:issue-worker",
+            "id": "a49d40c24b2019c80",
+            "turns": 10,
+            "input": 20,
+            "output": 5418,
+            "cache_read": 293934,
+            "cache_write": 12596,
+            "model": "claude-sonnet-5-5",
+            "cost_usd": 0.115103
+          }
+        ],
+        "totals": {
+          "turns": 14,
+          "input": 28,
+          "output": 7543,
+          "cache_read": 379103,
+          "cache_write": 28359,
+          "cost_usd": 0.120171,
+          "unpriced_models": [],
+          "skipped_lines": 0,
+          "by_type": {
+            "main": {
+              "agents": 1,
+              "turns": 4,
+              "input": 8,
+              "output": 2125,
+              "cache_read": 85169,
+              "cache_write": 15763,
+              "cost_usd": 0.005068
+            },
+            "issue-flow:issue-worker": {
+              "agents": 1,
+              "turns": 10,
+              "input": 20,
+              "output": 5418,
+              "cache_read": 293934,
+              "cache_write": 12596,
+              "cost_usd": 0.115103
+            }
+          }
+        },
+        "pricing_date": "2026-11-21"
+      },
+      "tokens": {
+        "main": 103065,
+        "subagents": 311968
+      }
+    },
+    {
+      "case": "worker-hard-error-lines",
+      "run": 2,
+      "variant": {
+        "plugin_dir": "issue-flow (branch issue/109-sonnet-worker: 0.20.0 plus the eval harness, issue-worker model: sonnet)",
+        "git_sha": "1f96b464fcf426f99c4537a8c23f23aa02f92a5e",
+        "version": "0.20.0"
+      },
+      "effort": "medium",
+      "ok": true,
+      "score": 1.0,
+      "graders": [
+        {
+          "type": "hidden_tests",
+          "passed": true,
+          "detail": "hidden tests on refs/heads/issue/7-stock-file-errors 5e4093ef: pass: Ran 4 tests in 0.113s | OK"
+        },
+        {
+          "type": "verdict",
+          "passed": true,
+          "detail": "outcome ready-to-merge, 4 criteria"
+        },
+        {
+          "type": "diff_scope",
+          "passed": true,
+          "detail": "refs/heads/issue/7-stock-file-errors changes 5 path(s), all allowed"
+        },
+        {
+          "type": "gh_log",
+          "passed": true,
+          "detail": "0 expected, 1 forbidden"
+        }
+      ],
+      "deterministic": {
+        "passed": 4,
+        "total": 4
+      },
+      "llm": {
+        "passed": 0,
+        "total": 0
+      },
+      "cost_usd": 0.12922854,
+      "judge_cost_usd": 0.0,
+      "usage": {
+        "input": 6,
+        "output": 1738,
+        "cache_read": 76996,
+        "cache_write": 3958
+      },
+      "model_usage": {
+        "claude-haiku-5-5": {
+          "inputTokens": 10,
+          "outputTokens": 2361,
+          "cacheReadInputTokens": 111974,
+          "cacheCreationInputTokens": 16296,
+          "webSearchRequests": 0,
+          "costUSD": 0.00556044,
+          "contextWindow": 1000000,
+          "maxOutputTokens": 128000,
+          "thinkingTokens": 168,
+          "cacheCreationEphemeral5mInputTokens": 0,
+          "cacheCreationEphemeral1hInputTokens": 16296,
+          "canonicalModel": "claude-haiku-5-5",
+          "provider": "firstParty",
+          "costBasis": "list"
+        },
+        "claude-sonnet-5-5": {
+          "inputTokens": 22,
+          "outputTokens": 5969,
+          "cacheReadInputTokens": 326566,
+          "cacheCreationInputTokens": 12511,
+          "webSearchRequests": 0,
+          "costUSD": 0.1236681,
+          "contextWindow": 1000000,
+          "maxOutputTokens": 128000,
+          "thinkingTokens": 290,
+          "cacheCreationEphemeral5mInputTokens": 12511,
+          "cacheCreationEphemeral1hInputTokens": 0,
+          "canonicalModel": "claude-sonnet-5-5",
+          "provider": "firstParty",
+          "costBasis": "list"
+        }
+      },
+      "turns": 3,
+      "duration_s": 6.62,
+      "wall_s": 49.806,
+      "session_id": "f12fe832-7994-4d7c-bfdf-dcf7d00f822f",
+      "transcript": null,
+      "model": "haiku",
+      "error": null,
+      "sandbox": null,
+      "agents": {
+        "agents": [
+          {
+            "type": "main",
+            "id": "f12fe832-7994-4d7c-bfdf-dcf7d00f822f",
+            "turns": 5,
+            "input": 10,
+            "output": 2361,
+            "cache_read": 111974,
+            "cache_write": 16296,
+            "model": "claude-haiku-5-5",
+            "cost_usd": 0.00556
+          },
+          {
+            "type": "issue-flow:issue-worker",
+            "id": "aecf57f103153ef20",
+            "turns": 11,
+            "input": 22,
+            "output": 5969,
+            "cache_read": 326566,
+            "cache_write": 12511,
+            "model": "claude-sonnet-5-5",
+            "cost_usd": 0.123668
+          }
+        ],
+        "totals": {
+          "turns": 16,
+          "input": 32,
+          "output": 8330,
+          "cache_read": 438540,
+          "cache_write": 28807,
+          "cost_usd": 0.129229,
+          "unpriced_models": [],
+          "skipped_lines": 0,
+          "by_type": {
+            "main": {
+              "agents": 1,
+              "turns": 5,
+              "input": 10,
+              "output": 2361,
+              "cache_read": 111974,
+              "cache_write": 16296,
+              "cost_usd": 0.00556
+            },
+            "issue-flow:issue-worker": {
+              "agents": 1,
+              "turns": 11,
+              "input": 22,
+              "output": 5969,
+              "cache_read": 326566,
+              "cache_write": 12511,
+              "cost_usd": 0.123668
+            }
+          }
+        },
+        "pricing_date": "2026-11-21"
+      },
+      "tokens": {
+        "main": 130641,
+        "subagents": 345068
+      }
+    },
+    {
+      "case": "worker-hard-error-lines",
+      "run": 3,
+      "variant": {
+        "plugin_dir": "issue-flow (branch issue/109-sonnet-worker: 0.20.0 plus the eval harness, issue-worker model: sonnet)",
+        "git_sha": "1f96b464fcf426f99c4537a8c23f23aa02f92a5e",
+        "version": "0.20.0"
+      },
+      "effort": "medium",
+      "ok": true,
+      "score": 1.0,
+      "graders": [
+        {
+          "type": "hidden_tests",
+          "passed": true,
+          "detail": "hidden tests on refs/heads/issue/7-stock-file-errors 0fe2eea8: pass: Ran 4 tests in 0.104s | OK"
+        },
+        {
+          "type": "verdict",
+          "passed": true,
+          "detail": "outcome ready-to-merge, 4 criteria"
+        },
+        {
+          "type": "diff_scope",
+          "passed": true,
+          "detail": "refs/heads/issue/7-stock-file-errors changes 5 path(s), all allowed"
+        },
+        {
+          "type": "gh_log",
+          "passed": true,
+          "detail": "0 expected, 1 forbidden"
+        }
+      ],
+      "deterministic": {
+        "passed": 4,
+        "total": 4
+      },
+      "llm": {
+        "passed": 0,
+        "total": 0
+      },
+      "cost_usd": 0.12347053000000001,
+      "judge_cost_usd": 0.0,
+      "usage": {
+        "input": 4,
+        "output": 1215,
+        "cache_read": 50144,
+        "cache_write": 3035
+      },
+      "model_usage": {
+        "claude-haiku-5-5": {
+          "inputTokens": 8,
+          "outputTokens": 1834,
+          "cacheReadInputTokens": 85113,
+          "cacheCreationInputTokens": 15360,
+          "webSearchRequests": 0,
+          "costUSD": 0.004840929999999999,
+          "contextWindow": 1000000,
+          "maxOutputTokens": 128000,
+          "thinkingTokens": 0,
+          "cacheCreationEphemeral5mInputTokens": 0,
+          "cacheCreationEphemeral1hInputTokens": 15360,
+          "canonicalModel": "claude-haiku-5-5",
+          "provider": "firstParty",
+          "costBasis": "list"
+        },
+        "claude-sonnet-5-5": {
+          "inputTokens": 20,
+          "outputTokens": 4726,
+          "cacheReadInputTokens": 325546,
+          "cacheCreationInputTokens": 15510,
+          "webSearchRequests": 0,
+          "costUSD": 0.11862960000000002,
+          "contextWindow": 1000000,
+          "maxOutputTokens": 128000,
+          "thinkingTokens": 205,
+          "cacheCreationEphemeral5mInputTokens": 15510,
+          "cacheCreationEphemeral1hInputTokens": 0,
+          "canonicalModel": "claude-sonnet-5-5",
+          "provider": "firstParty",
+          "costBasis": "list"
+        }
+      },
+      "turns": 2,
+      "duration_s": 4.364,
+      "wall_s": 37.513,
+      "session_id": "977e8fc4-85f1-46d7-a4d3-10ab4abc999a",
+      "transcript": null,
+      "model": "haiku",
+      "error": null,
+      "sandbox": null,
+      "agents": {
+        "agents": [
+          {
+            "type": "main",
+            "id": "977e8fc4-85f1-46d7-a4d3-10ab4abc999a",
+            "turns": 4,
+            "input": 8,
+            "output": 1834,
+            "cache_read": 85113,
+            "cache_write": 15360,
+            "model": "claude-haiku-5-5",
+            "cost_usd": 0.004841
+          },
+          {
+            "type": "issue-flow:issue-worker",
+            "id": "a1957e722d13dc886",
+            "turns": 10,
+            "input": 20,
+            "output": 4726,
+            "cache_read": 325546,
+            "cache_write": 15510,
+            "model": "claude-sonnet-5-5",
+            "cost_usd": 0.11863
+          }
+        ],
+        "totals": {
+          "turns": 14,
+          "input": 28,
+          "output": 6560,
+          "cache_read": 410659,
+          "cache_write": 30870,
+          "cost_usd": 0.123471,
+          "unpriced_models": [],
+          "skipped_lines": 0,
+          "by_type": {
+            "main": {
+              "agents": 1,
+              "turns": 4,
+              "input": 8,
+              "output": 1834,
+              "cache_read": 85113,
+              "cache_write": 15360,
+              "cost_usd": 0.004841
+            },
+            "issue-flow:issue-worker": {
+              "agents": 1,
+              "turns": 10,
+              "input": 20,
+              "output": 4726,
+              "cache_read": 325546,
+              "cache_write": 15510,
+              "cost_usd": 0.11863
+            }
+          }
+        },
+        "pricing_date": "2026-11-21"
+      },
+      "tokens": {
+        "main": 102315,
+        "subagents": 345802
+      }
+    },
+    {
+      "case": "worker-hard-location",
+      "run": 1,
+      "variant": {
+        "plugin_dir": "issue-flow (branch issue/109-sonnet-worker: 0.20.0 plus the eval harness, issue-worker model: sonnet)",
+        "git_sha": "1f96b464fcf426f99c4537a8c23f23aa02f92a5e",
+        "version": "0.20.0"
+      },
+      "effort": "medium",
+      "ok": true,
+      "score": 1.0,
+      "graders": [
+        {
+          "type": "hidden_tests",
+          "passed": true,
+          "detail": "hidden tests on refs/heads/issue/6-stock-location c49aa8ad: pass: Ran 5 tests in 0.141s | OK"
+        },
+        {
+          "type": "verdict",
+          "passed": true,
+          "detail": "outcome ready-to-merge, 6 criteria"
+        },
+        {
+          "type": "diff_scope",
+          "passed": true,
+          "detail": "refs/heads/issue/6-stock-location changes 7 path(s), all allowed"
+        },
+        {
+          "type": "gh_log",
+          "passed": true,
+          "detail": "0 expected, 1 forbidden"
+        }
+      ],
+      "deterministic": {
+        "passed": 4,
+        "total": 4
+      },
+      "llm": {
+        "passed": 0,
+        "total": 0
+      },
+      "cost_usd": 0.11559673,
+      "judge_cost_usd": 0.0,
+      "usage": {
+        "input": 4,
+        "output": 1133,
+        "cache_read": 50016,
+        "cache_write": 2871
+      },
+      "model_usage": {
+        "claude-haiku-5-5": {
+          "inputTokens": 8,
+          "outputTokens": 1726,
+          "cacheReadInputTokens": 84983,
+          "cacheCreationInputTokens": 15176,
+          "webSearchRequests": 0,
+          "costUSD": 0.00474883,
+          "contextWindow": 1000000,
+          "maxOutputTokens": 128000,
+          "thinkingTokens": 0,
+          "cacheCreationEphemeral5mInputTokens": 0,
+          "cacheCreationEphemeral1hInputTokens": 15176,
+          "canonicalModel": "claude-haiku-5-5",
+          "provider": "firstParty",
+          "costBasis": "list"
+        },
+        "claude-sonnet-5-5": {
+          "inputTokens": 14,
+          "outputTokens": 4849,
+          "cacheReadInputTokens": 214724,
+          "cacheCreationInputTokens": 16343,
+          "webSearchRequests": 0,
+          "costUSD": 0.11084790000000001,
+          "contextWindow": 1000000,
+          "maxOutputTokens": 128000,
+          "thinkingTokens": 230,
+          "cacheCreationEphemeral5mInputTokens": 16343,
+          "cacheCreationEphemeral1hInputTokens": 0,
+          "canonicalModel": "claude-sonnet-5-5",
+          "provider": "firstParty",
+          "costBasis": "list"
+        }
+      },
+      "turns": 2,
+      "duration_s": 4.279,
+      "wall_s": 38.472,
+      "session_id": "3bba5c8b-6f78-4ecc-8d5a-6f80326c4188",
+      "transcript": null,
+      "model": "haiku",
+      "error": null,
+      "sandbox": null,
+      "agents": {
+        "agents": [
+          {
+            "type": "main",
+            "id": "3bba5c8b-6f78-4ecc-8d5a-6f80326c4188",
+            "turns": 4,
+            "input": 8,
+            "output": 1726,
+            "cache_read": 84983,
+            "cache_write": 15176,
+            "model": "claude-haiku-5-5",
+            "cost_usd": 0.004749
+          },
+          {
+            "type": "issue-flow:issue-worker",
+            "id": "af62850d1e988d67f",
+            "turns": 7,
+            "input": 14,
+            "output": 4849,
+            "cache_read": 214724,
+            "cache_write": 16343,
+            "model": "claude-sonnet-5-5",
+            "cost_usd": 0.110848
+          }
+        ],
+        "totals": {
+          "turns": 11,
+          "input": 22,
+          "output": 6575,
+          "cache_read": 299707,
+          "cache_write": 31519,
+          "cost_usd": 0.115597,
+          "unpriced_models": [],
+          "skipped_lines": 0,
+          "by_type": {
+            "main": {
+              "agents": 1,
+              "turns": 4,
+              "input": 8,
+              "output": 1726,
+              "cache_read": 84983,
+              "cache_write": 15176,
+              "cost_usd": 0.004749
+            },
+            "issue-flow:issue-worker": {
+              "agents": 1,
+              "turns": 7,
+              "input": 14,
+              "output": 4849,
+              "cache_read": 214724,
+              "cache_write": 16343,
+              "cost_usd": 0.110848
+            }
+          }
+        },
+        "pricing_date": "2026-11-21"
+      },
+      "tokens": {
+        "main": 101893,
+        "subagents": 235930
+      }
+    },
+    {
+      "case": "worker-hard-location",
+      "run": 2,
+      "variant": {
+        "plugin_dir": "issue-flow (branch issue/109-sonnet-worker: 0.20.0 plus the eval harness, issue-worker model: sonnet)",
+        "git_sha": "1f96b464fcf426f99c4537a8c23f23aa02f92a5e",
+        "version": "0.20.0"
+      },
+      "effort": "medium",
+      "ok": true,
+      "score": 1.0,
+      "graders": [
+        {
+          "type": "hidden_tests",
+          "passed": true,
+          "detail": "hidden tests on refs/heads/issue/6-stock-location 79fb9058: pass: Ran 5 tests in 0.179s | OK"
+        },
+        {
+          "type": "verdict",
+          "passed": true,
+          "detail": "outcome ready-to-merge, 6 criteria"
+        },
+        {
+          "type": "diff_scope",
+          "passed": true,
+          "detail": "refs/heads/issue/6-stock-location changes 7 path(s), all allowed"
+        },
+        {
+          "type": "gh_log",
+          "passed": true,
+          "detail": "0 expected, 1 forbidden"
+        }
+      ],
+      "deterministic": {
+        "passed": 4,
+        "total": 4
+      },
+      "llm": {
+        "passed": 0,
+        "total": 0
+      },
+      "cost_usd": 0.12164589999999999,
+      "judge_cost_usd": 0.0,
+      "usage": {
+        "input": 6,
+        "output": 1547,
+        "cache_read": 76605,
+        "cache_write": 3612
+      },
+      "model_usage": {
+        "claude-haiku-5-5": {
+          "inputTokens": 10,
+          "outputTokens": 2158,
+          "cacheReadInputTokens": 111570,
+          "cacheCreationInputTokens": 15934,
+          "webSearchRequests": 0,
+          "costUSD": 0.0053825,
+          "contextWindow": 1000000,
+          "maxOutputTokens": 128000,
+          "thinkingTokens": 180,
+          "cacheCreationEphemeral5mInputTokens": 0,
+          "cacheCreationEphemeral1hInputTokens": 15934,
+          "canonicalModel": "claude-haiku-5-5",
+          "provider": "firstParty",
+          "costBasis": "list"
+        },
+        "claude-sonnet-5-5": {
+          "inputTokens": 18,
+          "outputTokens": 5545,
+          "cacheReadInputTokens": 269124,
+          "cacheCreationInputTokens": 13546,
+          "webSearchRequests": 0,
+          "costUSD": 0.11626339999999999,
+          "contextWindow": 1000000,
+          "maxOutputTokens": 128000,
+          "thinkingTokens": 434,
+          "cacheCreationEphemeral5mInputTokens": 13546,
+          "cacheCreationEphemeral1hInputTokens": 0,
+          "canonicalModel": "claude-sonnet-5-5",
+          "provider": "firstParty",
+          "costBasis": "list"
+        }
+      },
+      "turns": 3,
+      "duration_s": 6.205,
+      "wall_s": 45.635,
+      "session_id": "f5a876c1-797c-4cee-8dca-1c0050262d99",
+      "transcript": null,
+      "model": "haiku",
+      "error": null,
+      "sandbox": null,
+      "agents": {
+        "agents": [
+          {
+            "type": "main",
+            "id": "f5a876c1-797c-4cee-8dca-1c0050262d99",
+            "turns": 5,
+            "input": 10,
+            "output": 2158,
+            "cache_read": 111570,
+            "cache_write": 15934,
+            "model": "claude-haiku-5-5",
+            "cost_usd": 0.005383
+          },
+          {
+            "type": "issue-flow:issue-worker",
+            "id": "a096ce9a6c339e4d8",
+            "turns": 9,
+            "input": 18,
+            "output": 5545,
+            "cache_read": 269124,
+            "cache_write": 13546,
+            "model": "claude-sonnet-5-5",
+            "cost_usd": 0.116263
+          }
+        ],
+        "totals": {
+          "turns": 14,
+          "input": 28,
+          "output": 7703,
+          "cache_read": 380694,
+          "cache_write": 29480,
+          "cost_usd": 0.121646,
+          "unpriced_models": [],
+          "skipped_lines": 0,
+          "by_type": {
+            "main": {
+              "agents": 1,
+              "turns": 5,
+              "input": 10,
+              "output": 2158,
+              "cache_read": 111570,
+              "cache_write": 15934,
+              "cost_usd": 0.005383
+            },
+            "issue-flow:issue-worker": {
+              "agents": 1,
+              "turns": 9,
+              "input": 18,
+              "output": 5545,
+              "cache_read": 269124,
+              "cache_write": 13546,
+              "cost_usd": 0.116263
+            }
+          }
+        },
+        "pricing_date": "2026-11-21"
+      },
+      "tokens": {
+        "main": 129672,
+        "subagents": 288233
+      }
+    },
+    {
+      "case": "worker-hard-location",
+      "run": 3,
+      "variant": {
+        "plugin_dir": "issue-flow (branch issue/109-sonnet-worker: 0.20.0 plus the eval harness, issue-worker model: sonnet)",
+        "git_sha": "1f96b464fcf426f99c4537a8c23f23aa02f92a5e",
+        "version": "0.20.0"
+      },
+      "effort": "medium",
+      "ok": true,
+      "score": 1.0,
+      "graders": [
+        {
+          "type": "hidden_tests",
+          "passed": true,
+          "detail": "hidden tests on refs/heads/issue/6-stock-location 0d873418: pass: Ran 5 tests in 0.149s | OK"
+        },
+        {
+          "type": "verdict",
+          "passed": true,
+          "detail": "outcome ready-to-merge, 6 criteria"
+        },
+        {
+          "type": "diff_scope",
+          "passed": true,
+          "detail": "refs/heads/issue/6-stock-location changes 8 path(s), all allowed"
+        },
+        {
+          "type": "gh_log",
+          "passed": true,
+          "detail": "0 expected, 1 forbidden"
+        }
+      ],
+      "deterministic": {
+        "passed": 4,
+        "total": 4
+      },
+      "llm": {
+        "passed": 0,
+        "total": 0
+      },
+      "cost_usd": 0.10933115,
+      "judge_cost_usd": 0.0,
+      "usage": {
+        "input": 6,
+        "output": 1488,
+        "cache_read": 76401,
+        "cache_write": 3455
+      },
+      "model_usage": {
+        "claude-haiku-5-5": {
+          "inputTokens": 10,
+          "outputTokens": 2099,
+          "cacheReadInputTokens": 111365,
+          "cacheCreationInputTokens": 15764,
+          "webSearchRequests": 0,
+          "costUSD": 0.005316950000000001,
+          "contextWindow": 1000000,
+          "maxOutputTokens": 128000,
+          "thinkingTokens": 210,
+          "cacheCreationEphemeral5mInputTokens": 0,
+          "cacheCreationEphemeral1hInputTokens": 15764,
+          "canonicalModel": "claude-haiku-5-5",
+          "provider": "firstParty",
+          "costBasis": "list"
+        },
+        "claude-sonnet-5-5": {
+          "inputTokens": 16,
+          "outputTokens": 4880,
+          "cacheReadInputTokens": 233797,
+          "cacheCreationInputTokens": 12721,
+          "webSearchRequests": 0,
+          "costUSD": 0.1040142,
+          "contextWindow": 1000000,
+          "maxOutputTokens": 128000,
+          "thinkingTokens": 137,
+          "cacheCreationEphemeral5mInputTokens": 12721,
+          "cacheCreationEphemeral1hInputTokens": 0,
+          "canonicalModel": "claude-sonnet-5-5",
+          "provider": "firstParty",
+          "costBasis": "list"
+        }
+      },
+      "turns": 3,
+      "duration_s": 6.295,
+      "wall_s": 39.721,
+      "session_id": "2a11eeab-d1de-421c-80ab-8fcf4744b84c",
+      "transcript": null,
+      "model": "haiku",
+      "error": null,
+      "sandbox": null,
+      "agents": {
+        "agents": [
+          {
+            "type": "main",
+            "id": "2a11eeab-d1de-421c-80ab-8fcf4744b84c",
+            "turns": 5,
+            "input": 10,
+            "output": 2099,
+            "cache_read": 111365,
+            "cache_write": 15764,
+            "model": "claude-haiku-5-5",
+            "cost_usd": 0.005317
+          },
+          {
+            "type": "issue-flow:issue-worker",
+            "id": "a925e89ea1148062b",
+            "turns": 8,
+            "input": 16,
+            "output": 4880,
+            "cache_read": 233797,
+            "cache_write": 12721,
+            "model": "claude-sonnet-5-5",
+            "cost_usd": 0.104014
+          }
+        ],
+        "totals": {
+          "turns": 13,
+          "input": 26,
+          "output": 6979,
+          "cache_read": 345162,
+          "cache_write": 28485,
+          "cost_usd": 0.109331,
+          "unpriced_models": [],
+          "skipped_lines": 0,
+          "by_type": {
+            "main": {
+              "agents": 1,
+              "turns": 5,
+              "input": 10,
+              "output": 2099,
+              "cache_read": 111365,
+              "cache_write": 15764,
+              "cost_usd": 0.005317
+            },
+            "issue-flow:issue-worker": {
+              "agents": 1,
+              "turns": 8,
+              "input": 16,
+              "output": 4880,
+              "cache_read": 233797,
+              "cache_write": 12721,
+              "cost_usd": 0.104014
+            }
+          }
+        },
+        "pricing_date": "2026-11-21"
+      },
+      "tokens": {
+        "main": 129238,
+        "subagents": 251414
+      }
+    },
+    {
+      "case": "worker-medium-csv-format",
+      "run": 1,
+      "variant": {
+        "plugin_dir": "issue-flow (branch issue/109-sonnet-worker: 0.20.0 plus the eval harness, issue-worker model: sonnet)",
+        "git_sha": "1f96b464fcf426f99c4537a8c23f23aa02f92a5e",
+        "version": "0.20.0"
+      },
+      "effort": "medium",
+      "ok": true,
+      "score": 1.0,
+      "graders": [
+        {
+          "type": "hidden_tests",
+          "passed": true,
+          "detail": "hidden tests on refs/heads/issue/3-list-csv-format 69e83a29: pass: Ran 3 tests in 0.112s | OK"
+        },
+        {
+          "type": "verdict",
+          "passed": true,
+          "detail": "outcome ready-to-merge, 4 criteria"
+        },
+        {
+          "type": "diff_scope",
+          "passed": true,
+          "detail": "refs/heads/issue/3-list-csv-format changes 5 path(s), all allowed"
+        },
+        {
+          "type": "gh_log",
+          "passed": true,
+          "detail": "0 expected, 1 forbidden"
+        }
+      ],
+      "deterministic": {
+        "passed": 4,
+        "total": 4
+      },
+      "llm": {
+        "passed": 0,
+        "total": 0
+      },
+      "cost_usd": 0.09313799999999998,
+      "judge_cost_usd": 0.0,
+      "usage": {
+        "input": 4,
+        "output": 1012,
+        "cache_read": 49968,
+        "cache_write": 2628
+      },
+      "model_usage": {
+        "claude-haiku-5-5": {
+          "inputTokens": 8,
+          "outputTokens": 1637,
+          "cacheReadInputTokens": 84940,
+          "cacheCreationInputTokens": 14969,
+          "webSearchRequests": 0,
+          "costUSD": 0.0046625,
+          "contextWindow": 1000000,
+          "maxOutputTokens": 128000,
+          "thinkingTokens": 0,
+          "cacheCreationEphemeral5mInputTokens": 0,
+          "cacheCreationEphemeral1hInputTokens": 14969,
+          "canonicalModel": "claude-haiku-5-5",
+          "provider": "firstParty",
+          "costBasis": "list"
+        },
+        "claude-sonnet-5-5": {
+          "inputTokens": 14,
+          "outputTokens": 3201,
+          "cacheReadInputTokens": 212675,
+          "cacheCreationInputTokens": 14068,
+          "webSearchRequests": 0,
+          "costUSD": 0.08847549999999998,
+          "contextWindow": 1000000,
+          "maxOutputTokens": 128000,
+          "thinkingTokens": 147,
+          "cacheCreationEphemeral5mInputTokens": 14068,
+          "cacheCreationEphemeral1hInputTokens": 0,
+          "canonicalModel": "claude-sonnet-5-5",
+          "provider": "firstParty",
+          "costBasis": "list"
+        }
+      },
+      "turns": 2,
+      "duration_s": 3.837,
+      "wall_s": 29.326,
+      "session_id": "8437cfb2-a520-4ae7-b556-75be474a1741",
+      "transcript": null,
+      "model": "haiku",
+      "error": null,
+      "sandbox": null,
+      "agents": {
+        "agents": [
+          {
+            "type": "main",
+            "id": "8437cfb2-a520-4ae7-b556-75be474a1741",
+            "turns": 4,
+            "input": 8,
+            "output": 1637,
+            "cache_read": 84940,
+            "cache_write": 14969,
+            "model": "claude-haiku-5-5",
+            "cost_usd": 0.004662
+          },
+          {
+            "type": "issue-flow:issue-worker",
+            "id": "afdbc5ec00ccb3c89",
+            "turns": 7,
+            "input": 14,
+            "output": 3201,
+            "cache_read": 212675,
+            "cache_write": 14068,
+            "model": "claude-sonnet-5-5",
+            "cost_usd": 0.088475
+          }
+        ],
+        "totals": {
+          "turns": 11,
+          "input": 22,
+          "output": 4838,
+          "cache_read": 297615,
+          "cache_write": 29037,
+          "cost_usd": 0.093138,
+          "unpriced_models": [],
+          "skipped_lines": 0,
+          "by_type": {
+            "main": {
+              "agents": 1,
+              "turns": 4,
+              "input": 8,
+              "output": 1637,
+              "cache_read": 84940,
+              "cache_write": 14969,
+              "cost_usd": 0.004662
+            },
+            "issue-flow:issue-worker": {
+              "agents": 1,
+              "turns": 7,
+              "input": 14,
+              "output": 3201,
+              "cache_read": 212675,
+              "cache_write": 14068,
+              "cost_usd": 0.088475
+            }
+          }
+        },
+        "pricing_date": "2026-11-21"
+      },
+      "tokens": {
+        "main": 101554,
+        "subagents": 229958
+      }
+    },
+    {
+      "case": "worker-medium-csv-format",
+      "run": 2,
+      "variant": {
+        "plugin_dir": "issue-flow (branch issue/109-sonnet-worker: 0.20.0 plus the eval harness, issue-worker model: sonnet)",
+        "git_sha": "1f96b464fcf426f99c4537a8c23f23aa02f92a5e",
+        "version": "0.20.0"
+      },
+      "effort": "medium",
+      "ok": true,
+      "score": 1.0,
+      "graders": [
+        {
+          "type": "hidden_tests",
+          "passed": true,
+          "detail": "hidden tests on refs/heads/issue/3-list-csv-format 6a8de03b: pass: Ran 3 tests in 0.088s | OK"
+        },
+        {
+          "type": "verdict",
+          "passed": true,
+          "detail": "outcome ready-to-merge, 4 criteria"
+        },
+        {
+          "type": "diff_scope",
+          "passed": true,
+          "detail": "refs/heads/issue/3-list-csv-format changes 5 path(s), all allowed"
+        },
+        {
+          "type": "gh_log",
+          "passed": true,
+          "detail": "0 expected, 1 forbidden"
+        }
+      ],
+      "deterministic": {
+        "passed": 4,
+        "total": 4
+      },
+      "llm": {
+        "passed": 0,
+        "total": 0
+      },
+      "cost_usd": 0.0968615,
+      "judge_cost_usd": 0.0,
+      "usage": {
+        "input": 4,
+        "output": 1058,
+        "cache_read": 49853,
+        "cache_write": 2678
+      },
+      "model_usage": {
+        "claude-haiku-5-5": {
+          "inputTokens": 8,
+          "outputTokens": 1659,
+          "cacheReadInputTokens": 84820,
+          "cacheCreationInputTokens": 14996,
+          "webSearchRequests": 0,
+          "costUSD": 0.004677700000000001,
+          "contextWindow": 1000000,
+          "maxOutputTokens": 128000,
+          "thinkingTokens": 108,
+          "cacheCreationEphemeral5mInputTokens": 0,
+          "cacheCreationEphemeral1hInputTokens": 14996,
+          "canonicalModel": "claude-haiku-5-5",
+          "provider": "firstParty",
+          "costBasis": "list"
+        },
+        "claude-sonnet-5-5": {
+          "inputTokens": 14,
+          "outputTokens": 3518,
+          "cacheReadInputTokens": 213058,
+          "cacheCreationInputTokens": 14268,
+          "webSearchRequests": 0,
+          "costUSD": 0.0921838,
+          "contextWindow": 1000000,
+          "maxOutputTokens": 128000,
+          "thinkingTokens": 265,
+          "cacheCreationEphemeral5mInputTokens": 14268,
+          "cacheCreationEphemeral1hInputTokens": 0,
+          "canonicalModel": "claude-sonnet-5-5",
+          "provider": "firstParty",
+          "costBasis": "list"
+        }
+      },
+      "turns": 2,
+      "duration_s": 4.155,
+      "wall_s": 31.596,
+      "session_id": "45807807-5e10-4e93-afbb-7db5c77ee3b2",
+      "transcript": null,
+      "model": "haiku",
+      "error": null,
+      "sandbox": null,
+      "agents": {
+        "agents": [
+          {
+            "type": "main",
+            "id": "45807807-5e10-4e93-afbb-7db5c77ee3b2",
+            "turns": 4,
+            "input": 8,
+            "output": 1659,
+            "cache_read": 84820,
+            "cache_write": 14996,
+            "model": "claude-haiku-5-5",
+            "cost_usd": 0.004678
+          },
+          {
+            "type": "issue-flow:issue-worker",
+            "id": "ab1cdd88fc19724c6",
+            "turns": 7,
+            "input": 14,
+            "output": 3518,
+            "cache_read": 213058,
+            "cache_write": 14268,
+            "model": "claude-sonnet-5-5",
+            "cost_usd": 0.092184
+          }
+        ],
+        "totals": {
+          "turns": 11,
+          "input": 22,
+          "output": 5177,
+          "cache_read": 297878,
+          "cache_write": 29264,
+          "cost_usd": 0.096861,
+          "unpriced_models": [],
+          "skipped_lines": 0,
+          "by_type": {
+            "main": {
+              "agents": 1,
+              "turns": 4,
+              "input": 8,
+              "output": 1659,
+              "cache_read": 84820,
+              "cache_write": 14996,
+              "cost_usd": 0.004678
+            },
+            "issue-flow:issue-worker": {
+              "agents": 1,
+              "turns": 7,
+              "input": 14,
+              "output": 3518,
+              "cache_read": 213058,
+              "cache_write": 14268,
+              "cost_usd": 0.092184
+            }
+          }
+        },
+        "pricing_date": "2026-11-21"
+      },
+      "tokens": {
+        "main": 101483,
+        "subagents": 230858
+      }
+    },
+    {
+      "case": "worker-medium-csv-format",
+      "run": 3,
+      "variant": {
+        "plugin_dir": "issue-flow (branch issue/109-sonnet-worker: 0.20.0 plus the eval harness, issue-worker model: sonnet)",
+        "git_sha": "1f96b464fcf426f99c4537a8c23f23aa02f92a5e",
+        "version": "0.20.0"
+      },
+      "effort": "medium",
+      "ok": true,
+      "score": 1.0,
+      "graders": [
+        {
+          "type": "hidden_tests",
+          "passed": true,
+          "detail": "hidden tests on refs/heads/issue/3-list-csv-format 34f177d9: pass: Ran 3 tests in 0.091s | OK"
+        },
+        {
+          "type": "verdict",
+          "passed": true,
+          "detail": "outcome ready-to-merge, 4 criteria"
+        },
+        {
+          "type": "diff_scope",
+          "passed": true,
+          "detail": "refs/heads/issue/3-list-csv-format changes 5 path(s), all allowed"
+        },
+        {
+          "type": "gh_log",
+          "passed": true,
+          "detail": "0 expected, 1 forbidden"
+        }
+      ],
+      "deterministic": {
+        "passed": 4,
+        "total": 4
+      },
+      "llm": {
+        "passed": 0,
+        "total": 0
+      },
+      "cost_usd": 0.08875671000000002,
+      "judge_cost_usd": 0.0,
+      "usage": {
+        "input": 4,
+        "output": 1399,
+        "cache_read": 50015,
+        "cache_write": 3227
+      },
+      "model_usage": {
+        "claude-haiku-5-5": {
+          "inputTokens": 8,
+          "outputTokens": 2006,
+          "cacheReadInputTokens": 84991,
+          "cacheCreationInputTokens": 15550,
+          "webSearchRequests": 0,
+          "costUSD": 0.0049637100000000005,
+          "contextWindow": 1000000,
+          "maxOutputTokens": 128000,
+          "thinkingTokens": 154,
+          "cacheCreationEphemeral5mInputTokens": 0,
+          "cacheCreationEphemeral1hInputTokens": 15550,
+          "canonicalModel": "claude-haiku-5-5",
+          "provider": "firstParty",
+          "costBasis": "list"
+        },
+        "claude-sonnet-5-5": {
+          "inputTokens": 16,
+          "outputTokens": 3317,
+          "cacheReadInputTokens": 228735,
+          "cacheCreationInputTokens": 11087,
+          "webSearchRequests": 0,
+          "costUSD": 0.083793,
+          "contextWindow": 1000000,
+          "maxOutputTokens": 128000,
+          "thinkingTokens": 60,
+          "cacheCreationEphemeral5mInputTokens": 11087,
+          "cacheCreationEphemeral1hInputTokens": 0,
+          "canonicalModel": "claude-sonnet-5-5",
+          "provider": "firstParty",
+          "costBasis": "list"
+        }
+      },
+      "turns": 3,
+      "duration_s": 5.222,
+      "wall_s": 30.878,
+      "session_id": "4fa40ae0-8bb1-48d6-81e2-f965e060698c",
+      "transcript": null,
+      "model": "haiku",
+      "error": null,
+      "sandbox": null,
+      "agents": {
+        "agents": [
+          {
+            "type": "main",
+            "id": "4fa40ae0-8bb1-48d6-81e2-f965e060698c",
+            "turns": 4,
+            "input": 8,
+            "output": 2006,
+            "cache_read": 84991,
+            "cache_write": 15550,
+            "model": "claude-haiku-5-5",
+            "cost_usd": 0.004964
+          },
+          {
+            "type": "issue-flow:issue-worker",
+            "id": "ae64778463fd59f60",
+            "turns": 8,
+            "input": 16,
+            "output": 3317,
+            "cache_read": 228735,
+            "cache_write": 11087,
+            "model": "claude-sonnet-5-5",
+            "cost_usd": 0.083793
+          }
+        ],
+        "totals": {
+          "turns": 12,
+          "input": 24,
+          "output": 5323,
+          "cache_read": 313726,
+          "cache_write": 26637,
+          "cost_usd": 0.088757,
+          "unpriced_models": [],
+          "skipped_lines": 0,
+          "by_type": {
+            "main": {
+              "agents": 1,
+              "turns": 4,
+              "input": 8,
+              "output": 2006,
+              "cache_read": 84991,
+              "cache_write": 15550,
+              "cost_usd": 0.004964
+            },
+            "issue-flow:issue-worker": {
+              "agents": 1,
+              "turns": 8,
+              "input": 16,
+              "output": 3317,
+              "cache_read": 228735,
+              "cache_write": 11087,
+              "cost_usd": 0.083793
+            }
+          }
+        },
+        "pricing_date": "2026-11-21"
+      },
+      "tokens": {
+        "main": 102555,
+        "subagents": 243155
+      }
+    },
+    {
+      "case": "worker-medium-money-refactor",
+      "run": 1,
+      "variant": {
+        "plugin_dir": "issue-flow (branch issue/109-sonnet-worker: 0.20.0 plus the eval harness, issue-worker model: sonnet)",
+        "git_sha": "1f96b464fcf426f99c4537a8c23f23aa02f92a5e",
+        "version": "0.20.0"
+      },
+      "effort": "medium",
+      "ok": true,
+      "score": 1.0,
+      "graders": [
+        {
+          "type": "hidden_tests",
+          "passed": true,
+          "detail": "hidden tests on refs/heads/issue/4-format-money 80d0ddfc: pass: Ran 3 tests in 0.059s | OK"
+        },
+        {
+          "type": "verdict",
+          "passed": true,
+          "detail": "outcome ready-to-merge, 3 criteria"
+        },
+        {
+          "type": "diff_scope",
+          "passed": true,
+          "detail": "refs/heads/issue/4-format-money changes 4 path(s), all allowed"
+        },
+        {
+          "type": "gh_log",
+          "passed": true,
+          "detail": "0 expected, 1 forbidden"
+        }
+      ],
+      "deterministic": {
+        "passed": 4,
+        "total": 4
+      },
+      "llm": {
+        "passed": 0,
+        "total": 0
+      },
+      "cost_usd": 0.08062919,
+      "judge_cost_usd": 0.0,
+      "usage": {
+        "input": 4,
+        "output": 1021,
+        "cache_read": 49991,
+        "cache_write": 2644
+      },
+      "model_usage": {
+        "claude-haiku-5-5": {
+          "inputTokens": 8,
+          "outputTokens": 1642,
+          "cacheReadInputTokens": 84959,
+          "cacheCreationInputTokens": 14989,
+          "webSearchRequests": 0,
+          "costUSD": 0.00466919,
+          "contextWindow": 1000000,
+          "maxOutputTokens": 128000,
+          "thinkingTokens": 0,
+          "cacheCreationEphemeral5mInputTokens": 0,
+          "cacheCreationEphemeral1hInputTokens": 14989,
+          "canonicalModel": "claude-haiku-5-5",
+          "provider": "firstParty",
+          "costBasis": "list"
+        },
+        "claude-sonnet-5-5": {
+          "inputTokens": 16,
+          "outputTokens": 2888,
+          "cacheReadInputTokens": 222055,
+          "cacheCreationInputTokens": 9937,
+          "webSearchRequests": 0,
+          "costUSD": 0.07596,
+          "contextWindow": 1000000,
+          "maxOutputTokens": 128000,
+          "thinkingTokens": 67,
+          "cacheCreationEphemeral5mInputTokens": 9937,
+          "cacheCreationEphemeral1hInputTokens": 0,
+          "canonicalModel": "claude-sonnet-5-5",
+          "provider": "firstParty",
+          "costBasis": "list"
+        }
+      },
+      "turns": 2,
+      "duration_s": 4.172,
+      "wall_s": 27.23,
+      "session_id": "34a7cffa-56b3-488d-8dfd-2a84c98bc0e3",
+      "transcript": null,
+      "model": "haiku",
+      "error": null,
+      "sandbox": null,
+      "agents": {
+        "agents": [
+          {
+            "type": "main",
+            "id": "34a7cffa-56b3-488d-8dfd-2a84c98bc0e3",
+            "turns": 4,
+            "input": 8,
+            "output": 1642,
+            "cache_read": 84959,
+            "cache_write": 14989,
+            "model": "claude-haiku-5-5",
+            "cost_usd": 0.004669
+          },
+          {
+            "type": "issue-flow:issue-worker",
+            "id": "a4ed3e0bbbbb4f5e7",
+            "turns": 8,
+            "input": 16,
+            "output": 2888,
+            "cache_read": 222055,
+            "cache_write": 9937,
+            "model": "claude-sonnet-5-5",
+            "cost_usd": 0.07596
+          }
+        ],
+        "totals": {
+          "turns": 12,
+          "input": 24,
+          "output": 4530,
+          "cache_read": 307014,
+          "cache_write": 24926,
+          "cost_usd": 0.080629,
+          "unpriced_models": [],
+          "skipped_lines": 0,
+          "by_type": {
+            "main": {
+              "agents": 1,
+              "turns": 4,
+              "input": 8,
+              "output": 1642,
+              "cache_read": 84959,
+              "cache_write": 14989,
+              "cost_usd": 0.004669
+            },
+            "issue-flow:issue-worker": {
+              "agents": 1,
+              "turns": 8,
+              "input": 16,
+              "output": 2888,
+              "cache_read": 222055,
+              "cache_write": 9937,
+              "cost_usd": 0.07596
+            }
+          }
+        },
+        "pricing_date": "2026-11-21"
+      },
+      "tokens": {
+        "main": 101598,
+        "subagents": 234896
+      }
+    },
+    {
+      "case": "worker-medium-money-refactor",
+      "run": 2,
+      "variant": {
+        "plugin_dir": "issue-flow (branch issue/109-sonnet-worker: 0.20.0 plus the eval harness, issue-worker model: sonnet)",
+        "git_sha": "1f96b464fcf426f99c4537a8c23f23aa02f92a5e",
+        "version": "0.20.0"
+      },
+      "effort": "medium",
+      "ok": true,
+      "score": 1.0,
+      "graders": [
+        {
+          "type": "hidden_tests",
+          "passed": true,
+          "detail": "hidden tests on refs/heads/issue/4-format-money eb2d7bf1: pass: Ran 3 tests in 0.058s | OK"
+        },
+        {
+          "type": "verdict",
+          "passed": true,
+          "detail": "outcome ready-to-merge, 3 criteria"
+        },
+        {
+          "type": "diff_scope",
+          "passed": true,
+          "detail": "refs/heads/issue/4-format-money changes 4 path(s), all allowed"
+        },
+        {
+          "type": "gh_log",
+          "passed": true,
+          "detail": "0 expected, 1 forbidden"
+        }
+      ],
+      "deterministic": {
+        "passed": 4,
+        "total": 4
+      },
+      "llm": {
+        "passed": 0,
+        "total": 0
+      },
+      "cost_usd": 0.09149416,
+      "judge_cost_usd": 0.0,
+      "usage": {
+        "input": 4,
+        "output": 1315,
+        "cache_read": 49907,
+        "cache_write": 2982
+      },
+      "model_usage": {
+        "claude-haiku-5-5": {
+          "inputTokens": 8,
+          "outputTokens": 1922,
+          "cacheReadInputTokens": 84876,
+          "cacheCreationInputTokens": 15301,
+          "webSearchRequests": 0,
+          "costUSD": 0.00487076,
+          "contextWindow": 1000000,
+          "maxOutputTokens": 128000,
+          "thinkingTokens": 298,
+          "cacheCreationEphemeral5mInputTokens": 0,
+          "cacheCreationEphemeral1hInputTokens": 15301,
+          "canonicalModel": "claude-haiku-5-5",
+          "provider": "firstParty",
+          "costBasis": "list"
+        },
+        "claude-sonnet-5-5": {
+          "inputTokens": 16,
+          "outputTokens": 2960,
+          "cacheReadInputTokens": 243289,
+          "cacheCreationInputTokens": 13065,
+          "webSearchRequests": 0,
+          "costUSD": 0.0866234,
+          "contextWindow": 1000000,
+          "maxOutputTokens": 128000,
+          "thinkingTokens": 226,
+          "cacheCreationEphemeral5mInputTokens": 13065,
+          "cacheCreationEphemeral1hInputTokens": 0,
+          "canonicalModel": "claude-sonnet-5-5",
+          "provider": "firstParty",
+          "costBasis": "list"
+        }
+      },
+      "turns": 2,
+      "duration_s": 5.571,
+      "wall_s": 30.379,
+      "session_id": "c4ad033d-bfa6-4570-9421-d4aad0e6b7f5",
+      "transcript": null,
+      "model": "haiku",
+      "error": null,
+      "sandbox": null,
+      "agents": {
+        "agents": [
+          {
+            "type": "main",
+            "id": "c4ad033d-bfa6-4570-9421-d4aad0e6b7f5",
+            "turns": 4,
+            "input": 8,
+            "output": 1922,
+            "cache_read": 84876,
+            "cache_write": 15301,
+            "model": "claude-haiku-5-5",
+            "cost_usd": 0.004871
+          },
+          {
+            "type": "issue-flow:issue-worker",
+            "id": "a71434d71b678010c",
+            "turns": 8,
+            "input": 16,
+            "output": 2960,
+            "cache_read": 243289,
+            "cache_write": 13065,
+            "model": "claude-sonnet-5-5",
+            "cost_usd": 0.086623
+          }
+        ],
+        "totals": {
+          "turns": 12,
+          "input": 24,
+          "output": 4882,
+          "cache_read": 328165,
+          "cache_write": 28366,
+          "cost_usd": 0.091494,
+          "unpriced_models": [],
+          "skipped_lines": 0,
+          "by_type": {
+            "main": {
+              "agents": 1,
+              "turns": 4,
+              "input": 8,
+              "output": 1922,
+              "cache_read": 84876,
+              "cache_write": 15301,
+              "cost_usd": 0.004871
+            },
+            "issue-flow:issue-worker": {
+              "agents": 1,
+              "turns": 8,
+              "input": 16,
+              "output": 2960,
+              "cache_read": 243289,
+              "cache_write": 13065,
+              "cost_usd": 0.086623
+            }
+          }
+        },
+        "pricing_date": "2026-11-21"
+      },
+      "tokens": {
+        "main": 102107,
+        "subagents": 259330
+      }
+    },
+    {
+      "case": "worker-medium-money-refactor",
+      "run": 3,
+      "variant": {
+        "plugin_dir": "issue-flow (branch issue/109-sonnet-worker: 0.20.0 plus the eval harness, issue-worker model: sonnet)",
+        "git_sha": "1f96b464fcf426f99c4537a8c23f23aa02f92a5e",
+        "version": "0.20.0"
+      },
+      "effort": "medium",
+      "ok": true,
+      "score": 1.0,
+      "graders": [
+        {
+          "type": "hidden_tests",
+          "passed": true,
+          "detail": "hidden tests on refs/heads/issue/4-format-money 361ca61b: pass: Ran 3 tests in 0.057s | OK"
+        },
+        {
+          "type": "verdict",
+          "passed": true,
+          "detail": "outcome ready-to-merge, 3 criteria"
+        },
+        {
+          "type": "diff_scope",
+          "passed": true,
+          "detail": "refs/heads/issue/4-format-money changes 4 path(s), all allowed"
+        },
+        {
+          "type": "gh_log",
+          "passed": true,
+          "detail": "0 expected, 1 forbidden"
+        }
+      ],
+      "deterministic": {
+        "passed": 4,
+        "total": 4
+      },
+      "llm": {
+        "passed": 0,
+        "total": 0
+      },
+      "cost_usd": 0.06857433,
+      "judge_cost_usd": 0.0,
+      "usage": {
+        "input": 4,
+        "output": 1136,
+        "cache_read": 49856,
+        "cache_write": 2780
+      },
+      "model_usage": {
+        "claude-haiku-5-5": {
+          "inputTokens": 8,
+          "outputTokens": 1742,
+          "cacheReadInputTokens": 84823,
+          "cacheCreationInputTokens": 15093,
+          "webSearchRequests": 0,
+          "costUSD": 0.00473863,
+          "contextWindow": 1000000,
+          "maxOutputTokens": 128000,
+          "thinkingTokens": 135,
+          "cacheCreationEphemeral5mInputTokens": 0,
+          "cacheCreationEphemeral1hInputTokens": 15093,
+          "canonicalModel": "claude-haiku-5-5",
+          "provider": "firstParty",
+          "costBasis": "list"
+        },
+        "claude-sonnet-5-5": {
+          "inputTokens": 12,
+          "outputTokens": 2511,
+          "cacheReadInputTokens": 160017,
+          "cacheCreationInputTokens": 9080,
+          "webSearchRequests": 0,
+          "costUSD": 0.06383570000000001,
+          "contextWindow": 1000000,
+          "maxOutputTokens": 128000,
+          "thinkingTokens": 126,
+          "cacheCreationEphemeral5mInputTokens": 9080,
+          "cacheCreationEphemeral1hInputTokens": 0,
+          "canonicalModel": "claude-sonnet-5-5",
+          "provider": "firstParty",
+          "costBasis": "list"
+        }
+      },
+      "turns": 3,
+      "duration_s": 4.457,
+      "wall_s": 24.876,
+      "session_id": "e7216db4-71e1-49b1-94b0-280824d72018",
+      "transcript": null,
+      "model": "haiku",
+      "error": null,
+      "sandbox": null,
+      "agents": {
+        "agents": [
+          {
+            "type": "main",
+            "id": "e7216db4-71e1-49b1-94b0-280824d72018",
+            "turns": 4,
+            "input": 8,
+            "output": 1742,
+            "cache_read": 84823,
+            "cache_write": 15093,
+            "model": "claude-haiku-5-5",
+            "cost_usd": 0.004739
+          },
+          {
+            "type": "issue-flow:issue-worker",
+            "id": "aa8966d09f77480b5",
+            "turns": 6,
+            "input": 12,
+            "output": 2511,
+            "cache_read": 160017,
+            "cache_write": 9080,
+            "model": "claude-sonnet-5-5",
+            "cost_usd": 0.063836
+          }
+        ],
+        "totals": {
+          "turns": 10,
+          "input": 20,
+          "output": 4253,
+          "cache_read": 244840,
+          "cache_write": 24173,
+          "cost_usd": 0.068574,
+          "unpriced_models": [],
+          "skipped_lines": 0,
+          "by_type": {
+            "main": {
+              "agents": 1,
+              "turns": 4,
+              "input": 8,
+              "output": 1742,
+              "cache_read": 84823,
+              "cache_write": 15093,
+              "cost_usd": 0.004739
+            },
+            "issue-flow:issue-worker": {
+              "agents": 1,
+              "turns": 6,
+              "input": 12,
+              "output": 2511,
+              "cache_read": 160017,
+              "cache_write": 9080,
+              "cost_usd": 0.063836
+            }
+          }
+        },
+        "pricing_date": "2026-11-21"
+      },
+      "tokens": {
+        "main": 101666,
+        "subagents": 171620
+      }
+    },
+    {
+      "case": "worker-medium-price-parse",
+      "run": 1,
+      "variant": {
+        "plugin_dir": "issue-flow (branch issue/109-sonnet-worker: 0.20.0 plus the eval harness, issue-worker model: sonnet)",
+        "git_sha": "1f96b464fcf426f99c4537a8c23f23aa02f92a5e",
+        "version": "0.20.0"
+      },
+      "effort": "medium",
+      "ok": true,
+      "score": 1.0,
+      "graders": [
+        {
+          "type": "hidden_tests",
+          "passed": true,
+          "detail": "hidden tests on refs/heads/issue/5-total-wrong-value 0d9fff07: pass: Ran 2 tests in 0.044s | OK"
+        },
+        {
+          "type": "verdict",
+          "passed": true,
+          "detail": "outcome ready-to-merge, 3 criteria"
+        },
+        {
+          "type": "diff_scope",
+          "passed": true,
+          "detail": "refs/heads/issue/5-total-wrong-value changes 4 path(s), all allowed"
+        },
+        {
+          "type": "gh_log",
+          "passed": true,
+          "detail": "0 expected, 1 forbidden"
+        }
+      ],
+      "deterministic": {
+        "passed": 4,
+        "total": 4
+      },
+      "llm": {
+        "passed": 0,
+        "total": 0
+      },
+      "cost_usd": 0.11313266,
+      "judge_cost_usd": 0.0,
+      "usage": {
+        "input": 4,
+        "output": 1367,
+        "cache_read": 50010,
+        "cache_write": 3152
+      },
+      "model_usage": {
+        "claude-haiku-5-5": {
+          "inputTokens": 8,
+          "outputTokens": 1964,
+          "cacheReadInputTokens": 84976,
+          "cacheCreationInputTokens": 15470,
+          "webSearchRequests": 0,
+          "costUSD": 0.00492656,
+          "contextWindow": 1000000,
+          "maxOutputTokens": 128000,
+          "thinkingTokens": 272,
+          "cacheCreationEphemeral5mInputTokens": 0,
+          "cacheCreationEphemeral1hInputTokens": 15470,
+          "canonicalModel": "claude-haiku-5-5",
+          "provider": "firstParty",
+          "costBasis": "list"
+        },
+        "claude-sonnet-5-5": {
+          "inputTokens": 24,
+          "outputTokens": 4319,
+          "cacheReadInputTokens": 352256,
+          "cacheCreationInputTokens": 11897,
+          "webSearchRequests": 0,
+          "costUSD": 0.10820610000000001,
+          "contextWindow": 1000000,
+          "maxOutputTokens": 128000,
+          "thinkingTokens": 268,
+          "cacheCreationEphemeral5mInputTokens": 11897,
+          "cacheCreationEphemeral1hInputTokens": 0,
+          "canonicalModel": "claude-sonnet-5-5",
+          "provider": "firstParty",
+          "costBasis": "list"
+        }
+      },
+      "turns": 2,
+      "duration_s": 5.413,
+      "wall_s": 41.379,
+      "session_id": "1ddca826-89c1-4ca9-88c3-b41bea11eacc",
+      "transcript": null,
+      "model": "haiku",
+      "error": null,
+      "sandbox": null,
+      "agents": {
+        "agents": [
+          {
+            "type": "main",
+            "id": "1ddca826-89c1-4ca9-88c3-b41bea11eacc",
+            "turns": 4,
+            "input": 8,
+            "output": 1964,
+            "cache_read": 84976,
+            "cache_write": 15470,
+            "model": "claude-haiku-5-5",
+            "cost_usd": 0.004927
+          },
+          {
+            "type": "issue-flow:issue-worker",
+            "id": "aa18c100e3d7b6db8",
+            "turns": 12,
+            "input": 24,
+            "output": 4319,
+            "cache_read": 352256,
+            "cache_write": 11897,
+            "model": "claude-sonnet-5-5",
+            "cost_usd": 0.108206
+          }
+        ],
+        "totals": {
+          "turns": 16,
+          "input": 32,
+          "output": 6283,
+          "cache_read": 437232,
+          "cache_write": 27367,
+          "cost_usd": 0.113133,
+          "unpriced_models": [],
+          "skipped_lines": 0,
+          "by_type": {
+            "main": {
+              "agents": 1,
+              "turns": 4,
+              "input": 8,
+              "output": 1964,
+              "cache_read": 84976,
+              "cache_write": 15470,
+              "cost_usd": 0.004927
+            },
+            "issue-flow:issue-worker": {
+              "agents": 1,
+              "turns": 12,
+              "input": 24,
+              "output": 4319,
+              "cache_read": 352256,
+              "cache_write": 11897,
+              "cost_usd": 0.108206
+            }
+          }
+        },
+        "pricing_date": "2026-11-21"
+      },
+      "tokens": {
+        "main": 102418,
+        "subagents": 368496
+      }
+    },
+    {
+      "case": "worker-medium-price-parse",
+      "run": 2,
+      "variant": {
+        "plugin_dir": "issue-flow (branch issue/109-sonnet-worker: 0.20.0 plus the eval harness, issue-worker model: sonnet)",
+        "git_sha": "1f96b464fcf426f99c4537a8c23f23aa02f92a5e",
+        "version": "0.20.0"
+      },
+      "effort": "medium",
+      "ok": true,
+      "score": 1.0,
+      "graders": [
+        {
+          "type": "hidden_tests",
+          "passed": true,
+          "detail": "hidden tests on refs/heads/issue/5-total-wrong-value e0964621: pass: Ran 2 tests in 0.032s | OK"
+        },
+        {
+          "type": "verdict",
+          "passed": true,
+          "detail": "outcome ready-to-merge, 3 criteria"
+        },
+        {
+          "type": "diff_scope",
+          "passed": true,
+          "detail": "refs/heads/issue/5-total-wrong-value changes 4 path(s), all allowed"
+        },
+        {
+          "type": "gh_log",
+          "passed": true,
+          "detail": "0 expected, 1 forbidden"
+        }
+      ],
+      "deterministic": {
+        "passed": 4,
+        "total": 4
+      },
+      "llm": {
+        "passed": 0,
+        "total": 0
+      },
+      "cost_usd": 0.10263111,
+      "judge_cost_usd": 0.0,
+      "usage": {
+        "input": 6,
+        "output": 1159,
+        "cache_read": 75880,
+        "cache_write": 2909
+      },
+      "model_usage": {
+        "claude-haiku-5-5": {
+          "inputTokens": 10,
+          "outputTokens": 1764,
+          "cacheReadInputTokens": 110851,
+          "cacheCreationInputTokens": 15224,
+          "webSearchRequests": 0,
+          "costUSD": 0.00503631,
+          "contextWindow": 1000000,
+          "maxOutputTokens": 128000,
+          "thinkingTokens": 107,
+          "cacheCreationEphemeral5mInputTokens": 0,
+          "cacheCreationEphemeral1hInputTokens": 15224,
+          "canonicalModel": "claude-haiku-5-5",
+          "provider": "firstParty",
+          "costBasis": "list"
+        },
+        "claude-sonnet-5-5": {
+          "inputTokens": 18,
+          "outputTokens": 3258,
+          "cacheReadInputTokens": 282413,
+          "cacheCreationInputTokens": 14695,
+          "webSearchRequests": 0,
+          "costUSD": 0.09759479999999998,
+          "contextWindow": 1000000,
+          "maxOutputTokens": 128000,
+          "thinkingTokens": 240,
+          "cacheCreationEphemeral5mInputTokens": 14695,
+          "cacheCreationEphemeral1hInputTokens": 0,
+          "canonicalModel": "claude-sonnet-5-5",
+          "provider": "firstParty",
+          "costBasis": "list"
+        }
+      },
+      "turns": 3,
+      "duration_s": 5.625,
+      "wall_s": 33.41,
+      "session_id": "1c9d118b-5e9e-419f-8221-82eee4c9eb7a",
+      "transcript": null,
+      "model": "haiku",
+      "error": null,
+      "sandbox": null,
+      "agents": {
+        "agents": [
+          {
+            "type": "main",
+            "id": "1c9d118b-5e9e-419f-8221-82eee4c9eb7a",
+            "turns": 5,
+            "input": 10,
+            "output": 1764,
+            "cache_read": 110851,
+            "cache_write": 15224,
+            "model": "claude-haiku-5-5",
+            "cost_usd": 0.005036
+          },
+          {
+            "type": "issue-flow:issue-worker",
+            "id": "a025660c6c8f096f2",
+            "turns": 9,
+            "input": 18,
+            "output": 3258,
+            "cache_read": 282413,
+            "cache_write": 14695,
+            "model": "claude-sonnet-5-5",
+            "cost_usd": 0.097595
+          }
+        ],
+        "totals": {
+          "turns": 14,
+          "input": 28,
+          "output": 5022,
+          "cache_read": 393264,
+          "cache_write": 29919,
+          "cost_usd": 0.102631,
+          "unpriced_models": [],
+          "skipped_lines": 0,
+          "by_type": {
+            "main": {
+              "agents": 1,
+              "turns": 5,
+              "input": 10,
+              "output": 1764,
+              "cache_read": 110851,
+              "cache_write": 15224,
+              "cost_usd": 0.005036
+            },
+            "issue-flow:issue-worker": {
+              "agents": 1,
+              "turns": 9,
+              "input": 18,
+              "output": 3258,
+              "cache_read": 282413,
+              "cache_write": 14695,
+              "cost_usd": 0.097595
+            }
+          }
+        },
+        "pricing_date": "2026-11-21"
+      },
+      "tokens": {
+        "main": 127849,
+        "subagents": 300384
+      }
+    },
+    {
+      "case": "worker-medium-price-parse",
+      "run": 3,
+      "variant": {
+        "plugin_dir": "issue-flow (branch issue/109-sonnet-worker: 0.20.0 plus the eval harness, issue-worker model: sonnet)",
+        "git_sha": "1f96b464fcf426f99c4537a8c23f23aa02f92a5e",
+        "version": "0.20.0"
+      },
+      "effort": "medium",
+      "ok": true,
+      "score": 1.0,
+      "graders": [
+        {
+          "type": "hidden_tests",
+          "passed": true,
+          "detail": "hidden tests on refs/heads/issue/5-total-wrong-value 30b24eb1: pass: Ran 2 tests in 0.056s | OK"
+        },
+        {
+          "type": "verdict",
+          "passed": true,
+          "detail": "outcome ready-to-merge, 3 criteria"
+        },
+        {
+          "type": "diff_scope",
+          "passed": true,
+          "detail": "refs/heads/issue/5-total-wrong-value changes 4 path(s), all allowed"
+        },
+        {
+          "type": "gh_log",
+          "passed": true,
+          "detail": "0 expected, 1 forbidden"
+        }
+      ],
+      "deterministic": {
+        "passed": 4,
+        "total": 4
+      },
+      "llm": {
+        "passed": 0,
+        "total": 0
+      },
+      "cost_usd": 0.08230099000000002,
+      "judge_cost_usd": 0.0,
+      "usage": {
+        "input": 4,
+        "output": 1126,
+        "cache_read": 49899,
+        "cache_write": 2791
+      },
+      "model_usage": {
+        "claude-haiku-5-5": {
+          "inputTokens": 8,
+          "outputTokens": 1731,
+          "cacheReadInputTokens": 84869,
+          "cacheCreationInputTokens": 15115,
+          "webSearchRequests": 0,
+          "costUSD": 0.004737989999999999,
+          "contextWindow": 1000000,
+          "maxOutputTokens": 128000,
+          "thinkingTokens": 142,
+          "cacheCreationEphemeral5mInputTokens": 0,
+          "cacheCreationEphemeral1hInputTokens": 15115,
+          "canonicalModel": "claude-haiku-5-5",
+          "provider": "firstParty",
+          "costBasis": "list"
+        },
+        "claude-sonnet-5-5": {
+          "inputTokens": 16,
+          "outputTokens": 3022,
+          "cacheReadInputTokens": 222110,
+          "cacheCreationInputTokens": 10040,
+          "webSearchRequests": 0,
+          "costUSD": 0.07756300000000001,
+          "contextWindow": 1000000,
+          "maxOutputTokens": 128000,
+          "thinkingTokens": 342,
+          "cacheCreationEphemeral5mInputTokens": 10040,
+          "cacheCreationEphemeral1hInputTokens": 0,
+          "canonicalModel": "claude-sonnet-5-5",
+          "provider": "firstParty",
+          "costBasis": "list"
+        }
+      },
+      "turns": 2,
+      "duration_s": 4.339,
+      "wall_s": 30.008,
+      "session_id": "64be98c5-3d86-42ba-aa99-a16ebca5f49f",
+      "transcript": null,
+      "model": "haiku",
+      "error": null,
+      "sandbox": null,
+      "agents": {
+        "agents": [
+          {
+            "type": "main",
+            "id": "64be98c5-3d86-42ba-aa99-a16ebca5f49f",
+            "turns": 4,
+            "input": 8,
+            "output": 1731,
+            "cache_read": 84869,
+            "cache_write": 15115,
+            "model": "claude-haiku-5-5",
+            "cost_usd": 0.004738
+          },
+          {
+            "type": "issue-flow:issue-worker",
+            "id": "aa8c5f944a7678480",
+            "turns": 8,
+            "input": 16,
+            "output": 3022,
+            "cache_read": 222110,
+            "cache_write": 10040,
+            "model": "claude-sonnet-5-5",
+            "cost_usd": 0.077563
+          }
+        ],
+        "totals": {
+          "turns": 12,
+          "input": 24,
+          "output": 4753,
+          "cache_read": 306979,
+          "cache_write": 25155,
+          "cost_usd": 0.082301,
+          "unpriced_models": [],
+          "skipped_lines": 0,
+          "by_type": {
+            "main": {
+              "agents": 1,
+              "turns": 4,
+              "input": 8,
+              "output": 1731,
+              "cache_read": 84869,
+              "cache_write": 15115,
+              "cost_usd": 0.004738
+            },
+            "issue-flow:issue-worker": {
+              "agents": 1,
+              "turns": 8,
+              "input": 16,
+              "output": 3022,
+              "cache_read": 222110,
+              "cache_write": 10040,
+              "cost_usd": 0.077563
+            }
+          }
+        },
+        "pricing_date": "2026-11-21"
+      },
+      "tokens": {
+        "main": 101723,
+        "subagents": 235188
+      }
+    }
+  ]
+}

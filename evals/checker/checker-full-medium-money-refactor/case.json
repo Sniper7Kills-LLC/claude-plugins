@@ -1,0 +1,35 @@
+{
+  "name": "checker-full-medium-money-refactor",
+  "suite": "checker",
+  "tags": [
+    "checker",
+    "full",
+    "small"
+  ],
+  "timeout_s": 1800,
+  "runs": 3,
+  "fixture": "../../worker/worker-medium-money-refactor/../_fixture",
+  "tracker": "../../worker/worker-medium-money-refactor/tracker.json",
+  "patch": "../../worker/worker-medium-money-refactor/reference.patch",
+  "patch_branch": "issue/4-format-money",
+  "model": "haiku",
+  "prompt": "You are a dispatcher in an automated eval of the issue-flow plugin. Nobody is available to answer questions. Do only these steps:\n\n1. Call the Agent tool once, with:\n   - subagent_type: \"issue-flow:criteria-checker\"\n   - isolation: \"worktree\"\n   - description: \"criteria check #4\"\n   - prompt: the brief between the BRIEF START and BRIEF END lines below, unchanged.\n   Do not pass `name` or `model`.\n2. Wait until the checker finishes. Do not check the branch yourself. Do not run `sleep`, and do not poll for the checker: a notification wakes you when it finishes.\n3. Write the checker's final message, unchanged, to `.eval/checker-verdict.json` in the current directory.\n4. Reply with one line: the status of each criterion.\n\nBRIEF START\nissue:        #4 — Move the dollar format into one function\nhead:         origin/issue/4-format-money\nheadSha:      {head_sha}\nbase:         origin/main\nremote:       origin\ntestCommand:  python3 -m unittest\ncriteria:\n  1. `inventory/money.py` defines `format_money(cents)`, which returns the amount in the form `$D.CC`; for example, `format_money(5)` returns `$0.05`.\n  2. `report.py` and `cli.py` both call `format_money`, and neither holds its own copy of the dollar format.\n  3. The output of `inventory list` and `inventory total` does not change.\npluginRoot:   {plugin_dir}\nBRIEF END\n",
+  "graders": [
+    {
+      "type": "checker_verdict",
+      "issue": 4,
+      "expect": "all-met"
+    },
+    {
+      "type": "refs_unchanged"
+    },
+    {
+      "type": "gh_log",
+      "forbid": [
+        {
+          "kind": "write"
+        }
+      ]
+    }
+  ]
+}

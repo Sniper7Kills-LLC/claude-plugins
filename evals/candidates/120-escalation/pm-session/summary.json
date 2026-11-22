@@ -1,0 +1,73 @@
+{
+  "suite": "pm",
+  "variant": {
+    "plugin_dir": "issue-flow (issue/120-opus-escalation at 251b5eb)",
+    "git_sha": "251b5ebee5f1a7ec8cdcbfb15d3972336ff2705e",
+    "version": "0.20.0"
+  },
+  "effort": "medium",
+  "started": "20261122T010148Z",
+  "finished": "20261122T011003Z",
+  "partial": false,
+  "models": [
+    "claude-opus-5-5"
+  ],
+  "total_cost_usd": 3.264799,
+  "runs": 3,
+  "suite_means": {
+    "runs": 3,
+    "ok_rate": 1.0,
+    "mean_score": 1.0,
+    "score_range": [
+      1.0,
+      1.0
+    ],
+    "hidden_pass_rate": null,
+    "mean_cost_usd": 1.0846,
+    "cost_range": [
+      1.0591,
+      1.121
+    ],
+    "mean_turns": 20.3333,
+    "mean_duration_s": 155.1553,
+    "duration_range": [
+      148.4,
+      158.6
+    ],
+    "mean_main_tokens": 1340398.3333,
+    "mean_subagent_tokens": 0.0,
+    "mean_subagent_turns": 0.0,
+    "mean_agent_cost_usd": 1.0846,
+    "mean_tracker_calls": 95.6667,
+    "errors": 0
+  },
+  "cases": {
+    "pm-session-batch": {
+      "runs": 3,
+      "ok_rate": 1.0,
+      "mean_score": 1.0,
+      "score_range": [
+        1.0,
+        1.0
+      ],
+      "hidden_pass_rate": null,
+      "mean_cost_usd": 1.0846,
+      "cost_range": [
+        1.0591,
+        1.121
+      ],
+      "mean_turns": 20.3333,
+      "mean_duration_s": 155.1553,
+      "duration_range": [
+        148.4,
+        158.6
+      ],
+      "mean_main_tokens": 1340398.3333,
+      "mean_subagent_tokens": 0.0,
+      "mean_subagent_turns": 0.0,
+      "mean_agent_cost_usd": 1.0846,
+      "mean_tracker_calls": 95.6667,
+      "errors": 0
+    }
+  }
+}

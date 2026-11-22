@@ -19,6 +19,10 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          # The rule-coverage test reads SKILL.md at the tag issue-flow--v0.20.0.
+          # A depth of 0 fetches all history and every tag.
+          fetch-depth: 0
 
       - uses: actions/setup-python@v5
         with:
@@ -56,6 +60,27 @@ jobs:
 
       - name: Test the mirror filter
         run: python3 scripts/test-mirror-filter.py
+
+      - name: Test the eval runner and the fake gh
+        run: python3 scripts/test-run-evals.py
+
+      - name: Test the worker eval cases and their graders
+        run: python3 scripts/test-worker-cases.py
+
+      - name: Test the criteria checker, its eval cases and their graders
+        run: python3 scripts/test-checker-cases.py
+
+      - name: Test the rule-coverage check
+        run: python3 scripts/test-rule-coverage.py
+
+      - name: Test the usage report
+        run: python3 scripts/test-usage.py
+
+      - name: Test the eval compare script and its decision rules
+        run: python3 scripts/test-eval-compare.py
+
+      - name: Test the baseline preparation script
+        run: python3 scripts/test-eval-baseline.py
 
       - name: Validate manifests, frontmatter and links
         run: python3 scripts/validate-manifests.py

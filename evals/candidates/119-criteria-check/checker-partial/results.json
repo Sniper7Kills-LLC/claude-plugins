@@ -1,0 +1,761 @@
+{
+  "suite": "checker",
+  "variant": {
+    "plugin_dir": "issue-flow (branch issue/119-criteria-check)",
+    "git_sha": "24331401198e1889848c0d159bbf05ddb670411e",
+    "version": "0.20.0"
+  },
+  "effort": "medium",
+  "started": "20261122T001644Z",
+  "finished": "20261122T001828Z",
+  "max_cost_usd": 10.0,
+  "total_cost_usd": 0.186296,
+  "partial": false,
+  "records": [
+    {
+      "case": "checker-partial-hard-error-lines",
+      "run": 1,
+      "variant": {
+        "plugin_dir": "issue-flow (branch issue/119-criteria-check)",
+        "git_sha": "24331401198e1889848c0d159bbf05ddb670411e",
+        "version": "0.20.0"
+      },
+      "effort": "medium",
+      "ok": true,
+      "score": 1.0,
+      "graders": [
+        {
+          "type": "checker_verdict",
+          "passed": true,
+          "detail": "statuses ['met', 'unmet', 'unmet', 'met'] on 19b8d5cd"
+        },
+        {
+          "type": "refs_unchanged",
+          "passed": true,
+          "detail": "2 origin ref(s) unchanged"
+        },
+        {
+          "type": "gh_log",
+          "passed": true,
+          "detail": "0 expected, 1 forbidden"
+        }
+      ],
+      "deterministic": {
+        "passed": 3,
+        "total": 3
+      },
+      "llm": {
+        "passed": 0,
+        "total": 0
+      },
+      "cost_usd": 0.04071315,
+      "judge_cost_usd": 0.0,
+      "usage": {
+        "input": 4,
+        "output": 1367,
+        "cache_read": 50279,
+        "cache_write": 3304
+      },
+      "model_usage": {
+        "claude-haiku-5-5": {
+          "inputTokens": 8,
+          "outputTokens": 1940,
+          "cacheReadInputTokens": 85405,
+          "cacheCreationInputTokens": 15732,
+          "webSearchRequests": 0,
+          "costUSD": 0.004971250000000001,
+          "contextWindow": 1000000,
+          "maxOutputTokens": 128000,
+          "thinkingTokens": 143,
+          "cacheCreationEphemeral5mInputTokens": 0,
+          "cacheCreationEphemeral1hInputTokens": 15732,
+          "canonicalModel": "claude-haiku-5-5",
+          "provider": "firstParty",
+          "costBasis": "list"
+        },
+        "claude-sonnet-5-5": {
+          "inputTokens": 8,
+          "outputTokens": 1541,
+          "cacheReadInputTokens": 25409,
+          "cacheCreationInputTokens": 7110,
+          "webSearchRequests": 0,
+          "costUSD": 0.0357419,
+          "contextWindow": 1000000,
+          "maxOutputTokens": 128000,
+          "thinkingTokens": 15,
+          "cacheCreationEphemeral5mInputTokens": 7110,
+          "cacheCreationEphemeral1hInputTokens": 0,
+          "canonicalModel": "claude-sonnet-5-5",
+          "provider": "firstParty",
+          "costBasis": "list"
+        }
+      },
+      "turns": 3,
+      "duration_s": 5.491,
+      "wall_s": 20.849,
+      "session_id": "ee8fe65f-d249-4473-ad12-3b620bffe676",
+      "transcript": null,
+      "model": "haiku",
+      "error": null,
+      "sandbox": null,
+      "agents": {
+        "agents": [
+          {
+            "type": "main",
+            "id": "ee8fe65f-d249-4473-ad12-3b620bffe676",
+            "turns": 4,
+            "input": 8,
+            "output": 1940,
+            "cache_read": 85405,
+            "cache_write": 15732,
+            "model": "claude-haiku-5-5",
+            "cost_usd": 0.004971
+          },
+          {
+            "type": "issue-flow:criteria-checker",
+            "id": "ac2e4187028ecf36c",
+            "turns": 4,
+            "input": 8,
+            "output": 1541,
+            "cache_read": 25409,
+            "cache_write": 7110,
+            "model": "claude-sonnet-5-5",
+            "cost_usd": 0.035742
+          }
+        ],
+        "totals": {
+          "turns": 8,
+          "input": 16,
+          "output": 3481,
+          "cache_read": 110814,
+          "cache_write": 22842,
+          "cost_usd": 0.040713,
+          "unpriced_models": [],
+          "skipped_lines": 0,
+          "by_type": {
+            "main": {
+              "agents": 1,
+              "turns": 4,
+              "input": 8,
+              "output": 1940,
+              "cache_read": 85405,
+              "cache_write": 15732,
+              "cost_usd": 0.004971
+            },
+            "issue-flow:criteria-checker": {
+              "agents": 1,
+              "turns": 4,
+              "input": 8,
+              "output": 1541,
+              "cache_read": 25409,
+              "cache_write": 7110,
+              "cost_usd": 0.035742
+            }
+          }
+        },
+        "pricing_date": "2026-11-21"
+      },
+      "tokens": {
+        "main": 103085,
+        "subagents": 34068
+      },
+      "tracker_calls": null
+    },
+    {
+      "case": "checker-partial-hard-error-lines",
+      "run": 2,
+      "variant": {
+        "plugin_dir": "issue-flow (branch issue/119-criteria-check)",
+        "git_sha": "24331401198e1889848c0d159bbf05ddb670411e",
+        "version": "0.20.0"
+      },
+      "effort": "medium",
+      "ok": true,
+      "score": 1.0,
+      "graders": [
+        {
+          "type": "checker_verdict",
+          "passed": true,
+          "detail": "statuses ['met', 'unmet', 'met', 'met'] on f515be17"
+        },
+        {
+          "type": "refs_unchanged",
+          "passed": true,
+          "detail": "2 origin ref(s) unchanged"
+        },
+        {
+          "type": "gh_log",
+          "passed": true,
+          "detail": "0 expected, 1 forbidden"
+        }
+      ],
+      "deterministic": {
+        "passed": 3,
+        "total": 3
+      },
+      "llm": {
+        "passed": 0,
+        "total": 0
+      },
+      "cost_usd": 0.033003080000000004,
+      "judge_cost_usd": 0.0,
+      "usage": {
+        "input": 4,
+        "output": 1425,
+        "cache_read": 50155,
+        "cache_write": 3121
+      },
+      "model_usage": {
+        "claude-haiku-5-5": {
+          "inputTokens": 8,
+          "outputTokens": 1974,
+          "cacheReadInputTokens": 85278,
+          "cacheCreationInputTokens": 15531,
+          "webSearchRequests": 0,
+          "costUSD": 0.00494678,
+          "contextWindow": 1000000,
+          "maxOutputTokens": 128000,
+          "thinkingTokens": 289,
+          "cacheCreationEphemeral5mInputTokens": 0,
+          "cacheCreationEphemeral1hInputTokens": 15531,
+          "canonicalModel": "claude-haiku-5-5",
+          "provider": "firstParty",
+          "costBasis": "list"
+        },
+        "claude-sonnet-5-5": {
+          "inputTokens": 8,
+          "outputTokens": 1420,
+          "cacheReadInputTokens": 27428,
+          "cacheCreationInputTokens": 4439,
+          "webSearchRequests": 0,
+          "costUSD": 0.0280563,
+          "contextWindow": 1000000,
+          "maxOutputTokens": 128000,
+          "thinkingTokens": 21,
+          "cacheCreationEphemeral5mInputTokens": 4439,
+          "cacheCreationEphemeral1hInputTokens": 0,
+          "canonicalModel": "claude-sonnet-5-5",
+          "provider": "firstParty",
+          "costBasis": "list"
+        }
+      },
+      "turns": 2,
+      "duration_s": 5.734,
+      "wall_s": 19.507,
+      "session_id": "12f91902-6a2c-427e-86b7-b57609ee1a3c",
+      "transcript": null,
+      "model": "haiku",
+      "error": null,
+      "sandbox": null,
+      "agents": {
+        "agents": [
+          {
+            "type": "main",
+            "id": "12f91902-6a2c-427e-86b7-b57609ee1a3c",
+            "turns": 4,
+            "input": 8,
+            "output": 1974,
+            "cache_read": 85278,
+            "cache_write": 15531,
+            "model": "claude-haiku-5-5",
+            "cost_usd": 0.004947
+          },
+          {
+            "type": "issue-flow:criteria-checker",
+            "id": "a34ab690892af501b",
+            "turns": 4,
+            "input": 8,
+            "output": 1420,
+            "cache_read": 27428,
+            "cache_write": 4439,
+            "model": "claude-sonnet-5-5",
+            "cost_usd": 0.028056
+          }
+        ],
+        "totals": {
+          "turns": 8,
+          "input": 16,
+          "output": 3394,
+          "cache_read": 112706,
+          "cache_write": 19970,
+          "cost_usd": 0.033003,
+          "unpriced_models": [],
+          "skipped_lines": 0,
+          "by_type": {
+            "main": {
+              "agents": 1,
+              "turns": 4,
+              "input": 8,
+              "output": 1974,
+              "cache_read": 85278,
+              "cache_write": 15531,
+              "cost_usd": 0.004947
+            },
+            "issue-flow:criteria-checker": {
+              "agents": 1,
+              "turns": 4,
+              "input": 8,
+              "output": 1420,
+              "cache_read": 27428,
+              "cache_write": 4439,
+              "cost_usd": 0.028056
+            }
+          }
+        },
+        "pricing_date": "2026-11-21"
+      },
+      "tokens": {
+        "main": 102791,
+        "subagents": 33295
+      },
+      "tracker_calls": null
+    },
+    {
+      "case": "checker-partial-hard-error-lines",
+      "run": 3,
+      "variant": {
+        "plugin_dir": "issue-flow (branch issue/119-criteria-check)",
+        "git_sha": "24331401198e1889848c0d159bbf05ddb670411e",
+        "version": "0.20.0"
+      },
+      "effort": "medium",
+      "ok": true,
+      "score": 1.0,
+      "graders": [
+        {
+          "type": "checker_verdict",
+          "passed": true,
+          "detail": "statuses ['met', 'unmet', 'unclear', 'met'] on 594893d4"
+        },
+        {
+          "type": "refs_unchanged",
+          "passed": true,
+          "detail": "2 origin ref(s) unchanged"
+        },
+        {
+          "type": "gh_log",
+          "passed": true,
+          "detail": "0 expected, 1 forbidden"
+        }
+      ],
+      "deterministic": {
+        "passed": 3,
+        "total": 3
+      },
+      "llm": {
+        "passed": 0,
+        "total": 0
+      },
+      "cost_usd": 0.03831379,
+      "judge_cost_usd": 0.0,
+      "usage": {
+        "input": 4,
+        "output": 1533,
+        "cache_read": 50375,
+        "cache_write": 3560
+      },
+      "model_usage": {
+        "claude-haiku-5-5": {
+          "inputTokens": 8,
+          "outputTokens": 2073,
+          "cacheReadInputTokens": 85499,
+          "cacheCreationInputTokens": 15977,
+          "webSearchRequests": 0,
+          "costUSD": 0.00508769,
+          "contextWindow": 1000000,
+          "maxOutputTokens": 128000,
+          "thinkingTokens": 176,
+          "cacheCreationEphemeral5mInputTokens": 0,
+          "cacheCreationEphemeral1hInputTokens": 15977,
+          "canonicalModel": "claude-haiku-5-5",
+          "provider": "firstParty",
+          "costBasis": "list"
+        },
+        "claude-sonnet-5-5": {
+          "inputTokens": 8,
+          "outputTokens": 1737,
+          "cacheReadInputTokens": 27401,
+          "cacheCreationInputTokens": 5240,
+          "webSearchRequests": 0,
+          "costUSD": 0.0332261,
+          "contextWindow": 1000000,
+          "maxOutputTokens": 128000,
+          "thinkingTokens": 101,
+          "cacheCreationEphemeral5mInputTokens": 5240,
+          "cacheCreationEphemeral1hInputTokens": 0,
+          "canonicalModel": "claude-sonnet-5-5",
+          "provider": "firstParty",
+          "costBasis": "list"
+        }
+      },
+      "turns": 3,
+      "duration_s": 5.768,
+      "wall_s": 22.055,
+      "session_id": "b31cdf9e-5ed9-4342-ab8f-ab230df6520b",
+      "transcript": null,
+      "model": "haiku",
+      "error": null,
+      "sandbox": null,
+      "agents": {
+        "agents": [
+          {
+            "type": "main",
+            "id": "b31cdf9e-5ed9-4342-ab8f-ab230df6520b",
+            "turns": 4,
+            "input": 8,
+            "output": 2073,
+            "cache_read": 85499,
+            "cache_write": 15977,
+            "model": "claude-haiku-5-5",
+            "cost_usd": 0.005088
+          },
+          {
+            "type": "issue-flow:criteria-checker",
+            "id": "a8cd2184a303c575b",
+            "turns": 4,
+            "input": 8,
+            "output": 1737,
+            "cache_read": 27401,
+            "cache_write": 5240,
+            "model": "claude-sonnet-5-5",
+            "cost_usd": 0.033226
+          }
+        ],
+        "totals": {
+          "turns": 8,
+          "input": 16,
+          "output": 3810,
+          "cache_read": 112900,
+          "cache_write": 21217,
+          "cost_usd": 0.038314,
+          "unpriced_models": [],
+          "skipped_lines": 0,
+          "by_type": {
+            "main": {
+              "agents": 1,
+              "turns": 4,
+              "input": 8,
+              "output": 2073,
+              "cache_read": 85499,
+              "cache_write": 15977,
+              "cost_usd": 0.005088
+            },
+            "issue-flow:criteria-checker": {
+              "agents": 1,
+              "turns": 4,
+              "input": 8,
+              "output": 1737,
+              "cache_read": 27401,
+              "cache_write": 5240,
+              "cost_usd": 0.033226
+            }
+          }
+        },
+        "pricing_date": "2026-11-21"
+      },
+      "tokens": {
+        "main": 103557,
+        "subagents": 34386
+      },
+      "tracker_calls": null
+    },
+    {
+      "case": "checker-partial-hard-error-lines",
+      "run": 4,
+      "variant": {
+        "plugin_dir": "issue-flow (branch issue/119-criteria-check)",
+        "git_sha": "24331401198e1889848c0d159bbf05ddb670411e",
+        "version": "0.20.0"
+      },
+      "effort": "medium",
+      "ok": true,
+      "score": 1.0,
+      "graders": [
+        {
+          "type": "checker_verdict",
+          "passed": true,
+          "detail": "statuses ['met', 'unmet', 'unmet', 'met'] on cdaa13e8"
+        },
+        {
+          "type": "refs_unchanged",
+          "passed": true,
+          "detail": "2 origin ref(s) unchanged"
+        },
+        {
+          "type": "gh_log",
+          "passed": true,
+          "detail": "0 expected, 1 forbidden"
+        }
+      ],
+      "deterministic": {
+        "passed": 3,
+        "total": 3
+      },
+      "llm": {
+        "passed": 0,
+        "total": 0
+      },
+      "cost_usd": 0.03535937,
+      "judge_cost_usd": 0.0,
+      "usage": {
+        "input": 4,
+        "output": 1456,
+        "cache_read": 50189,
+        "cache_write": 3263
+      },
+      "model_usage": {
+        "claude-haiku-5-5": {
+          "inputTokens": 8,
+          "outputTokens": 2002,
+          "cacheReadInputTokens": 85317,
+          "cacheCreationInputTokens": 15695,
+          "webSearchRequests": 0,
+          "costUSD": 0.00499397,
+          "contextWindow": 1000000,
+          "maxOutputTokens": 128000,
+          "thinkingTokens": 225,
+          "cacheCreationEphemeral5mInputTokens": 0,
+          "cacheCreationEphemeral1hInputTokens": 15695,
+          "canonicalModel": "claude-haiku-5-5",
+          "provider": "firstParty",
+          "costBasis": "list"
+        },
+        "claude-sonnet-5-5": {
+          "inputTokens": 8,
+          "outputTokens": 1396,
+          "cacheReadInputTokens": 27619,
+          "cacheCreationInputTokens": 5451,
+          "webSearchRequests": 0,
+          "costUSD": 0.0303654,
+          "contextWindow": 1000000,
+          "maxOutputTokens": 128000,
+          "thinkingTokens": 0,
+          "cacheCreationEphemeral5mInputTokens": 5451,
+          "cacheCreationEphemeral1hInputTokens": 0,
+          "canonicalModel": "claude-sonnet-5-5",
+          "provider": "firstParty",
+          "costBasis": "list"
+        }
+      },
+      "turns": 3,
+      "duration_s": 5.692,
+      "wall_s": 19.158,
+      "session_id": "73688995-2aaa-431e-a47b-22e3c165d52c",
+      "transcript": null,
+      "model": "haiku",
+      "error": null,
+      "sandbox": null,
+      "agents": {
+        "agents": [
+          {
+            "type": "main",
+            "id": "73688995-2aaa-431e-a47b-22e3c165d52c",
+            "turns": 4,
+            "input": 8,
+            "output": 2002,
+            "cache_read": 85317,
+            "cache_write": 15695,
+            "model": "claude-haiku-5-5",
+            "cost_usd": 0.004994
+          },
+          {
+            "type": "issue-flow:criteria-checker",
+            "id": "ae7d9dd060b3e6db5",
+            "turns": 4,
+            "input": 8,
+            "output": 1396,
+            "cache_read": 27619,
+            "cache_write": 5451,
+            "model": "claude-sonnet-5-5",
+            "cost_usd": 0.030365
+          }
+        ],
+        "totals": {
+          "turns": 8,
+          "input": 16,
+          "output": 3398,
+          "cache_read": 112936,
+          "cache_write": 21146,
+          "cost_usd": 0.035359,
+          "unpriced_models": [],
+          "skipped_lines": 0,
+          "by_type": {
+            "main": {
+              "agents": 1,
+              "turns": 4,
+              "input": 8,
+              "output": 2002,
+              "cache_read": 85317,
+              "cache_write": 15695,
+              "cost_usd": 0.004994
+            },
+            "issue-flow:criteria-checker": {
+              "agents": 1,
+              "turns": 4,
+              "input": 8,
+              "output": 1396,
+              "cache_read": 27619,
+              "cache_write": 5451,
+              "cost_usd": 0.030365
+            }
+          }
+        },
+        "pricing_date": "2026-11-21"
+      },
+      "tokens": {
+        "main": 103022,
+        "subagents": 34474
+      },
+      "tracker_calls": null
+    },
+    {
+      "case": "checker-partial-hard-error-lines",
+      "run": 5,
+      "variant": {
+        "plugin_dir": "issue-flow (branch issue/119-criteria-check)",
+        "git_sha": "24331401198e1889848c0d159bbf05ddb670411e",
+        "version": "0.20.0"
+      },
+      "effort": "medium",
+      "ok": true,
+      "score": 1.0,
+      "graders": [
+        {
+          "type": "checker_verdict",
+          "passed": true,
+          "detail": "statuses ['met', 'unmet', 'unmet', 'met'] on bbc4c15a"
+        },
+        {
+          "type": "refs_unchanged",
+          "passed": true,
+          "detail": "2 origin ref(s) unchanged"
+        },
+        {
+          "type": "gh_log",
+          "passed": true,
+          "detail": "0 expected, 1 forbidden"
+        }
+      ],
+      "deterministic": {
+        "passed": 3,
+        "total": 3
+      },
+      "llm": {
+        "passed": 0,
+        "total": 0
+      },
+      "cost_usd": 0.03890734,
+      "judge_cost_usd": 0.0,
+      "usage": {
+        "input": 4,
+        "output": 1283,
+        "cache_read": 50223,
+        "cache_write": 3023
+      },
+      "model_usage": {
+        "claude-haiku-5-5": {
+          "inputTokens": 8,
+          "outputTokens": 1831,
+          "cacheReadInputTokens": 85354,
+          "cacheCreationInputTokens": 15461,
+          "webSearchRequests": 0,
+          "costUSD": 0.00486204,
+          "contextWindow": 1000000,
+          "maxOutputTokens": 128000,
+          "thinkingTokens": 184,
+          "cacheCreationEphemeral5mInputTokens": 0,
+          "cacheCreationEphemeral1hInputTokens": 15461,
+          "canonicalModel": "claude-haiku-5-5",
+          "provider": "firstParty",
+          "costBasis": "list"
+        },
+        "claude-sonnet-5-5": {
+          "inputTokens": 10,
+          "outputTokens": 1558,
+          "cacheReadInputTokens": 36528,
+          "cacheCreationInputTokens": 5917,
+          "webSearchRequests": 0,
+          "costUSD": 0.0340453,
+          "contextWindow": 1000000,
+          "maxOutputTokens": 128000,
+          "thinkingTokens": 0,
+          "cacheCreationEphemeral5mInputTokens": 5917,
+          "cacheCreationEphemeral1hInputTokens": 0,
+          "canonicalModel": "claude-sonnet-5-5",
+          "provider": "firstParty",
+          "costBasis": "list"
+        }
+      },
+      "turns": 2,
+      "duration_s": 5.189,
+      "wall_s": 20.969,
+      "session_id": "65e574f1-df61-4e68-8f7c-80a354bb5072",
+      "transcript": null,
+      "model": "haiku",
+      "error": null,
+      "sandbox": null,
+      "agents": {
+        "agents": [
+          {
+            "type": "main",
+            "id": "65e574f1-df61-4e68-8f7c-80a354bb5072",
+            "turns": 4,
+            "input": 8,
+            "output": 1831,
+            "cache_read": 85354,
+            "cache_write": 15461,
+            "model": "claude-haiku-5-5",
+            "cost_usd": 0.004862
+          },
+          {
+            "type": "issue-flow:criteria-checker",
+            "id": "a10c20c4cd3ef5f76",
+            "turns": 5,
+            "input": 10,
+            "output": 1558,
+            "cache_read": 36528,
+            "cache_write": 5917,
+            "model": "claude-sonnet-5-5",
+            "cost_usd": 0.034045
+          }
+        ],
+        "totals": {
+          "turns": 9,
+          "input": 18,
+          "output": 3389,
+          "cache_read": 121882,
+          "cache_write": 21378,
+          "cost_usd": 0.038907,
+          "unpriced_models": [],
+          "skipped_lines": 0,
+          "by_type": {
+            "main": {
+              "agents": 1,
+              "turns": 4,
+              "input": 8,
+              "output": 1831,
+              "cache_read": 85354,
+              "cache_write": 15461,
+              "cost_usd": 0.004862
+            },
+            "issue-flow:criteria-checker": {
+              "agents": 1,
+              "turns": 5,
+              "input": 10,
+              "output": 1558,
+              "cache_read": 36528,
+              "cache_write": 5917,
+              "cost_usd": 0.034045
+            }
+          }
+        },
+        "pricing_date": "2026-11-21"
+      },
+      "tokens": {
+        "main": 102654,
+        "subagents": 44013
+      },
+      "tracker_calls": null
+    }
+  ]
+}

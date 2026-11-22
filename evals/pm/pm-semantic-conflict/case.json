@@ -1,0 +1,72 @@
+{
+  "name": "pm-semantic-conflict",
+  "suite": "pm",
+  "tags": [
+    "pm",
+    "batch-cross-check",
+    "conflict"
+  ],
+  "timeout_s": 900,
+  "runs": 3,
+  "fixture": "../_fixture",
+  "tracker": "tracker.json",
+  "branches": [
+    "batch/40-rate-limit"
+  ],
+  "prompt": "You are the issue-flow PM for this repository. Use the issue-flow skill.\nThis is a scenario test with one task. Phase 0 has already run, and the run configuration in .issue-flow.json is final. Nobody is available to answer questions. The tracker is GitHub through the `gh` CLI.\nDo only the task below. Then stop, and report in a few lines what you did and why.\n\nTask:\nBatch #40 has two members, #41 and #42. Both are planned (the plan comments are on each issue) and assigned to you, and the claim swap is held. Run the Stage B step 4 cross-check for this batch and act on what it finds. Do not launch any worker in this test: if a member may launch, stop there and say so.\n",
+  "graders": [
+    {
+      "type": "gh_log",
+      "expect": [
+        {
+          "cmd": "issue comment",
+          "args": "^40\\b",
+          "body": "^finding: batch cross-check"
+        },
+        {
+          "cmd": "issue edit",
+          "args": "^(\\d+ )*41\\b.*--add-label[ =]\\S*status:needs-feedback"
+        },
+        {
+          "cmd": "issue edit",
+          "args": "^(\\d+ )*42\\b.*--add-label[ =]\\S*status:needs-feedback"
+        },
+        {
+          "cmd": "issue comment",
+          "args": "^41\\b"
+        },
+        {
+          "cmd": "issue comment",
+          "args": "^42\\b"
+        }
+      ],
+      "forbid": [
+        {
+          "cmd": "issue edit",
+          "args": "^(\\d+ )*41\\b.*--add-label[ =]\\S*status:in-progress"
+        },
+        {
+          "cmd": "issue edit",
+          "args": "^(\\d+ )*42\\b.*--add-label[ =]\\S*status:in-progress"
+        },
+        {
+          "cmd": "pr create"
+        },
+        {
+          "cmd": "pr merge"
+        },
+        {
+          "cmd": "pr ready"
+        },
+        {
+          "cmd": "issue close"
+        }
+      ]
+    },
+    {
+      "type": "llm",
+      "target": "gh_log",
+      "rubric": "The comments on #41 and #42 name the contradiction (reject over-limit requests with 429, against never reject them and queue them) and ask the maintainer which behavior wins. A comment that picks one behavior itself fails."
+    }
+  ]
+}

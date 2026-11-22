@@ -1,0 +1,183 @@
+{
+  "name": "pm-session-batch",
+  "suite": "pm",
+  "tags": [
+    "pm",
+    "session"
+  ],
+  "timeout_s": 2400,
+  "runs": 3,
+  "fixture": "../_fixture",
+  "tracker": "tracker.json",
+  "branches": [
+    "batch/50-count-output"
+  ],
+  "disallowed_tools": [
+    "Agent"
+  ],
+  "prompt_file": "prompt.md",
+  "graders": [
+    {
+      "type": "gh_log",
+      "expect": [
+        {
+          "cmd": "issue edit",
+          "args": "^(\\d+ )*61\\b.*--add-label[ =]\\S*status:ready"
+        },
+        {
+          "cmd": "issue edit",
+          "args": "^(\\d+ )*62\\b.*--add-label[ =]\\S*status:ready"
+        },
+        {
+          "cmd": "issue edit",
+          "args": "^(\\d+ )*68\\b.*--add-label[ =]\\S*status:ready"
+        },
+        {
+          "cmd": "issue edit",
+          "args": "^(\\d+ )*63\\b.*--add-label[ =]\\S*status:needs-feedback"
+        },
+        {
+          "cmd": "issue comment",
+          "args": "^63\\b"
+        },
+        {
+          "cmd": "issue edit",
+          "args": "^(\\d+ )*64\\b.*--add-label[ =]\\S*status:needs-feedback"
+        },
+        {
+          "cmd": "issue comment",
+          "args": "^64\\b"
+        },
+        {
+          "cmd": "issue create",
+          "body": "#65\\b"
+        },
+        {
+          "cmd": "issue edit",
+          "args": "^(\\d+ )*65\\b.*--add-label[ =]\\S*status:blocked"
+        },
+        {
+          "cmd": "issue comment",
+          "args": "^65\\b"
+        },
+        {
+          "cmd": "issue edit",
+          "args": "^(\\d+ )*66\\b.*--remove-label[ =]\\S*status:in-review"
+        },
+        {
+          "cmd": "issue comment",
+          "args": "^66\\b",
+          "body": "removed .?status:in-review.?, kept .?status:needs-feedback"
+        },
+        {
+          "cmd": "issue create",
+          "args": "(--label|-l)[ =]\\S*type:batch"
+        },
+        {
+          "cmd": "issue comment",
+          "args": "^61\\b",
+          "body": "(?i)plan"
+        },
+        {
+          "cmd": "issue comment",
+          "args": "^62\\b",
+          "body": "(?i)plan"
+        },
+        {
+          "cmd": "issue comment",
+          "args": "^67\\b",
+          "body": "(?i)plan"
+        },
+        {
+          "cmd": "issue comment",
+          "args": "^68\\b",
+          "body": "(?i)plan"
+        },
+        {
+          "cmd": "pr merge",
+          "args": "^(53|issue/51-json-flag)\\b(?=.*(--squash|-s\\b))(?=.*\\[skip ci\\])"
+        },
+        {
+          "cmd": "issue edit",
+          "args": "^(\\d+ )*51\\b.*--add-label[ =]\\S*status:batched"
+        },
+        {
+          "cmd": "issue edit",
+          "args": "^(\\d+ )*51\\b.*--remove-label[ =]\\S*status:in-review"
+        },
+        {
+          "cmd": "issue edit",
+          "args": "^(\\d+ )*63\\b.*--remove-label[ =]\\S*status:needs-feedback"
+        }
+      ],
+      "forbid": [
+        {
+          "cmd": "issue edit",
+          "args": "^(\\d+ )*(61|62|68)\\b.*--add-label[ =]\\S*status:needs-feedback"
+        },
+        {
+          "cmd": "issue edit",
+          "args": "^(\\d+ )*64\\b.*--add-label[ =]\\S*status:ready"
+        },
+        {
+          "cmd": "issue edit",
+          "args": "^(\\d+ )*66\\b.*--remove-label[ =]\\S*status:needs-feedback"
+        },
+        {
+          "cmd": "issue edit",
+          "args": "^(\\d+ )*(61|62|67|68)\\b.*--add-assignee"
+        },
+        {
+          "cmd": "issue edit",
+          "args": "--add-label[ =]\\S*status:in-progress"
+        },
+        {
+          "cmd": "issue edit",
+          "args": "^(\\d+ )*52\\b.*--add-label[ =]\\S*status:batched"
+        },
+        {
+          "cmd": "pr merge",
+          "args": "^(54|issue/52-quiet-flag)\\b"
+        },
+        {
+          "cmd": "pr ready",
+          "args": "^(54|issue/52-quiet-flag)\\b"
+        },
+        {
+          "cmd": "pr create"
+        },
+        {
+          "cmd": "issue close"
+        }
+      ]
+    },
+    {
+      "type": "gh_log",
+      "ordered": true,
+      "expect": [
+        {
+          "cmd": "issue edit",
+          "args": "^(\\d+ )*63\\b.*--add-label[ =]\\S*status:needs-feedback"
+        },
+        {
+          "cmd": "pr merge",
+          "args": "^(53|issue/51-json-flag)\\b"
+        },
+        {
+          "cmd": "issue edit",
+          "args": "^(\\d+ )*63\\b.*--add-label[ =]\\S*status:ready"
+        }
+      ]
+    },
+    {
+      "type": "file",
+      "path": ".eval/send-back-52.md",
+      "regex": "exits 1 when the count is 0"
+    },
+    {
+      "type": "llm",
+      "target": "gh_log",
+      "rubric": "Judge two things. (1) The plan comments on the members of the new batches each name the files to change, the tests the worker adds first, and an order of work. (2) The questions on #63 and #64 are specific, for example which files show the wrong count with the expected count against the actual count, or which part of the output to change and how. After the maintainer answers #63, the PM records the answer and makes #63 ready. A generic plan, or a generic request for more detail, fails."
+    }
+  ]
+}

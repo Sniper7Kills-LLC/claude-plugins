@@ -1,0 +1,85 @@
+diff --git a/inventory/cli.py b/inventory/cli.py
+index da43b4c..3af746d 100644
+--- a/inventory/cli.py
++++ b/inventory/cli.py
+@@ -1,6 +1,7 @@
+ """The command line: ``python3 -m inventory <command> <stock file>``."""
+ 
+ import argparse
++import sys
+ 
+ from . import items, report
+ 
+@@ -19,7 +20,11 @@ def build_parser():
+ def main(argv=None):
+     """Run one command and return the exit status."""
+     args = build_parser().parse_args(argv)
+-    stock = items.load(args.path)
++    try:
++        stock = items.load(args.path)
++    except items.StockFileError as error:
++        print(error, file=sys.stderr)
++        return 2
+     if args.command == "list":
+         for item in stock:
+             print(report.format_line(item))
+diff --git a/inventory/items.py b/inventory/items.py
+index d76a837..75814ec 100644
+--- a/inventory/items.py
++++ b/inventory/items.py
+@@ -15,6 +15,15 @@ class Item(NamedTuple):
+     price: int  # In cents, so that sums stay exact.
+ 
+ 
++class StockFileError(ValueError):
++    """A malformed line in a stock file, with the file path and the line number."""
++
++    def __init__(self, path, line, message):
++        super().__init__(f"{path}:{line}: {message}")
++        self.path = path
++        self.line = line
++
++
+ def parse_price(text):
+     """Return the price in cents for a dollar amount such as ``12.50``."""
+     dollars, _, cents = text.strip().partition(".")
+@@ -34,8 +43,11 @@ def load(path):
+     """Return the Items of a stock file, in file order."""
+     items = []
+     with open(path) as handle:
+-        for line in handle:
++        for number, line in enumerate(handle, start=1):
+             if not line.strip() or line.lstrip().startswith("#"):
+                 continue
+-            items.append(parse_line(line))
++            try:
++                items.append(parse_line(line))
++            except ValueError as error:
++                raise StockFileError(path, number, error) from error
+     return items
+diff --git a/tests/test_items.py b/tests/test_items.py
+index 7c2d20a..5db7f57 100644
+--- a/tests/test_items.py
++++ b/tests/test_items.py
+@@ -2,7 +2,7 @@ import os
+ import tempfile
+ import unittest
+ 
+-from inventory.items import Item, load, parse_line, parse_price
++from inventory.items import Item, StockFileError, load, parse_line, parse_price
+ 
+ 
+ class ParseTest(unittest.TestCase):
+@@ -27,3 +27,12 @@ class LoadTest(unittest.TestCase):
+             with open(path, "w") as handle:
+                 handle.write("# header\n\nA1,bolt,40,0.25\nA2,nut,3,0.10\n")
+             self.assertEqual([item.sku for item in load(path)], ["A1", "A2"])
++
++    def test_names_the_malformed_line(self):
++        with tempfile.TemporaryDirectory() as work:
++            path = os.path.join(work, "stock.txt")
++            with open(path, "w") as handle:
++                handle.write("A1,bolt,40,0.25\nA2,nut\n")
++            with self.assertRaises(StockFileError) as caught:
++                load(path)
++            self.assertEqual(caught.exception.line, 2)

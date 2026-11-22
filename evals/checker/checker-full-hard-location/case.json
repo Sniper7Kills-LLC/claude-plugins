@@ -1,0 +1,35 @@
+{
+  "name": "checker-full-hard-location",
+  "suite": "checker",
+  "tags": [
+    "checker",
+    "full",
+    "small"
+  ],
+  "timeout_s": 1800,
+  "runs": 3,
+  "fixture": "../../worker/worker-hard-location/../_fixture",
+  "tracker": "../../worker/worker-hard-location/tracker.json",
+  "patch": "../../worker/worker-hard-location/reference.patch",
+  "patch_branch": "issue/6-stock-location",
+  "model": "haiku",
+  "prompt": "You are a dispatcher in an automated eval of the issue-flow plugin. Nobody is available to answer questions. Do only these steps:\n\n1. Call the Agent tool once, with:\n   - subagent_type: \"issue-flow:criteria-checker\"\n   - isolation: \"worktree\"\n   - description: \"criteria check #6\"\n   - prompt: the brief between the BRIEF START and BRIEF END lines below, unchanged.\n   Do not pass `name` or `model`.\n2. Wait until the checker finishes. Do not check the branch yourself. Do not run `sleep`, and do not poll for the checker: a notification wakes you when it finishes.\n3. Write the checker's final message, unchanged, to `.eval/checker-verdict.json` in the current directory.\n4. Reply with one line: the status of each criterion.\n\nBRIEF START\nissue:        #6 — Add a location to stock items\nhead:         origin/issue/6-stock-location\nheadSha:      {head_sha}\nbase:         origin/main\nremote:       origin\ntestCommand:  python3 -m unittest\ncriteria:\n  1. A stock line can have a fifth field, `location`. An item from a line with four fields has the location `main`.\n  2. `Item` has a `location` field, and `Item(\"A1\", \"bolt\", 40, 25)` still works and gives an item at `main`.\n  3. `inventory list` prints the location as the last column of each row, after one space.\n  4. `inventory total --location north stock.txt` prints the value of the items at `north` only.\n  5. `inventory low --location north stock.txt` lists only the low items at `north`.\n  6. Without `--location`, `total` and `low` cover every location.\npluginRoot:   {plugin_dir}\nBRIEF END\n",
+  "graders": [
+    {
+      "type": "checker_verdict",
+      "issue": 6,
+      "expect": "all-met"
+    },
+    {
+      "type": "refs_unchanged"
+    },
+    {
+      "type": "gh_log",
+      "forbid": [
+        {
+          "kind": "write"
+        }
+      ]
+    }
+  ]
+}

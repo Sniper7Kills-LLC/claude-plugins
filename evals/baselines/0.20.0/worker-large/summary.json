@@ -1,0 +1,124 @@
+{
+  "suite": "worker",
+  "variant": {
+    "plugin_dir": "issue-flow (git worktree of tag issue-flow--v0.20.0)",
+    "git_sha": "c3974fe577b7ce45383f564c3ed54b5a99080a9d",
+    "version": "0.20.0"
+  },
+  "effort": "medium",
+  "started": "20261121T224233Z",
+  "finished": "20261121T225557Z",
+  "partial": false,
+  "models": [
+    "claude-haiku-5-5",
+    "claude-opus-5-5"
+  ],
+  "total_cost_usd": 3.687161,
+  "runs": 9,
+  "suite_means": {
+    "runs": 9,
+    "ok_rate": 1.0,
+    "mean_score": 1.0,
+    "score_range": [
+      1.0,
+      1.0
+    ],
+    "hidden_pass_rate": 1.0,
+    "mean_cost_usd": 0.4097,
+    "cost_range": [
+      0.3357,
+      0.5525
+    ],
+    "mean_turns": 2.3333,
+    "mean_duration_s": 88.9322,
+    "duration_range": [
+      78.9,
+      97.2
+    ],
+    "mean_main_tokens": 106488.4444,
+    "mean_subagent_tokens": 640848.1111,
+    "mean_subagent_turns": 16.4444,
+    "mean_agent_cost_usd": 0.4097,
+    "errors": 0
+  },
+  "cases": {
+    "worker-large-hard-one-discount": {
+      "runs": 3,
+      "ok_rate": 1.0,
+      "mean_score": 1.0,
+      "score_range": [
+        1.0,
+        1.0
+      ],
+      "hidden_pass_rate": 1.0,
+      "mean_cost_usd": 0.4343,
+      "cost_range": [
+        0.3357,
+        0.5525
+      ],
+      "mean_turns": 2.3333,
+      "mean_duration_s": 87.806,
+      "duration_range": [
+        78.9,
+        97.2
+      ],
+      "mean_main_tokens": 113422.3333,
+      "mean_subagent_tokens": 622514.3333,
+      "mean_subagent_turns": 15.6667,
+      "mean_agent_cost_usd": 0.4343,
+      "errors": 0
+    },
+    "worker-large-locate-repeated-sku": {
+      "runs": 3,
+      "ok_rate": 1.0,
+      "mean_score": 1.0,
+      "score_range": [
+        1.0,
+        1.0
+      ],
+      "hidden_pass_rate": 1.0,
+      "mean_cost_usd": 0.396,
+      "cost_range": [
+        0.3876,
+        0.4124
+      ],
+      "mean_turns": 2.6667,
+      "mean_duration_s": 90.7487,
+      "duration_range": [
+        89.4,
+        93.1
+      ],
+      "mean_main_tokens": 103393.6667,
+      "mean_subagent_tokens": 649883.6667,
+      "mean_subagent_turns": 16.6667,
+      "mean_agent_cost_usd": 0.396,
+      "errors": 0
+    },
+    "worker-large-medium-report-midnight": {
+      "runs": 3,
+      "ok_rate": 1.0,
+      "mean_score": 1.0,
+      "score_range": [
+        1.0,
+        1.0
+      ],
+      "hidden_pass_rate": 1.0,
+      "mean_cost_usd": 0.3988,
+      "cost_range": [
+        0.3618,
+        0.4632
+      ],
+      "mean_turns": 2.0,
+      "mean_duration_s": 88.242,
+      "duration_range": [
+        83.8,
+        97.1
+      ],
+      "mean_main_tokens": 102649.3333,
+      "mean_subagent_tokens": 650146.3333,
+      "mean_subagent_turns": 17.0,
+      "mean_agent_cost_usd": 0.3988,
+      "errors": 0
+    }
+  }
+}

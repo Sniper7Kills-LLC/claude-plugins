@@ -1,0 +1,79 @@
+{
+  "repo": {
+    "owner": "acme",
+    "name": "inventory",
+    "defaultBranch": "main"
+  },
+  "user": "eval-bot",
+  "labels": [
+    {
+      "name": "status:ready",
+      "color": "EDEDED",
+      "description": ""
+    },
+    {
+      "name": "status:in-progress",
+      "color": "EDEDED",
+      "description": ""
+    },
+    {
+      "name": "status:in-review",
+      "color": "EDEDED",
+      "description": ""
+    },
+    {
+      "name": "status:needs-feedback",
+      "color": "EDEDED",
+      "description": ""
+    },
+    {
+      "name": "status:blocked",
+      "color": "EDEDED",
+      "description": ""
+    },
+    {
+      "name": "type:hotfix",
+      "color": "EDEDED",
+      "description": ""
+    },
+    {
+      "name": "type:batch",
+      "color": "EDEDED",
+      "description": ""
+    },
+    {
+      "name": "type:epic",
+      "color": "EDEDED",
+      "description": ""
+    },
+    {
+      "name": "priority:high",
+      "color": "EDEDED",
+      "description": ""
+    },
+    {
+      "name": "priority:low",
+      "color": "EDEDED",
+      "description": ""
+    }
+  ],
+  "issues": [
+    {
+      "number": 7,
+      "title": "Name the bad line when a stock file is malformed",
+      "body": "A malformed stock file stops `inventory` with a Python traceback, and the message does not say which line is wrong. In a file of 200 lines, nobody can find the bad one.\n\n## Acceptance criteria\n- [ ] `items.load` raises `items.StockFileError` for a malformed line. `StockFileError` is a subclass of `ValueError`, and has the attributes `path` and `line` (the line number, counted from 1).\n- [ ] For a stock file whose line 3 has three fields, every command prints `<path>:3: expected 4 fields, got 3` to stderr and exits with status 2, with no traceback. `<path>` is the path as given on the command line.\n- [ ] A quantity or a price that is not a number is a malformed line too, with the same `<path>:<line>: <message>` form.\n- [ ] `parse_line` still raises `ValueError` for a malformed line.\n",
+      "state": "open",
+      "labels": [
+        "status:in-progress"
+      ],
+      "assignees": [
+        "eval-bot"
+      ],
+      "author": "maintainer",
+      "createdAt": "2026-11-20T09:00:00Z",
+      "updatedAt": "2026-11-20T09:00:00Z",
+      "comments": []
+    }
+  ],
+  "prs": []
+}

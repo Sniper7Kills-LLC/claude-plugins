@@ -1,0 +1,87 @@
+diff --git a/inventory/cli.py b/inventory/cli.py
+index da43b4c..209fabf 100644
+--- a/inventory/cli.py
++++ b/inventory/cli.py
+@@ -8,11 +8,14 @@ from . import items, report
+ def build_parser():
+     parser = argparse.ArgumentParser(prog="inventory")
+     commands = parser.add_subparsers(dest="command", required=True)
+-    for name in ("list", "total"):
+-        commands.add_parser(name).add_argument("path")
++    commands.add_parser("list").add_argument("path")
++    total = commands.add_parser("total")
++    total.add_argument("path")
++    total.add_argument("--location")
+     low = commands.add_parser("low")
+     low.add_argument("path")
+     low.add_argument("--threshold", type=int, default=5)
++    low.add_argument("--location")
+     return parser
+ 
+ 
+@@ -20,6 +23,8 @@ def main(argv=None):
+     """Run one command and return the exit status."""
+     args = build_parser().parse_args(argv)
+     stock = items.load(args.path)
++    if getattr(args, "location", None):
++        stock = [item for item in stock if item.location == args.location]
+     if args.command == "list":
+         for item in stock:
+             print(report.format_line(item))
+diff --git a/inventory/items.py b/inventory/items.py
+index d76a837..ccfb6db 100644
+--- a/inventory/items.py
++++ b/inventory/items.py
+@@ -1,6 +1,7 @@
+ """Read a stock file into Item records.
+ 
+-A stock file has one item per line: ``sku,name,qty,price``. The price is in
++A stock file has one item per line: ``sku,name,qty,price[,location]``. The
++location is optional and defaults to ``main``. The price is in
+ dollars, for example ``12.50``. Blank lines and lines that start with ``#``
+ are skipped.
+ """
+@@ -13,6 +14,7 @@ class Item(NamedTuple):
+     name: str
+     qty: int
+     price: int  # In cents, so that sums stay exact.
++    location: str = "main"
+ 
+ 
+ def parse_price(text):
+@@ -24,10 +26,11 @@ def parse_price(text):
+ def parse_line(line):
+     """Return the Item for one stock-file line; a malformed line raises ValueError."""
+     fields = [field.strip() for field in line.split(",")]
+-    if len(fields) != 4:
+-        raise ValueError(f"expected 4 fields, got {len(fields)}")
+-    sku, name, qty, price = fields
+-    return Item(sku, name, int(qty), parse_price(price))
++    if len(fields) not in (4, 5):
++        raise ValueError(f"expected 4 or 5 fields, got {len(fields)}")
++    sku, name, qty, price = fields[:4]
++    location = fields[4] if len(fields) == 5 else "main"
++    return Item(sku, name, int(qty), parse_price(price), location)
+ 
+ 
+ def load(path):
+diff --git a/inventory/report.py b/inventory/report.py
+index 527a1ab..4def215 100644
+--- a/inventory/report.py
++++ b/inventory/report.py
+@@ -14,4 +14,4 @@ def low_stock(items, threshold):
+ def format_line(item):
+     """Return one table row for an item: sku, name, quantity and unit price."""
+     price = f"${item.price // 100}.{item.price % 100:02d}"
+-    return f"{item.sku:<6} {item.name:<12} {item.qty:>5} {price:>9}"
++    return f"{item.sku:<6} {item.name:<12} {item.qty:>5} {price:>9} {item.location}"
+diff --git a/tests/test_report.py b/tests/test_report.py
+index 09f6646..d78845e 100644
+--- a/tests/test_report.py
++++ b/tests/test_report.py
+@@ -14,4 +14,4 @@ class ReportTest(unittest.TestCase):
+         self.assertEqual([item.sku for item in low_stock(STOCK, 5)], ["A2"])
+ 
+     def test_format_line_shows_the_price_in_dollars(self):
+-        self.assertEqual(format_line(STOCK[2]), "C3     bracket         12     $2.75")
++        self.assertEqual(format_line(STOCK[2]), "C3     bracket         12     $2.75 main")

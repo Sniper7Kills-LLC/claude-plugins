@@ -1,0 +1,100 @@
+{
+  "suite": "pm",
+  "variant": {
+    "plugin_dir": "issue-flow (issue/121-escalated-checkpoint at d5c8dec)",
+    "git_sha": "d5c8dec3860ddccb1d1499b5e30aee8df3cd182d",
+    "version": "0.20.0"
+  },
+  "effort": "medium",
+  "started": "20261122T013842Z",
+  "finished": "20261122T014254Z",
+  "partial": false,
+  "models": [
+    "claude-opus-5-5"
+  ],
+  "total_cost_usd": 3.088469,
+  "runs": 6,
+  "suite_means": {
+    "runs": 6,
+    "ok_rate": 1.0,
+    "mean_score": 1.0,
+    "score_range": [
+      1.0,
+      1.0
+    ],
+    "hidden_pass_rate": null,
+    "mean_cost_usd": 0.513,
+    "cost_range": [
+      0.5099,
+      0.5179
+    ],
+    "mean_turns": 6.1667,
+    "mean_duration_s": 29.3868,
+    "duration_range": [
+      27.9,
+      30.5
+    ],
+    "mean_main_tokens": 270918.0,
+    "mean_subagent_tokens": 0.0,
+    "mean_subagent_turns": 0.0,
+    "mean_agent_cost_usd": 0.513,
+    "mean_tracker_calls": 5.0,
+    "errors": 0
+  },
+  "cases": {
+    "pm-c1-checkpoint": {
+      "runs": 3,
+      "ok_rate": 1.0,
+      "mean_score": 1.0,
+      "score_range": [
+        1.0,
+        1.0
+      ],
+      "hidden_pass_rate": null,
+      "mean_cost_usd": 0.5109,
+      "cost_range": [
+        0.5099,
+        0.5127
+      ],
+      "mean_turns": 6.0,
+      "mean_duration_s": 29.3197,
+      "duration_range": [
+        28.3,
+        30.2
+      ],
+      "mean_main_tokens": 260439.0,
+      "mean_subagent_tokens": 0.0,
+      "mean_subagent_turns": 0.0,
+      "mean_agent_cost_usd": 0.5109,
+      "mean_tracker_calls": 5.0,
+      "errors": 0
+    },
+    "pm-c1-escalated-checkpoint": {
+      "runs": 3,
+      "ok_rate": 1.0,
+      "mean_score": 1.0,
+      "score_range": [
+        1.0,
+        1.0
+      ],
+      "hidden_pass_rate": null,
+      "mean_cost_usd": 0.5151,
+      "cost_range": [
+        0.5134,
+        0.5179
+      ],
+      "mean_turns": 6.3333,
+      "mean_duration_s": 29.454,
+      "duration_range": [
+        27.9,
+        30.5
+      ],
+      "mean_main_tokens": 281397.0,
+      "mean_subagent_tokens": 0.0,
+      "mean_subagent_turns": 0.0,
+      "mean_agent_cost_usd": 0.5151,
+      "mean_tracker_calls": 5.0,
+      "errors": 0
+    }
+  }
+}

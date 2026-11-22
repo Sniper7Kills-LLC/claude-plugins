@@ -1,0 +1,724 @@
+{
+  "suite": "pm",
+  "variant": {
+    "plugin_dir": "issue-flow (issue/121-escalated-checkpoint at d5c8dec)",
+    "git_sha": "d5c8dec3860ddccb1d1499b5e30aee8df3cd182d",
+    "version": "0.20.0"
+  },
+  "effort": "medium",
+  "started": "20261122T013842Z",
+  "finished": "20261122T014254Z",
+  "max_cost_usd": 10.0,
+  "total_cost_usd": 3.088469,
+  "partial": false,
+  "records": [
+    {
+      "case": "pm-c1-checkpoint",
+      "run": 1,
+      "variant": {
+        "plugin_dir": "issue-flow (issue/121-escalated-checkpoint at d5c8dec)",
+        "git_sha": "d5c8dec3860ddccb1d1499b5e30aee8df3cd182d",
+        "version": "0.20.0"
+      },
+      "effort": "medium",
+      "ok": true,
+      "score": 1.0,
+      "graders": [
+        {
+          "type": "spawns",
+          "passed": true,
+          "detail": "1 spawn(s); 3 expected, 3 forbidden"
+        },
+        {
+          "type": "gh_log",
+          "passed": true,
+          "detail": "1 expected, 5 forbidden"
+        },
+        {
+          "type": "llm",
+          "passed": true,
+          "detail": "2/3 votes: PASS: The PM spawned one fresh worker on the published branch with no model override, added the verdict's `remaining` text to the plan, posted one short checkpoint comment, left the label unchanged, and did no merge, escalation, or SendMessage to the old worker."
+        }
+      ],
+      "deterministic": {
+        "passed": 2,
+        "total": 2
+      },
+      "llm": {
+        "passed": 1,
+        "total": 1
+      },
+      "cost_usd": 0.512715,
+      "judge_cost_usd": 0.001745,
+      "usage": {
+        "input": 10,
+        "output": 2038,
+        "cache_read": 225855,
+        "cache_write": 53343
+      },
+      "model_usage": {
+        "claude-opus-5-5": {
+          "inputTokens": 10,
+          "outputTokens": 2038,
+          "cacheReadInputTokens": 225855,
+          "cacheCreationInputTokens": 53343,
+          "webSearchRequests": 0,
+          "costUSD": 0.512715,
+          "contextWindow": 1000000,
+          "maxOutputTokens": 128000,
+          "thinkingTokens": 277,
+          "cacheCreationEphemeral5mInputTokens": 0,
+          "cacheCreationEphemeral1hInputTokens": 53343,
+          "canonicalModel": "claude-opus-5-5",
+          "provider": "firstParty",
+          "costBasis": "list"
+        }
+      },
+      "turns": 6,
+      "duration_s": 28.955,
+      "wall_s": 29.534,
+      "session_id": "f36cf3cd-6ad4-4bc5-b34a-451f84d1c59e",
+      "transcript": null,
+      "model": "claude-opus-5-5",
+      "error": null,
+      "sandbox": null,
+      "agents": {
+        "agents": [
+          {
+            "type": "main",
+            "id": "f36cf3cd-6ad4-4bc5-b34a-451f84d1c59e",
+            "turns": 5,
+            "input": 10,
+            "output": 2038,
+            "cache_read": 225855,
+            "cache_write": 53343,
+            "model": "claude-opus-5-5",
+            "cost_usd": 0.512715
+          }
+        ],
+        "totals": {
+          "turns": 5,
+          "input": 10,
+          "output": 2038,
+          "cache_read": 225855,
+          "cache_write": 53343,
+          "cost_usd": 0.512715,
+          "unpriced_models": [],
+          "skipped_lines": 0,
+          "by_type": {
+            "main": {
+              "agents": 1,
+              "turns": 5,
+              "input": 10,
+              "output": 2038,
+              "cache_read": 225855,
+              "cache_write": 53343,
+              "cost_usd": 0.512715
+            }
+          }
+        },
+        "pricing_date": "2026-11-21"
+      },
+      "tokens": {
+        "main": 281246,
+        "subagents": 0
+      },
+      "tracker_calls": {
+        "total": 5,
+        "read": 4,
+        "write": 1,
+        "error": 0
+      }
+    },
+    {
+      "case": "pm-c1-checkpoint",
+      "run": 2,
+      "variant": {
+        "plugin_dir": "issue-flow (issue/121-escalated-checkpoint at d5c8dec)",
+        "git_sha": "d5c8dec3860ddccb1d1499b5e30aee8df3cd182d",
+        "version": "0.20.0"
+      },
+      "effort": "medium",
+      "ok": true,
+      "score": 1.0,
+      "graders": [
+        {
+          "type": "spawns",
+          "passed": true,
+          "detail": "1 spawn(s); 3 expected, 3 forbidden"
+        },
+        {
+          "type": "gh_log",
+          "passed": true,
+          "detail": "1 expected, 5 forbidden"
+        },
+        {
+          "type": "llm",
+          "passed": true,
+          "detail": "2/3 votes: PASS: The PM handled the checkpoint as routine flow control, with a fresh worker on the published branch, no model override, one comment, the label untouched, and no SendMessage, escalation, status change, or merge, though the spawn was refused and the tracker comment wrongly says \"replacement spawn"
+        }
+      ],
+      "deterministic": {
+        "passed": 2,
+        "total": 2
+      },
+      "llm": {
+        "passed": 1,
+        "total": 1
+      },
+      "cost_usd": 0.5100212,
+      "judge_cost_usd": 0.002732,
+      "usage": {
+        "input": 8,
+        "output": 2092,
+        "cache_read": 162666,
+        "cache_write": 54452
+      },
+      "model_usage": {
+        "claude-opus-5-5": {
+          "inputTokens": 8,
+          "outputTokens": 2092,
+          "cacheReadInputTokens": 162666,
+          "cacheCreationInputTokens": 54452,
+          "webSearchRequests": 0,
+          "costUSD": 0.5100212,
+          "contextWindow": 1000000,
+          "maxOutputTokens": 128000,
+          "thinkingTokens": 327,
+          "cacheCreationEphemeral5mInputTokens": 0,
+          "cacheCreationEphemeral1hInputTokens": 54452,
+          "canonicalModel": "claude-opus-5-5",
+          "provider": "firstParty",
+          "costBasis": "list"
+        }
+      },
+      "turns": 6,
+      "duration_s": 29.585,
+      "wall_s": 30.174,
+      "session_id": "cd1a86f8-e823-4217-b696-e3dc7d1750b0",
+      "transcript": null,
+      "model": "claude-opus-5-5",
+      "error": null,
+      "sandbox": null,
+      "agents": {
+        "agents": [
+          {
+            "type": "main",
+            "id": "cd1a86f8-e823-4217-b696-e3dc7d1750b0",
+            "turns": 4,
+            "input": 8,
+            "output": 2092,
+            "cache_read": 162666,
+            "cache_write": 54452,
+            "model": "claude-opus-5-5",
+            "cost_usd": 0.510021
+          }
+        ],
+        "totals": {
+          "turns": 4,
+          "input": 8,
+          "output": 2092,
+          "cache_read": 162666,
+          "cache_write": 54452,
+          "cost_usd": 0.510021,
+          "unpriced_models": [],
+          "skipped_lines": 0,
+          "by_type": {
+            "main": {
+              "agents": 1,
+              "turns": 4,
+              "input": 8,
+              "output": 2092,
+              "cache_read": 162666,
+              "cache_write": 54452,
+              "cost_usd": 0.510021
+            }
+          }
+        },
+        "pricing_date": "2026-11-21"
+      },
+      "tokens": {
+        "main": 219218,
+        "subagents": 0
+      },
+      "tracker_calls": {
+        "total": 5,
+        "read": 4,
+        "write": 1,
+        "error": 0
+      }
+    },
+    {
+      "case": "pm-c1-checkpoint",
+      "run": 3,
+      "variant": {
+        "plugin_dir": "issue-flow (issue/121-escalated-checkpoint at d5c8dec)",
+        "git_sha": "d5c8dec3860ddccb1d1499b5e30aee8df3cd182d",
+        "version": "0.20.0"
+      },
+      "effort": "medium",
+      "ok": true,
+      "score": 1.0,
+      "graders": [
+        {
+          "type": "spawns",
+          "passed": true,
+          "detail": "1 spawn(s); 3 expected, 3 forbidden"
+        },
+        {
+          "type": "gh_log",
+          "passed": true,
+          "detail": "1 expected, 5 forbidden"
+        },
+        {
+          "type": "llm",
+          "passed": true,
+          "detail": "2/2 votes: PASS: The PM treated the checkpoint as routine flow control, spawned one fresh worker on the pushed branch with no model override, posted one checkpoint comment, left the label unchanged, and did not message the old worker, escalate, change status, or merge."
+        }
+      ],
+      "deterministic": {
+        "passed": 2,
+        "total": 2
+      },
+      "llm": {
+        "passed": 1,
+        "total": 1
+      },
+      "cost_usd": 0.5099382,
+      "judge_cost_usd": 0.001741,
+      "usage": {
+        "input": 10,
+        "output": 1936,
+        "cache_read": 225651,
+        "cache_write": 53256
+      },
+      "model_usage": {
+        "claude-opus-5-5": {
+          "inputTokens": 10,
+          "outputTokens": 1936,
+          "cacheReadInputTokens": 225651,
+          "cacheCreationInputTokens": 53256,
+          "webSearchRequests": 0,
+          "costUSD": 0.5099382,
+          "contextWindow": 1000000,
+          "maxOutputTokens": 128000,
+          "thinkingTokens": 248,
+          "cacheCreationEphemeral5mInputTokens": 0,
+          "cacheCreationEphemeral1hInputTokens": 53256,
+          "canonicalModel": "claude-opus-5-5",
+          "provider": "firstParty",
+          "costBasis": "list"
+        }
+      },
+      "turns": 6,
+      "duration_s": 27.653,
+      "wall_s": 28.251,
+      "session_id": "725112c6-2f8e-4049-962d-ac2c632a991d",
+      "transcript": null,
+      "model": "claude-opus-5-5",
+      "error": null,
+      "sandbox": null,
+      "agents": {
+        "agents": [
+          {
+            "type": "main",
+            "id": "725112c6-2f8e-4049-962d-ac2c632a991d",
+            "turns": 5,
+            "input": 10,
+            "output": 1936,
+            "cache_read": 225651,
+            "cache_write": 53256,
+            "model": "claude-opus-5-5",
+            "cost_usd": 0.509938
+          }
+        ],
+        "totals": {
+          "turns": 5,
+          "input": 10,
+          "output": 1936,
+          "cache_read": 225651,
+          "cache_write": 53256,
+          "cost_usd": 0.509938,
+          "unpriced_models": [],
+          "skipped_lines": 0,
+          "by_type": {
+            "main": {
+              "agents": 1,
+              "turns": 5,
+              "input": 10,
+              "output": 1936,
+              "cache_read": 225651,
+              "cache_write": 53256,
+              "cost_usd": 0.509938
+            }
+          }
+        },
+        "pricing_date": "2026-11-21"
+      },
+      "tokens": {
+        "main": 280853,
+        "subagents": 0
+      },
+      "tracker_calls": {
+        "total": 5,
+        "read": 4,
+        "write": 1,
+        "error": 0
+      }
+    },
+    {
+      "case": "pm-c1-escalated-checkpoint",
+      "run": 1,
+      "variant": {
+        "plugin_dir": "issue-flow (issue/121-escalated-checkpoint at d5c8dec)",
+        "git_sha": "d5c8dec3860ddccb1d1499b5e30aee8df3cd182d",
+        "version": "0.20.0"
+      },
+      "effort": "medium",
+      "ok": true,
+      "score": 1.0,
+      "graders": [
+        {
+          "type": "spawns",
+          "passed": true,
+          "detail": "1 spawn(s); 2 expected, 2 forbidden"
+        },
+        {
+          "type": "gh_log",
+          "passed": true,
+          "detail": "1 expected, 5 forbidden"
+        },
+        {
+          "type": "llm",
+          "passed": true,
+          "detail": "2/2 votes: PASS: The material shows the Opus checkpoint verdict was treated as the same escalation attempt, with a replacement `issue-worker` spawned on `model: \"opus\"` that keeps the escalation field, one checkpoint comment posted on #11, no second `escalated to Opus:` comment, and no `status:blocked`, status"
+        }
+      ],
+      "deterministic": {
+        "passed": 2,
+        "total": 2
+      },
+      "llm": {
+        "passed": 1,
+        "total": 1
+      },
+      "cost_usd": 0.5178892,
+      "judge_cost_usd": 0.001339,
+      "usage": {
+        "input": 10,
+        "output": 2166,
+        "cache_read": 226206,
+        "cache_write": 53661
+      },
+      "model_usage": {
+        "claude-opus-5-5": {
+          "inputTokens": 10,
+          "outputTokens": 2166,
+          "cacheReadInputTokens": 226206,
+          "cacheCreationInputTokens": 53661,
+          "webSearchRequests": 0,
+          "costUSD": 0.5178892,
+          "contextWindow": 1000000,
+          "maxOutputTokens": 128000,
+          "thinkingTokens": 312,
+          "cacheCreationEphemeral5mInputTokens": 0,
+          "cacheCreationEphemeral1hInputTokens": 53661,
+          "canonicalModel": "claude-opus-5-5",
+          "provider": "firstParty",
+          "costBasis": "list"
+        }
+      },
+      "turns": 7,
+      "duration_s": 27.31,
+      "wall_s": 27.902,
+      "session_id": "8838f977-bff8-44c7-850d-fb8612af9c59",
+      "transcript": null,
+      "model": "claude-opus-5-5",
+      "error": null,
+      "sandbox": null,
+      "agents": {
+        "agents": [
+          {
+            "type": "main",
+            "id": "8838f977-bff8-44c7-850d-fb8612af9c59",
+            "turns": 5,
+            "input": 10,
+            "output": 2166,
+            "cache_read": 226206,
+            "cache_write": 53661,
+            "model": "claude-opus-5-5",
+            "cost_usd": 0.517889
+          }
+        ],
+        "totals": {
+          "turns": 5,
+          "input": 10,
+          "output": 2166,
+          "cache_read": 226206,
+          "cache_write": 53661,
+          "cost_usd": 0.517889,
+          "unpriced_models": [],
+          "skipped_lines": 0,
+          "by_type": {
+            "main": {
+              "agents": 1,
+              "turns": 5,
+              "input": 10,
+              "output": 2166,
+              "cache_read": 226206,
+              "cache_write": 53661,
+              "cost_usd": 0.517889
+            }
+          }
+        },
+        "pricing_date": "2026-11-21"
+      },
+      "tokens": {
+        "main": 282043,
+        "subagents": 0
+      },
+      "tracker_calls": {
+        "total": 5,
+        "read": 4,
+        "write": 1,
+        "error": 0
+      }
+    },
+    {
+      "case": "pm-c1-escalated-checkpoint",
+      "run": 2,
+      "variant": {
+        "plugin_dir": "issue-flow (issue/121-escalated-checkpoint at d5c8dec)",
+        "git_sha": "d5c8dec3860ddccb1d1499b5e30aee8df3cd182d",
+        "version": "0.20.0"
+      },
+      "effort": "medium",
+      "ok": true,
+      "score": 1.0,
+      "graders": [
+        {
+          "type": "spawns",
+          "passed": true,
+          "detail": "1 spawn(s); 2 expected, 2 forbidden"
+        },
+        {
+          "type": "gh_log",
+          "passed": true,
+          "detail": "1 expected, 5 forbidden"
+        },
+        {
+          "type": "llm",
+          "passed": true,
+          "detail": "2/2 votes: PASS: The material re-spawns a fresh `issue-flow:issue-worker` for #11 with `model: \"opus\"` and the same `escalation:` field, posts one checkpoint comment, posts no second `escalated to Opus:` comment, and leaves the status unchanged with no merge."
+        }
+      ],
+      "deterministic": {
+        "passed": 2,
+        "total": 2
+      },
+      "llm": {
+        "passed": 1,
+        "total": 1
+      },
+      "cost_usd": 0.5138918,
+      "judge_cost_usd": 0.001594,
+      "usage": {
+        "input": 10,
+        "output": 2141,
+        "cache_read": 225679,
+        "cache_write": 53237
+      },
+      "model_usage": {
+        "claude-opus-5-5": {
+          "inputTokens": 10,
+          "outputTokens": 2141,
+          "cacheReadInputTokens": 225679,
+          "cacheCreationInputTokens": 53237,
+          "webSearchRequests": 0,
+          "costUSD": 0.5138918,
+          "contextWindow": 1000000,
+          "maxOutputTokens": 128000,
+          "thinkingTokens": 286,
+          "cacheCreationEphemeral5mInputTokens": 0,
+          "cacheCreationEphemeral1hInputTokens": 53237,
+          "canonicalModel": "claude-opus-5-5",
+          "provider": "firstParty",
+          "costBasis": "list"
+        }
+      },
+      "turns": 6,
+      "duration_s": 29.941,
+      "wall_s": 30.482,
+      "session_id": "fa4cc6d1-ab6c-43c7-817e-844a250e2ac3",
+      "transcript": null,
+      "model": "claude-opus-5-5",
+      "error": null,
+      "sandbox": null,
+      "agents": {
+        "agents": [
+          {
+            "type": "main",
+            "id": "fa4cc6d1-ab6c-43c7-817e-844a250e2ac3",
+            "turns": 5,
+            "input": 10,
+            "output": 2141,
+            "cache_read": 225679,
+            "cache_write": 53237,
+            "model": "claude-opus-5-5",
+            "cost_usd": 0.513892
+          }
+        ],
+        "totals": {
+          "turns": 5,
+          "input": 10,
+          "output": 2141,
+          "cache_read": 225679,
+          "cache_write": 53237,
+          "cost_usd": 0.513892,
+          "unpriced_models": [],
+          "skipped_lines": 0,
+          "by_type": {
+            "main": {
+              "agents": 1,
+              "turns": 5,
+              "input": 10,
+              "output": 2141,
+              "cache_read": 225679,
+              "cache_write": 53237,
+              "cost_usd": 0.513892
+            }
+          }
+        },
+        "pricing_date": "2026-11-21"
+      },
+      "tokens": {
+        "main": 281067,
+        "subagents": 0
+      },
+      "tracker_calls": {
+        "total": 5,
+        "read": 4,
+        "write": 1,
+        "error": 0
+      }
+    },
+    {
+      "case": "pm-c1-escalated-checkpoint",
+      "run": 3,
+      "variant": {
+        "plugin_dir": "issue-flow (issue/121-escalated-checkpoint at d5c8dec)",
+        "git_sha": "d5c8dec3860ddccb1d1499b5e30aee8df3cd182d",
+        "version": "0.20.0"
+      },
+      "effort": "medium",
+      "ok": true,
+      "score": 1.0,
+      "graders": [
+        {
+          "type": "spawns",
+          "passed": true,
+          "detail": "1 spawn(s); 2 expected, 2 forbidden"
+        },
+        {
+          "type": "gh_log",
+          "passed": true,
+          "detail": "1 expected, 5 forbidden"
+        },
+        {
+          "type": "llm",
+          "passed": true,
+          "detail": "2/2 votes: PASS: The PM treated the checkpoint as the same Opus attempt, re-spawned one `issue-flow:issue-worker` with `model: \"opus\"` and the same `escalation:` field, posted one checkpoint comment, posted no second escalation comment, and made no `status:blocked`, status change, or merge."
+        }
+      ],
+      "deterministic": {
+        "passed": 2,
+        "total": 2
+      },
+      "llm": {
+        "passed": 1,
+        "total": 1
+      },
+      "cost_usd": 0.513393,
+      "judge_cost_usd": 0.00147,
+      "usage": {
+        "input": 10,
+        "output": 2107,
+        "cache_read": 225705,
+        "cache_write": 53259
+      },
+      "model_usage": {
+        "claude-opus-5-5": {
+          "inputTokens": 10,
+          "outputTokens": 2107,
+          "cacheReadInputTokens": 225705,
+          "cacheCreationInputTokens": 53259,
+          "webSearchRequests": 0,
+          "costUSD": 0.513393,
+          "contextWindow": 1000000,
+          "maxOutputTokens": 128000,
+          "thinkingTokens": 266,
+          "cacheCreationEphemeral5mInputTokens": 0,
+          "cacheCreationEphemeral1hInputTokens": 53259,
+          "canonicalModel": "claude-opus-5-5",
+          "provider": "firstParty",
+          "costBasis": "list"
+        }
+      },
+      "turns": 6,
+      "duration_s": 29.348,
+      "wall_s": 29.978,
+      "session_id": "8a471b2f-06c5-4181-b4c1-ce7e26d9f907",
+      "transcript": null,
+      "model": "claude-opus-5-5",
+      "error": null,
+      "sandbox": null,
+      "agents": {
+        "agents": [
+          {
+            "type": "main",
+            "id": "8a471b2f-06c5-4181-b4c1-ce7e26d9f907",
+            "turns": 5,
+            "input": 10,
+            "output": 2107,
+            "cache_read": 225705,
+            "cache_write": 53259,
+            "model": "claude-opus-5-5",
+            "cost_usd": 0.513393
+          }
+        ],
+        "totals": {
+          "turns": 5,
+          "input": 10,
+          "output": 2107,
+          "cache_read": 225705,
+          "cache_write": 53259,
+          "cost_usd": 0.513393,
+          "unpriced_models": [],
+          "skipped_lines": 0,
+          "by_type": {
+            "main": {
+              "agents": 1,
+              "turns": 5,
+              "input": 10,
+              "output": 2107,
+              "cache_read": 225705,
+              "cache_write": 53259,
+              "cost_usd": 0.513393
+            }
+          }
+        },
+        "pricing_date": "2026-11-21"
+      },
+      "tokens": {
+        "main": 281081,
+        "subagents": 0
+      },
+      "tracker_calls": {
+        "total": 5,
+        "read": 4,
+        "write": 1,
+        "error": 0
+      }
+    }
+  ]
+}

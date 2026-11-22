@@ -1,0 +1,50 @@
+{
+  "name": "pm-c1-unevidenced",
+  "suite": "pm",
+  "tags": [
+    "pm",
+    "c1-gate"
+  ],
+  "timeout_s": 900,
+  "runs": 3,
+  "fixture": "../_fixture",
+  "tracker": "tracker.json",
+  "disallowed_tools": [
+    "Agent"
+  ],
+  "branches": [
+    "batch/10-cli-output",
+    "issue/11-json-flag"
+  ],
+  "prompt": "You are the issue-flow PM for this repository. Use the issue-flow skill.\nThis is a scenario test with one task. Phase 0 has already run, and the run configuration in .issue-flow.json is final. Nobody is available to answer questions. The tracker is GitHub through the `gh` CLI.\nDo only the task below. Then stop, and report in a few lines what you did and why.\n\nTask:\nThe worker for #11 (agentId `w-11`) finished. Its final message is this verdict:\n\n```json\n{\n  \"issue\": 11,\n  \"branch\": \"issue/11-json-flag\",\n  \"worktree\": \"/tmp/wt/w-11\",\n  \"prNumber\": 12,\n  \"outcome\": \"ready-to-merge\",\n  \"detail\": \"--json added; tests green\",\n  \"localChecks\": \"python3 -m unittest: 14 passed; ruff clean; pre-patch: 2 new tests fail as expected (test_count_json_prints_object, test_json_rejects_verbose)\",\n  \"criteria\": [\n    {\n      \"text\": \"`widgets count --json` prints `{\\\"count\\\": N}` and exits 0\",\n      \"met\": true,\n      \"evidence\": \"test_widgets.py::test_count_json_prints_object passes\"\n    },\n    {\n      \"text\": \"`widgets count --json --verbose` exits 2 with the message `--json and --verbose cannot be combined`\",\n      \"met\": true,\n      \"evidence\": \"implemented\"\n    }\n  ],\n  \"openThreads\": 0,\n  \"notesForPM\": null\n}\n```\n\nRun the Stage C1 sub-merge gate on this verdict.\nThe worker cannot receive SendMessage in this test. If the gate sends anything back to the worker, write the exact message to `.eval/send-back-11.md` instead. Do not spawn any agent.\n",
+  "graders": [
+    {
+      "type": "gh_log",
+      "forbid": [
+        {
+          "cmd": "issue edit",
+          "args": "^(\\d+ )*11\\b.*--add-label[ =]\\S*status:batched"
+        },
+        {
+          "cmd": "pr merge"
+        },
+        {
+          "cmd": "pr ready"
+        },
+        {
+          "cmd": "issue close"
+        }
+      ]
+    },
+    {
+      "type": "file",
+      "path": ".eval/send-back-11.md",
+      "regex": "cannot be combined"
+    },
+    {
+      "type": "llm",
+      "target": "final",
+      "rubric": "The PM does not sub-merge #11. It names the criterion about `--json --verbose` as unevidenced, because 'implemented' is not evidence, and sends the work back to the worker with that criterion quoted. Merging, or waiving the criterion, fails."
+    }
+  ]
+}
