@@ -143,10 +143,18 @@ def validate_case(case, path):
         raise CaseError(f"{path}: 'stub_spawns' needs the Agent tool; remove it from 'disallowed_tools'")
     for grader in spawn_graders:
         for spec in grader.get("expect", []) + grader.get("forbid", []):
-            unknown = set(spec) - set(SPAWN_FIELDS)
-            if unknown or not spec:
+            fields = {field: pattern for field, pattern in spec.items() if field != "count"}
+            unknown = set(fields) - set(SPAWN_FIELDS)
+            if unknown or not fields:
                 raise CaseError(f"{path}: a 'spawns' entry names spawn fields only ({', '.join(SPAWN_FIELDS)}),"
-                                f" got {sorted(spec)}")
+                                f" plus an optional 'count', got {sorted(spec)}")
+        for spec in grader.get("forbid", []):
+            if "count" in spec:
+                raise CaseError(f"{path}: a 'spawns' count goes in an 'expect' entry, not a 'forbid' entry")
+        for spec in grader.get("expect", []):
+            count = spec.get("count", 1)
+            if type(count) is not int or count < 1:
+                raise CaseError(f"{path}: a 'spawns' count is a positive integer, got {count!r}")
 
 
 # ---------------------------------------------------------------- sandbox
@@ -625,18 +633,23 @@ def grade_checker_verdict(grader, ctx):
 def spawn_matches(spec, spawn):
     # A field that the call did not set matches as empty text, so {"model": "."} means "set a model".
     return all(re.search(pattern, "" if spawn.get(field) is None else str(spawn[field]), re.M)
-               for field, pattern in spec.items())
+               for field, pattern in spec.items() if field != "count")
 
 
 def describe_spawn(spec):
-    return "Agent " + " ".join(f"{field} /{pattern}/" for field, pattern in spec.items())
+    return "Agent " + " ".join(f"{field} /{pattern}/" for field, pattern in spec.items() if field != "count")
 
 
 def grade_spawns(grader, ctx):
-    """Every `expect` entry matches a recorded Agent call; no recorded call matches a `forbid` entry."""
+    """Every `expect` entry matches a recorded Agent call, `count` times when it gives a count;
+    no recorded call matches a `forbid` entry."""
     problems = []
     for spec in grader.get("expect", []):
-        if not any(spawn_matches(spec, spawn) for spawn in ctx["spawns"]):
+        matched = sum(1 for spawn in ctx["spawns"] if spawn_matches(spec, spawn))
+        if "count" in spec and matched != spec["count"]:
+            # A retry after a refused spawn is a second spawn, so "exactly N" needs its own check.
+            problems.append(f"{matched} of {describe_spawn(spec)}, expected {spec['count']}")
+        elif not matched:
             problems.append(f"missing {describe_spawn(spec)}")
     for spec in grader.get("forbid", []):
         for spawn in ctx["spawns"]:

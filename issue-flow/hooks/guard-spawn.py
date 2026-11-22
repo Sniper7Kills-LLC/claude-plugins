@@ -8,7 +8,8 @@ decision, with the fix in the reason, for an `Agent` (or legacy `Task`) call tha
 1. passes `name:` **without** `isolation:` (strands the caller — below), or
 2. is a **fork** (`subagent_type: "fork"`) whose prompt is an issue-flow handoff
    brief (runs away — see "Fork dispatch" further down), or
-3. passes `model` to an issue-flow agent, other than the one Opus escalation
+3. passes `model` to an issue-flow agent, other than the one Opus escalation,
+   or sends an escalation brief to a worker without `model: "opus"`
    (see "Model override" at the end).
 
 Why this is worth a hook rather than another paragraph of documentation
@@ -114,6 +115,12 @@ carries an `escalation:` field at the start of a line, with the reason after the
 colon. The guard allows exactly that shape. It denies every other `model` value
 on an `issue-flow:` agent type, the declared tier included.
 
+The reverse check (issue #121): an `issue-flow:issue-worker` spawn whose brief
+carries the `escalation:` field, but whose `model` is not `opus`, is denied too. No
+`model` counts as not opus. A `checkpoint` of the Opus worker is the same attempt,
+so its replacement keeps `model: "opus"` and the field. Without the model, the
+replacement runs on Sonnet again, and nothing else reports it.
+
 The check reads only `issue-flow:` agent types. A worker spawns its own children
 as general-purpose agents with `model: "sonnet"` (agents/issue-worker.md), and
 the agents of another plugin are not issue-flow's business, so those pass.
@@ -189,9 +196,10 @@ FORK_REASON = (
 )
 
 # The escalation field of SKILL.md Stage C1: a label at the start of a line, with
-# the markup that BRIEF_FIELD accepts, and a reason after the colon.
+# the markup that BRIEF_FIELD accepts, and a reason after the colon. A value that
+# starts with `<` is the template's placeholder, not a reason.
 ESCALATION_FIELD = re.compile(
-    r"^[\s>*_`#|\"+-]*(?:\d+[.)][ \t]*)?escalation[*_`\"]*[ \t]*[:=|][*_`\" \t]*\S",
+    r"^[\s>*_`#|\"+-]*(?:\d+[.)][ \t]*)?escalation[*_`\"]*[ \t]*[:=|][*_`\" \t]*[^\s<]",
     re.IGNORECASE | re.MULTILINE,
 )
 ESCALATION_AGENT = "issue-flow:issue-worker"
@@ -209,6 +217,22 @@ MODEL_REASON = (
     "`subagent_type: \"issue-flow:issue-worker\"`, `model: \"opus\"`, and a brief with "
     "an `escalation:` line that names the reason and the checker's findings. Only that "
     "shape passes.\n"
+    "\n"
+    "To turn this check off, put this in the project's .claude/settings.json and start a "
+    "new session:\n"
+    '    "env": { "ISSUE_FLOW_MODEL_GUARD": "off" }'
+)
+
+ESCALATION_MODEL_REASON = (
+    "issue-flow spawn guard: this Agent call spawns `issue-flow:issue-worker` with an "
+    "`escalation:` field in its brief, but without `model: \"opus\"`. A brief with that "
+    "field is the Opus escalation of SKILL.md Stage C1, and that attempt runs on Opus only. "
+    "A `checkpoint` of the Opus worker is the same attempt: its replacement keeps "
+    "`model: \"opus\"` and the same `escalation:` field. Without the model, the replacement "
+    "runs on Sonnet, the tier that already failed the issue.\n"
+    "\n"
+    "**Pass `model: \"opus\"`** and keep the `escalation:` field. If this spawn is not an "
+    "escalation, remove the `escalation:` field and pass no `model`.\n"
     "\n"
     "To turn this check off, put this in the project's .claude/settings.json and start a "
     "new session:\n"
@@ -280,16 +304,22 @@ def check_model(tool_input):
     guard = mode("ISSUE_FLOW_MODEL_GUARD")
     if guard == "off":
         return None
-    model = tool_input.get("model")
     kind = tool_input.get("subagent_type")
-    if not isinstance(model, str) or not model.strip() or not isinstance(kind, str):
+    if not isinstance(kind, str):
         return None
     kind = kind.strip()
     if not kind.lower().startswith("issue-flow:"):
         return None
+    model = tool_input.get("model")
+    model = model.strip().lower() if isinstance(model, str) else ""
     prompt = tool_input.get("prompt")
-    if (kind == ESCALATION_AGENT and model.strip().lower() == ESCALATION_MODEL
-            and isinstance(prompt, str) and ESCALATION_FIELD.search(prompt)):
+    if kind == ESCALATION_AGENT and isinstance(prompt, str) and ESCALATION_FIELD.search(prompt):
+        # The reverse check (issue #121): an escalation brief without Opus is a
+        # replacement that fell back to Sonnet, the tier that failed the issue.
+        if model == ESCALATION_MODEL:
+            return None
+        return verdict(guard, ESCALATION_MODEL_REASON)
+    if not model:
         return None
     return verdict(guard, MODEL_REASON.replace("AGENT", kind, 1))
 

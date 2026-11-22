@@ -447,7 +447,7 @@ def load_runner():
 def test_real_pm_suite():
     runner = load_runner()
     cases = runner.load_cases(EVALS, "pm")
-    check(5 <= len(cases) <= 9, f"the pm suite has 5 to 9 cases, got {len(cases)}")
+    check(5 <= len(cases) <= 11, f"the pm suite has 5 to 11 cases, got {len(cases)}")
     for case in cases:
         name = case["name"]
         check("pm" in case["tags"] and len(case["tags"]) >= 2, f"{name}: tagged pm plus a stage, got {case['tags']}")
@@ -523,6 +523,16 @@ GOLDEN = {
     "pm-c1-feedback-no-escalation": (
         [["issue", "edit", "11", "--add-label", "status:needs-feedback", "--remove-label", "status:in-review"],
          ["issue", "comment", "11", "--body", "Should `count` reject `--json --verbose`, or add a `debug` key like `list`?"]], {}, []),
+    "pm-c1-checkpoint": (
+        [["issue", "comment", "11", "--body", "checkpoint 1: criterion 2 left, replacement spawned"]], {},
+        [{"subagent_type": "issue-flow:issue-worker", "isolation": "worktree", "description": "continue #11",
+          "prompt": "issue: #11\nbase: origin/issue/11-json-flag\n"
+                    "plan: remaining: add test_json_rejects_verbose first."}]),
+    "pm-c1-escalated-checkpoint": (
+        [["issue", "comment", "11", "--body", "checkpoint 1: criterion 2 left, Opus replacement spawned"]], {},
+        [{"subagent_type": "issue-flow:issue-worker", "isolation": "worktree", "model": "opus",
+          "description": "continue #11 on Opus",
+          "prompt": "issue: #11\nbase: origin/issue/11-json-flag\nescalation: re-check failed. Criterion 2 unmet."}]),
 }
 
 
@@ -539,6 +549,46 @@ def test_real_cases_can_pass():
             records = (results or {}).get("records", [])
             check(records and records[0]["ok"] and records[0]["score"] == 1.0,
                   f"{name}: the golden run passes, got {records[0]['graders'] if records else result.stderr}")
+        finally:
+            shutil.rmtree(root, ignore_errors=True)
+
+
+# A PM that is almost right in a checkpoint case: each one breaks one rule of SKILL.md C1.
+def checkpoint_near_misses():
+    plain_actions, _, plain_spawns = GOLDEN["pm-c1-checkpoint"]
+    escalated_actions, _, escalated_spawns = GOLDEN["pm-c1-escalated-checkpoint"]
+    opus = escalated_spawns[0]
+    sonnet = {key: value for key, value in opus.items() if key != "model"}
+    relabel = ["issue", "edit", "11", "--add-label", "status:in-progress", "--remove-label", "status:in-review"]
+    return [
+        ("pm-c1-escalated-checkpoint", "the replacement drops model opus", escalated_actions, [sonnet]),
+        ("pm-c1-escalated-checkpoint", "the replacement drops the escalation field", escalated_actions,
+         [dict(opus, prompt="issue: #11\nbase: origin/issue/11-json-flag")]),
+        ("pm-c1-escalated-checkpoint", "a Sonnet spawn, then the Opus retry", escalated_actions, [sonnet, opus]),
+        ("pm-c1-escalated-checkpoint", "a second escalated to Opus comment",
+         escalated_actions + [["issue", "comment", "11", "--body", "escalated to Opus: checkpoint"]], [opus]),
+        ("pm-c1-escalated-checkpoint", "no checkpoint comment", [], [opus]),
+        ("pm-c1-checkpoint", "the replacement escalates to Opus", plain_actions,
+         [dict(plain_spawns[0], model="opus")]),
+        ("pm-c1-checkpoint", "the brief has no remaining text", plain_actions,
+         [dict(plain_spawns[0], prompt="issue: #11\nbase: origin/issue/11-json-flag")]),
+        ("pm-c1-checkpoint", "two replacements", plain_actions, plain_spawns * 2),
+        ("pm-c1-checkpoint", "the status label changes", plain_actions + [relabel], plain_spawns),
+        ("pm-c1-checkpoint", "no checkpoint comment", [], plain_spawns),
+    ]
+
+
+def test_checkpoint_cases_reject_near_misses():
+    for name, label, actions, spawns in checkpoint_near_misses():
+        root = tempfile.mkdtemp(prefix="run-evals-test-")
+        try:
+            result, results, _ = run_runner(
+                root, {"FAKE_PM_ACTIONS": json.dumps(actions), "FAKE_PM_FILES": "{}",
+                       "FAKE_PM_SPAWNS": json.dumps(spawns)},
+                "--evals-dir", EVALS, "--case", name, "--runs", "1")
+            records = (results or {}).get("records", [])
+            check(records and records[0]["ok"] is False, f"{name}: {label} fails, got "
+                  f"{records[0]['graders'] if records else result.stderr}")
         finally:
             shutil.rmtree(root, ignore_errors=True)
 
@@ -872,6 +922,15 @@ def test_spawn_grader():
     check(passed, f"a field the spawn does not set matches as empty text, got {detail}")
     passed, detail, _ = grade({"type": "spawns", "forbid": [{"model": "."}]}, {"spawns": []})
     check(passed, f"no spawn passes a forbid-only grader, got {detail}")
+    once = {"type": "spawns", "expect": [{"subagent_type": "^issue-flow:issue-worker$", "count": 1}]}
+    passed, detail, _ = grade(once, {"spawns": [checker, escalation]})
+    check(passed, f"a count entry passes when exactly that many spawns match, got {detail}")
+    retry = dict(escalation, seq=3, model=None)
+    passed, detail, _ = grade(once, {"spawns": [escalation, retry]})
+    check(not passed and "2" in detail and "expected 1" in detail,
+          f"a count entry fails on a second matching spawn, and gives both counts, got {detail}")
+    passed, detail, _ = grade(once, {"spawns": [checker]})
+    check(not passed, f"a count entry fails when no spawn matches, got {detail}")
 
 
 def test_stub_spawn_hook():
@@ -932,6 +991,12 @@ def test_stub_spawns_case():
                         dict(CASE, graders=[{"type": "spawns", "forbid": [{"model": "."}]}])),
                        ("a spawns entry names only spawn fields",
                         dict(CASE, stub_spawns=True, graders=[{"type": "spawns", "expect": [{"modle": "opus"}]}])),
+                       ("a spawns count goes in an expect entry only",
+                        dict(CASE, stub_spawns=True, graders=[{"type": "spawns", "forbid": [{"model": ".", "count": 1}]}])),
+                       ("a spawns count is a positive integer",
+                        dict(CASE, stub_spawns=True, graders=[{"type": "spawns", "expect": [{"model": ".", "count": "1"}]}])),
+                       ("a spawns count needs a field to match",
+                        dict(CASE, stub_spawns=True, graders=[{"type": "spawns", "expect": [{"count": 1}]}])),
                        ("stub_spawns cannot disallow Agent",
                         dict(CASE, stub_spawns=True, disallowed_tools=["Agent"],
                              graders=[{"type": "spawns", "forbid": [{"model": "."}]}]))):
@@ -951,7 +1016,8 @@ for test in (test_fake_gh, test_runner_happy_path, test_runner_failures_and_ceil
              test_judge_takes_a_majority_of_votes,
              test_agent_repo_cannot_run_code_on_the_host, test_a_case_needs_a_deterministic_grader,
              test_run_claude_timeout, test_fake_gh_events, test_session_case_events,
-             test_spawn_grader, test_stub_spawn_hook, test_stub_spawns_case):
+             test_spawn_grader, test_stub_spawn_hook, test_stub_spawns_case,
+             test_checkpoint_cases_reject_near_misses):
     try:
         test()
     except Exception as error:  # a crash in one test must not hide the others

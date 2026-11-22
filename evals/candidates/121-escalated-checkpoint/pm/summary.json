@@ -1,0 +1,343 @@
+{
+  "suite": "pm",
+  "variant": {
+    "plugin_dir": "issue-flow (issue/121-escalated-checkpoint at d5c8dec)",
+    "git_sha": "d5c8dec3860ddccb1d1499b5e30aee8df3cd182d",
+    "version": "0.20.0"
+  },
+  "effort": "medium",
+  "started": "20261122T014305Z",
+  "finished": "20261122T015148Z",
+  "partial": false,
+  "models": [
+    "claude-opus-5-5"
+  ],
+  "total_cost_usd": 6.236001,
+  "runs": 11,
+  "suite_means": {
+    "runs": 11,
+    "ok_rate": 1.0,
+    "mean_score": 1.0,
+    "score_range": [
+      1.0,
+      1.0
+    ],
+    "hidden_pass_rate": null,
+    "mean_cost_usd": 0.5655,
+    "cost_range": [
+      0.4364,
+      1.0691
+    ],
+    "mean_turns": 7.0,
+    "mean_duration_s": 41.7475,
+    "duration_range": [
+      14.7,
+      164.8
+    ],
+    "mean_main_tokens": 350621.2727,
+    "mean_subagent_tokens": 1096.8182,
+    "mean_subagent_turns": 0.0909,
+    "mean_agent_cost_usd": 0.5655,
+    "mean_tracker_calls": 16.6364,
+    "errors": 0
+  },
+  "cases": {
+    "pm-a0-split-status": {
+      "runs": 1,
+      "ok_rate": 1.0,
+      "mean_score": 1.0,
+      "score_range": [
+        1.0,
+        1.0
+      ],
+      "hidden_pass_rate": null,
+      "mean_cost_usd": 0.4364,
+      "cost_range": [
+        0.4364,
+        0.4364
+      ],
+      "mean_turns": 5.0,
+      "mean_duration_s": 14.748,
+      "duration_range": [
+        14.7,
+        14.7
+      ],
+      "mean_main_tokens": 193156.0,
+      "mean_subagent_tokens": 0.0,
+      "mean_subagent_turns": 0.0,
+      "mean_agent_cost_usd": 0.4364,
+      "mean_tracker_calls": 11.0,
+      "errors": 0
+    },
+    "pm-batch-cross-check": {
+      "runs": 1,
+      "ok_rate": 1.0,
+      "mean_score": 1.0,
+      "score_range": [
+        1.0,
+        1.0
+      ],
+      "hidden_pass_rate": null,
+      "mean_cost_usd": 0.6258,
+      "cost_range": [
+        0.6258,
+        0.6258
+      ],
+      "mean_turns": 9.0,
+      "mean_duration_s": 50.368,
+      "duration_range": [
+        50.4,
+        50.4
+      ],
+      "mean_main_tokens": 490213.0,
+      "mean_subagent_tokens": 0.0,
+      "mean_subagent_turns": 0.0,
+      "mean_agent_cost_usd": 0.6258,
+      "mean_tracker_calls": 15.0,
+      "errors": 0
+    },
+    "pm-c1-checkpoint": {
+      "runs": 1,
+      "ok_rate": 1.0,
+      "mean_score": 1.0,
+      "score_range": [
+        1.0,
+        1.0
+      ],
+      "hidden_pass_rate": null,
+      "mean_cost_usd": 0.5117,
+      "cost_range": [
+        0.5117,
+        0.5117
+      ],
+      "mean_turns": 6.0,
+      "mean_duration_s": 28.72,
+      "duration_range": [
+        28.7,
+        28.7
+      ],
+      "mean_main_tokens": 281083.0,
+      "mean_subagent_tokens": 0.0,
+      "mean_subagent_turns": 0.0,
+      "mean_agent_cost_usd": 0.5117,
+      "mean_tracker_calls": 5.0,
+      "errors": 0
+    },
+    "pm-c1-escalate": {
+      "runs": 1,
+      "ok_rate": 1.0,
+      "mean_score": 1.0,
+      "score_range": [
+        1.0,
+        1.0
+      ],
+      "hidden_pass_rate": null,
+      "mean_cost_usd": 0.5948,
+      "cost_range": [
+        0.5948,
+        0.5948
+      ],
+      "mean_turns": 7.0,
+      "mean_duration_s": 41.512,
+      "duration_range": [
+        41.5,
+        41.5
+      ],
+      "mean_main_tokens": 367059.0,
+      "mean_subagent_tokens": 0.0,
+      "mean_subagent_turns": 0.0,
+      "mean_agent_cost_usd": 0.5948,
+      "mean_tracker_calls": 5.0,
+      "errors": 0
+    },
+    "pm-c1-escalated-checkpoint": {
+      "runs": 1,
+      "ok_rate": 1.0,
+      "mean_score": 1.0,
+      "score_range": [
+        1.0,
+        1.0
+      ],
+      "hidden_pass_rate": null,
+      "mean_cost_usd": 0.5161,
+      "cost_range": [
+        0.5161,
+        0.5161
+      ],
+      "mean_turns": 6.0,
+      "mean_duration_s": 31.181,
+      "duration_range": [
+        31.2,
+        31.2
+      ],
+      "mean_main_tokens": 281280.0,
+      "mean_subagent_tokens": 0.0,
+      "mean_subagent_turns": 0.0,
+      "mean_agent_cost_usd": 0.5161,
+      "mean_tracker_calls": 5.0,
+      "errors": 0
+    },
+    "pm-c1-feedback-no-escalation": {
+      "runs": 1,
+      "ok_rate": 1.0,
+      "mean_score": 1.0,
+      "score_range": [
+        1.0,
+        1.0
+      ],
+      "hidden_pass_rate": null,
+      "mean_cost_usd": 0.4899,
+      "cost_range": [
+        0.4899,
+        0.4899
+      ],
+      "mean_turns": 5.0,
+      "mean_duration_s": 27.875,
+      "duration_range": [
+        27.9,
+        27.9
+      ],
+      "mean_main_tokens": 215513.0,
+      "mean_subagent_tokens": 0.0,
+      "mean_subagent_turns": 0.0,
+      "mean_agent_cost_usd": 0.4899,
+      "mean_tracker_calls": 7.0,
+      "errors": 0
+    },
+    "pm-c1-no-prepatch": {
+      "runs": 1,
+      "ok_rate": 1.0,
+      "mean_score": 1.0,
+      "score_range": [
+        1.0,
+        1.0
+      ],
+      "hidden_pass_rate": null,
+      "mean_cost_usd": 0.4809,
+      "cost_range": [
+        0.4809,
+        0.4809
+      ],
+      "mean_turns": 6.0,
+      "mean_duration_s": 23.802,
+      "duration_range": [
+        23.8,
+        23.8
+      ],
+      "mean_main_tokens": 257870.0,
+      "mean_subagent_tokens": 0.0,
+      "mean_subagent_turns": 0.0,
+      "mean_agent_cost_usd": 0.4809,
+      "mean_tracker_calls": 7.0,
+      "errors": 0
+    },
+    "pm-c1-unevidenced": {
+      "runs": 1,
+      "ok_rate": 1.0,
+      "mean_score": 1.0,
+      "score_range": [
+        1.0,
+        1.0
+      ],
+      "hidden_pass_rate": null,
+      "mean_cost_usd": 0.4623,
+      "cost_range": [
+        0.4623,
+        0.4623
+      ],
+      "mean_turns": 5.0,
+      "mean_duration_s": 22.436,
+      "duration_range": [
+        22.4,
+        22.4
+      ],
+      "mean_main_tokens": 197136.0,
+      "mean_subagent_tokens": 0.0,
+      "mean_subagent_turns": 0.0,
+      "mean_agent_cost_usd": 0.4623,
+      "mean_tracker_calls": 6.0,
+      "errors": 0
+    },
+    "pm-semantic-conflict": {
+      "runs": 1,
+      "ok_rate": 1.0,
+      "mean_score": 1.0,
+      "score_range": [
+        1.0,
+        1.0
+      ],
+      "hidden_pass_rate": null,
+      "mean_cost_usd": 0.5962,
+      "cost_range": [
+        0.5962,
+        0.5962
+      ],
+      "mean_turns": 6.0,
+      "mean_duration_s": 38.811,
+      "duration_range": [
+        38.8,
+        38.8
+      ],
+      "mean_main_tokens": 281699.0,
+      "mean_subagent_tokens": 12065.0,
+      "mean_subagent_turns": 1.0,
+      "mean_agent_cost_usd": 0.5962,
+      "mean_tracker_calls": 13.0,
+      "errors": 0
+    },
+    "pm-session-batch": {
+      "runs": 1,
+      "ok_rate": 1.0,
+      "mean_score": 1.0,
+      "score_range": [
+        1.0,
+        1.0
+      ],
+      "hidden_pass_rate": null,
+      "mean_cost_usd": 1.0691,
+      "cost_range": [
+        1.0691,
+        1.0691
+      ],
+      "mean_turns": 17.0,
+      "mean_duration_s": 164.836,
+      "duration_range": [
+        164.8,
+        164.8
+      ],
+      "mean_main_tokens": 1097876.0,
+      "mean_subagent_tokens": 0.0,
+      "mean_subagent_turns": 0.0,
+      "mean_agent_cost_usd": 1.0691,
+      "mean_tracker_calls": 101.0,
+      "errors": 0
+    },
+    "pm-triage": {
+      "runs": 1,
+      "ok_rate": 1.0,
+      "mean_score": 1.0,
+      "score_range": [
+        1.0,
+        1.0
+      ],
+      "hidden_pass_rate": null,
+      "mean_cost_usd": 0.4376,
+      "cost_range": [
+        0.4376,
+        0.4376
+      ],
+      "mean_turns": 5.0,
+      "mean_duration_s": 14.933,
+      "duration_range": [
+        14.9,
+        14.9
+      ],
+      "mean_main_tokens": 193949.0,
+      "mean_subagent_tokens": 0.0,
+      "mean_subagent_turns": 0.0,
+      "mean_agent_cost_usd": 0.4376,
+      "mean_tracker_calls": 8.0,
+      "errors": 0
+    }
+  }
+}

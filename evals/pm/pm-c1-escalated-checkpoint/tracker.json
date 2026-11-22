@@ -1,0 +1,179 @@
+{
+  "repo": {
+    "owner": "acme",
+    "name": "widgets",
+    "defaultBranch": "main"
+  },
+  "user": "eval-bot",
+  "labels": [
+    {
+      "name": "status:ready",
+      "color": "0E8A16",
+      "description": ""
+    },
+    {
+      "name": "status:in-progress",
+      "color": "1D76DB",
+      "description": ""
+    },
+    {
+      "name": "status:in-review",
+      "color": "5319E7",
+      "description": ""
+    },
+    {
+      "name": "status:batched",
+      "color": "BFD4F2",
+      "description": ""
+    },
+    {
+      "name": "status:deploying",
+      "color": "0052CC",
+      "description": ""
+    },
+    {
+      "name": "status:deploy-failed",
+      "color": "B60205",
+      "description": ""
+    },
+    {
+      "name": "status:awaiting-review",
+      "color": "FEF2C0",
+      "description": ""
+    },
+    {
+      "name": "status:blocked",
+      "color": "D93F0B",
+      "description": ""
+    },
+    {
+      "name": "status:needs-feedback",
+      "color": "FBCA04",
+      "description": ""
+    },
+    {
+      "name": "type:epic",
+      "color": "5319E7",
+      "description": ""
+    },
+    {
+      "name": "type:batch",
+      "color": "C5DEF5",
+      "description": ""
+    },
+    {
+      "name": "type:hotfix",
+      "color": "B60205",
+      "description": ""
+    },
+    {
+      "name": "review:finding",
+      "color": "F9D0C4",
+      "description": ""
+    },
+    {
+      "name": "type:spec-update",
+      "color": "D4C5F9",
+      "description": ""
+    },
+    {
+      "name": "flow:status",
+      "color": "EDEDED",
+      "description": ""
+    },
+    {
+      "name": "priority:high",
+      "color": "B60205",
+      "description": ""
+    },
+    {
+      "name": "priority:low",
+      "color": "C2E0C6",
+      "description": ""
+    }
+  ],
+  "issues": [
+    {
+      "number": 10,
+      "title": "Batch: CLI output flags",
+      "body": "Tracking issue for a loose batch.\n\nIntegration branch: `batch/10-cli-output`\n\n- [ ] #11 Add a --json flag to `widgets count`\n",
+      "state": "open",
+      "labels": [
+        "type:batch"
+      ],
+      "assignees": [
+        "eval-bot"
+      ],
+      "author": "maintainer",
+      "createdAt": "2026-11-20T09:00:00Z",
+      "updatedAt": "2026-11-20T09:00:00Z",
+      "comments": []
+    },
+    {
+      "number": 11,
+      "title": "Add a --json flag to `widgets count`",
+      "body": "`widgets count` prints a plain number. Scripts need a machine-readable form.\n\nPart of #10\n\n## Acceptance criteria\n- [ ] `widgets count --json` prints `{\"count\": N}` and exits 0\n- [ ] `widgets count --json --verbose` exits 2 with the message `--json and --verbose cannot be combined`\n",
+      "state": "open",
+      "labels": [
+        "status:in-review"
+      ],
+      "assignees": [
+        "eval-bot"
+      ],
+      "author": "maintainer",
+      "createdAt": "2026-11-20T09:00:00Z",
+      "updatedAt": "2026-11-20T09:00:00Z",
+      "comments": [
+        {
+          "id": 1101,
+          "author": "eval-bot",
+          "body": "## Plan (PM)\n\nAdd `--json` to the `count` subcommand in `widgets.py`. Reject `--json` with `--verbose`. Tests in `test_widgets.py`, written first.",
+          "createdAt": "2026-11-20T09:00:00Z"
+        },
+        {
+          "id": 1102,
+          "author": "eval-bot",
+          "body": "worker launched: w-11",
+          "createdAt": "2026-11-20T09:00:00Z"
+        },
+        {
+          "id": 1103,
+          "author": "eval-bot",
+          "body": "worker launched: w-11 (rework round 1: criterion 2 unmet)",
+          "createdAt": "2026-11-20T10:00:00Z"
+        },
+        {
+          "id": 1104,
+          "author": "eval-bot",
+          "body": "escalated to Opus: re-check failed after one rework round (criterion 2 unmet)",
+          "createdAt": "2026-11-20T11:00:00Z"
+        },
+        {
+          "id": 1105,
+          "author": "eval-bot",
+          "body": "worker launched: w-11-opus",
+          "createdAt": "2026-11-20T11:00:00Z"
+        }
+      ]
+    }
+  ],
+  "prs": [
+    {
+      "number": 12,
+      "title": "Add a --json flag to widgets count",
+      "body": "Refs #11\n\nAdds `--json` to `widgets count` and rejects `--json --verbose`.",
+      "state": "open",
+      "isDraft": true,
+      "headRefName": "issue/11-json-flag",
+      "baseRefName": "batch/10-cli-output",
+      "labels": [],
+      "author": "eval-bot",
+      "assignees": [],
+      "comments": [],
+      "reviews": [],
+      "mergeable": "MERGEABLE",
+      "createdAt": "2026-11-20T09:00:00Z",
+      "updatedAt": "2026-11-20T09:00:00Z"
+    }
+  ]
+}

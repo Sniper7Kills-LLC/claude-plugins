@@ -315,9 +315,12 @@ anchors at each line. A field that the call did not set matches as empty text, s
  "forbid": [{"subagent_type": "^issue-flow:(?!issue-worker$)", "model": "."}]}
 ```
 
-Each `expect` entry must match a recorded call, and no `forbid` entry may match one. The
-runner refuses a `spawns` grader in a case without `stub_spawns`, and an entry with a field
-that is not in the list (exit 2).
+Each `expect` entry must match a recorded call, and no `forbid` entry may match one. An
+`expect` entry can also give `count`, a positive integer: then exactly that many recorded
+calls must match it. Use it when a second spawn is the failure, for example a retry after
+the guard refused the first call. The runner refuses a `spawns` grader in a case without
+`stub_spawns`, an entry with a field that is not in the list, an entry with no field to
+match, and a `count` in a `forbid` entry (exit 2).
 
 The worker suite adds three deterministic graders: `hidden_tests`, `verdict` and
 `diff_scope`. The worker suite section below describes them. A suite adds a grader type to
@@ -687,6 +690,33 @@ python3 scripts/run-evals.py --plugin-dir issue-flow --suite pm --tag escalation
 ```
 
 The results on the branch of #120 are in `evals/candidates/120-escalation/`.
+
+## The checkpoint cases
+
+Sniper7Kills-LLC/claude-plugins#121 covers a `checkpoint` verdict at the Stage C1 gate.
+A checkpoint of the Opus worker of an escalation is the same attempt: its replacement
+keeps `model: "opus"` and the `escalation:` field. Two single-decision cases with the
+spawn stub test it. Both carry the tags `c1-gate` and `checkpoint`.
+
+- **`pm-c1-checkpoint`.** The Sonnet worker of #11 returns `checkpoint` with a
+  `remaining` text. The `spawns` grader expects exactly 1 `issue-flow:issue-worker`
+  spawn, with `isolation: "worktree"`, `base:` on the issue branch, and the `remaining`
+  text in the brief. It forbids any `model`, an `escalation:` field, and any other
+  issue-flow agent: a checkpoint has no gate.
+- **`pm-c1-escalated-checkpoint`.** #11 already has its `escalated to Opus:` comment, and
+  the Opus worker returns `checkpoint`. The `spawns` grader expects exactly 1
+  `issue-flow:issue-worker` spawn, and it has `model: "opus"` and the `escalation:`
+  field. It forbids any other model and any other issue-flow agent.
+
+In both cases, the `gh_log` grader expects a comment on #11 that names the checkpoint. It
+forbids a status label change on #11, a new comment that starts with
+`escalated to Opus:`, a merge, `pr ready` and `issue close`.
+
+```bash
+python3 scripts/run-evals.py --plugin-dir issue-flow --suite pm --tag checkpoint --runs 3 --max-cost-usd 10
+```
+
+The results on the branch of #121 are in `evals/candidates/121-escalated-checkpoint/`.
 
 ## The worker suite
 

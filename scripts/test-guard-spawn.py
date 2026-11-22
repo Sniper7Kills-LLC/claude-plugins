@@ -340,6 +340,40 @@ expect(
     False,
 )
 expect("a non-string model allows the call", worker(["opus"], NO_ESCALATION), False)
+
+# --- the reverse check: an escalation brief stays on Opus (issue #121) --------
+# A checkpoint of the Opus worker is the same attempt, so its replacement keeps
+# `model: "opus"`. Without a model, the replacement runs on Sonnet again.
+output = expect("an escalation brief with no model is denied", worker(None, ESCALATED), True)
+if output:
+    reason = output["hookSpecificOutput"]["permissionDecisionReason"]
+    for expected in ("SKILL.md", "`escalation:`", 'model: "opus"', "checkpoint", "ISSUE_FLOW_MODEL_GUARD"):
+        if expected not in reason:
+            failures.append(f"the escalation deny reason should mention {expected!r}: {reason[:200]}")
+expect("an escalation brief with an empty model is denied", worker("  ", ESCALATED), True)
+expect("an escalation brief with a non-string model is denied", worker(["opus"], ESCALATED), True)
+output = expect("an escalation brief on Sonnet gets the escalation reason", worker("sonnet", ESCALATED), True)
+if output and "checkpoint" not in output["hookSpecificOutput"]["permissionDecisionReason"]:
+    failures.append("an escalation brief on Sonnet should get the reason that names the checkpoint rule")
+expect(
+    "an escalation brief with no model on another issue-flow agent is allowed",
+    spawn(subagent_type="issue-flow:criteria-checker", isolation="worktree", prompt=ESCALATED),
+    False,
+)
+expect(
+    "an escalation label mid-line does not make a brief need Opus",
+    worker(None, NO_ESCALATION + "Note: no escalation: yet.\n"),
+    False,
+)
+PLACEHOLDER = NO_ESCALATION + "escalation:   <only on the Opus escalation spawn>\n"
+expect("the template's escalation placeholder is not an escalation", worker(None, PLACEHOLDER), False)
+expect("the template's escalation placeholder does not allow Opus", worker("opus", PLACEHOLDER), True)
+expect(
+    "ISSUE_FLOW_MODEL_GUARD=off allows an escalation brief with no model",
+    worker(None, ESCALATED),
+    False,
+    env={"ISSUE_FLOW_MODEL_GUARD": "off"},
+)
 expect(
     "ISSUE_FLOW_MODEL_GUARD=off allows an override",
     worker("opus", NO_ESCALATION),

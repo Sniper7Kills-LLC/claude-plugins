@@ -180,7 +180,9 @@ Two consequences the PM should treat as load-bearing:
    (SKILL.md Stage B step 5), under its own switch, `ISSUE_FLOW_FORK_GUARD`, so turning
    named peers back on does not turn fork dispatch back on. A third check, under
    `ISSUE_FLOW_MODEL_GUARD`, denies a `model` value on an `issue-flow:` agent type,
-   except the one Opus escalation of a worker (SKILL.md Stage C1).
+   except the one Opus escalation of a worker (SKILL.md Stage C1). It also denies a
+   worker spawn whose brief carries `escalation:` without `model: "opus"`, so the
+   replacement of a checkpointed Opus worker cannot fall back to Sonnet.
 2. **Unnamed un-isolated helpers are reachable and do notify.** `code-auditor`,
    `ux-explorer` and `deploy-verifier` are spawned without isolation and
    are *not* peer sessions: they fire completion notifications and they accept a mid-run
