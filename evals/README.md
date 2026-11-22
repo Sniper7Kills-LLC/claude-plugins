@@ -517,6 +517,12 @@ nothing and exits 2. A grader `detail` can hold a sandbox path, for example.
    python3 scripts/eval-compare.py evals/baselines/0.20.0/worker evals/results/<stamp>
    ```
 
+   Two worker baselines exist, both made with the single-member-batch brief of
+   Sniper7Kills-LLC/claude-plugins#124: `evals/baselines/0.20.0/worker` (the Opus worker)
+   and `evals/baselines/0.21.0/worker` (the Sonnet worker). The records in
+   `evals/candidates/*` come from the earlier brief (`ci: skip` with `batch: standalone`).
+   They are not comparable with these baselines.
+
 `eval-compare.py` reads `suite` from both results and applies the decision rule of that
 suite (Sniper7Kills-LLC/claude-plugins#106). Each threshold is inclusive.
 

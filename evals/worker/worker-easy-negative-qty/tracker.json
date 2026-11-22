@@ -73,6 +73,20 @@
       "createdAt": "2026-11-20T09:00:00Z",
       "updatedAt": "2026-11-20T09:00:00Z",
       "comments": []
+    },
+    {
+      "number": 102,
+      "title": "Batch: eval member #2",
+      "body": "Tracking issue of a batch with one member, #2. It exists so that the brief of a `ci: skip` worker is consistent.\n",
+      "state": "open",
+      "labels": [
+        "type:batch"
+      ],
+      "assignees": [],
+      "author": "maintainer",
+      "createdAt": "2026-11-20T08:00:00Z",
+      "updatedAt": "2026-11-20T08:00:00Z",
+      "comments": []
     }
   ],
   "prs": []
