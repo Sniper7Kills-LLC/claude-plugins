@@ -150,8 +150,9 @@ the batch head against this baseline: the same pass rate, and a cost 66% lower.
 
 `pm-session-batch` is a session-level PM case (Sniper7Kills-LLC/claude-plugins#116,
 `evals/README.md`, "Session-level PM cases"). The run records are in
-`evals/baselines/0.20.0/pm-session/`. The same case on the head of batch #115 is in
-`evals/candidates/batch-115/pm-session/`, for comparison. These are new baselines, not a
+`evals/baselines/0.20.0/pm-session/`. The same case was run on the head of batch #115 for comparison.
+That head had the split PM skill (#107). #107 is closed, so its run records are not kept.
+The numbers are in the table below and on #107. These are new baselines, not a
 ship decision.
 
 | Item | 0.20.0 | Batch #115 head |
