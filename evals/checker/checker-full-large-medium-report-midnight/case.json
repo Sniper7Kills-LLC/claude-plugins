@@ -1,0 +1,35 @@
+{
+  "name": "checker-full-large-medium-report-midnight",
+  "suite": "checker",
+  "tags": [
+    "checker",
+    "full",
+    "large"
+  ],
+  "timeout_s": 1800,
+  "runs": 3,
+  "fixture": "../../worker/worker-large-medium-report-midnight/../_fixture_large",
+  "tracker": "../../worker/worker-large-medium-report-midnight/tracker.json",
+  "patch": "../../worker/worker-large-medium-report-midnight/reference.patch",
+  "patch_branch": "issue/21-report-midnight",
+  "model": "haiku",
+  "prompt": "You are a dispatcher in an automated eval of the issue-flow plugin. Nobody is available to answer questions. Do only these steps:\n\n1. Call the Agent tool once, with:\n   - subagent_type: \"issue-flow:criteria-checker\"\n   - isolation: \"worktree\"\n   - description: \"criteria check #21\"\n   - prompt: the brief between the BRIEF START and BRIEF END lines below, unchanged.\n   Do not pass `name` or `model`.\n2. Wait until the checker finishes. Do not check the branch yourself. Do not run `sleep`, and do not poll for the checker: a notification wakes you when it finishes.\n3. Write the checker's final message, unchanged, to `.eval/checker-verdict.json` in the current directory.\n4. Reply with one line: the status of each criterion.\n\nBRIEF START\nissue:        #21 — `shop report daily` counts an order of the next day\nhead:         origin/issue/21-report-midnight\nheadSha:      {head_sha}\nbase:         origin/main\nremote:       origin\ntestCommand:  python3 -m unittest\ncriteria:\n  1. `python3 -m shop report daily 2026-11-20` on the sample data prints `2026-11-20: 2 orders, revenue $66.17`.\n  2. An order placed at exactly `00:00:00Z` counts only in the report of the day that starts at that time.\n  3. `GET /orders?date=<day>` lists only the orders placed on that UTC day, with the same rule at midnight.\npluginRoot:   {plugin_dir}\nBRIEF END\n",
+  "graders": [
+    {
+      "type": "checker_verdict",
+      "issue": 21,
+      "expect": "all-met"
+    },
+    {
+      "type": "refs_unchanged"
+    },
+    {
+      "type": "gh_log",
+      "forbid": [
+        {
+          "kind": "write"
+        }
+      ]
+    }
+  ]
+}

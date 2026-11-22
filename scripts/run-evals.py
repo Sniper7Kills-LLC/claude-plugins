@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Run the issue-flow eval cases on headless `claude -p` and grade each run.
 
-    python3 scripts/run-evals.py --plugin-dir issue-flow --suite pm [--case <glob>]
+    python3 scripts/run-evals.py --plugin-dir issue-flow --suite pm|worker|checker [--case <glob>]
         [--tag <tag>] [--runs N] [--out <dir>] [--max-cost-usd X] [--main-model <id>]
         [--effort low|medium|high|xhigh|max] [--keep] [--evals-dir <dir>]
 
@@ -23,6 +23,7 @@ import importlib.util
 import json
 import os
 import re
+import shlex
 import shutil
 import signal
 import subprocess
@@ -32,8 +33,13 @@ import time
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 FAKE_GH_DIR = os.path.join(ROOT, "evals", "fakegh")
+STUB_SPAWN = os.path.join(ROOT, "evals", "stub-spawn.py")
+# The tool_input fields of an Agent call that a `spawns` grader entry can match.
+SPAWN_FIELDS = ("subagent_type", "model", "isolation", "name", "description", "prompt", "run_in_background")
 INSTALLED_PLUGIN = "issue-flow@sniper7kills"
 JUDGE_MODEL = "haiku"
+# An odd count, so that the votes cannot tie.
+JUDGE_VOTES = 3
 DEFAULT_TIMEOUT_S = 900
 FAKE_TOKEN = "ife-eval-fake-token-without-access"
 EFFORTS = ("low", "medium", "high", "xhigh", "max")
@@ -101,10 +107,13 @@ def load_cases(evals_dir, suite, case_glob=None, tag=None):
                 case["prompt"] = handle.read()
         case["tracker_path"] = os.path.join(case_dir, case.get("tracker", "tracker.json"))
         case["fixture_path"] = os.path.join(case_dir, case["fixture"]) if case.get("fixture") else None
+        case["patch_path"] = os.path.join(case_dir, case["patch"]) if case.get("patch") else None
         if not os.path.isfile(case["tracker_path"]):
             raise CaseError(f"{path}: tracker file {case['tracker_path']} is missing")
         if case["fixture_path"] and not os.path.isdir(case["fixture_path"]):
             raise CaseError(f"{path}: fixture directory {case['fixture_path']} is missing")
+        if case["patch_path"] and not os.path.isfile(case["patch_path"]):
+            raise CaseError(f"{path}: patch file {case['patch_path']} is missing")
         cases.append(case)
     return cases
 
@@ -120,8 +129,32 @@ def validate_case(case, path):
     for grader in case["graders"]:
         if grader.get("type") not in GRADERS:
             raise CaseError(f"{path}: unknown grader type {grader.get('type')!r}")
+    docs = case.get("docs_paths", [])
+    if not (isinstance(docs, list) and all(isinstance(item, str) for item in docs)):
+        raise CaseError(f"{path}: 'docs_paths' must be a list of path globs")
     if all(grader["type"] == "llm" for grader in case["graders"]):
         raise CaseError(f"{path}: a case needs at least one deterministic grader; an llm grader is only a second score")
+    if "patch" in case and not (isinstance(case["patch"], str) and isinstance(case.get("patch_branch"), str)):
+        raise CaseError(f"{path}: a 'patch' needs a 'patch_branch' to commit it on")
+    spawn_graders = [grader for grader in case["graders"] if grader["type"] == "spawns"]
+    if spawn_graders and case.get("stub_spawns") is not True:
+        raise CaseError(f"{path}: a 'spawns' grader needs 'stub_spawns': true, or no spawn is recorded")
+    if case.get("stub_spawns") and "Agent" in case.get("disallowed_tools", []):
+        raise CaseError(f"{path}: 'stub_spawns' needs the Agent tool; remove it from 'disallowed_tools'")
+    for grader in spawn_graders:
+        for spec in grader.get("expect", []) + grader.get("forbid", []):
+            fields = {field: pattern for field, pattern in spec.items() if field != "count"}
+            unknown = set(fields) - set(SPAWN_FIELDS)
+            if unknown or not fields:
+                raise CaseError(f"{path}: a 'spawns' entry names spawn fields only ({', '.join(SPAWN_FIELDS)}),"
+                                f" plus an optional 'count', got {sorted(spec)}")
+        for spec in grader.get("forbid", []):
+            if "count" in spec:
+                raise CaseError(f"{path}: a 'spawns' count goes in an 'expect' entry, not a 'forbid' entry")
+        for spec in grader.get("expect", []):
+            count = spec.get("count", 1)
+            if type(count) is not int or count < 1:
+                raise CaseError(f"{path}: a 'spawns' count is a positive integer, got {count!r}")
 
 
 # ---------------------------------------------------------------- sandbox
@@ -161,12 +194,32 @@ def build_sandbox(case):
     git(repo, "remote", "add", "origin", origin)
     for branch in case.get("branches", []):
         git(repo, "branch", branch)
+    if case.get("patch_path"):
+        # The work under review: one commit on its own branch, as a worker would push it.
+        git(repo, "checkout", "-q", "-b", case["patch_branch"])
+        git(repo, "apply", case["patch_path"])
+        git(repo, "add", "-A")
+        git(repo, "-c", "commit.gpgsign=false", "commit", "-q", "-m", "work under review")
+        git(repo, "checkout", "-q", "main")
     git(repo, "push", "-q", "origin", "--all")
     git(repo, "fetch", "-q", "origin")
     git(repo, "remote", "set-head", "origin", "main")
     shutil.copyfile(case["tracker_path"], os.path.join(sandbox, "tracker.json"))
     os.makedirs(os.path.join(sandbox, "gh-config"))
     return sandbox, repo
+
+
+def refs_of(path, pattern="refs/heads"):
+    """Return {ref: sha} for the branches of a repo."""
+    lines = git(path, "for-each-ref", "--format=%(refname) %(objectname)", pattern).splitlines()
+    return dict(line.split() for line in lines)
+
+
+def start_state(case, sandbox, repo):
+    """What a grader compares with after the run: the patch head and the branches as the runner left them."""
+    head = git(repo, "rev-parse", f"refs/heads/{case['patch_branch']}") if case.get("patch_path") else None
+    return {"head_sha": head, "start_refs": refs_of(os.path.join(sandbox, "origin.git")),
+            "start_local_refs": refs_of(repo)}
 
 
 def host_env_kept(name):
@@ -188,6 +241,7 @@ def sandbox_env(sandbox):
         PATH=FAKE_GH_DIR + os.pathsep + env.get("PATH", ""),
         IFE_TRACKER=os.path.join(sandbox, "tracker.json"),
         IFE_GH_LOG=os.path.join(sandbox, "gh-log.jsonl"),
+        IFE_SPAWN_LOG=os.path.join(sandbox, "spawn-log.jsonl"),
         GH_TOKEN=FAKE_TOKEN, GITHUB_TOKEN=FAKE_TOKEN,
         GH_CONFIG_DIR=os.path.join(sandbox, "gh-config"), GH_PROMPT_DISABLED="1",
         **GIT_ISOLATION, **SANDBOX_GIT,
@@ -235,10 +289,19 @@ def parse_result(stdout):
     return data if isinstance(data, dict) else None
 
 
-def isolation_args():
-    """Flags that keep the host's plugins, hooks and MCP servers out of an eval run."""
-    return ["--settings", json.dumps({"enabledPlugins": {INSTALLED_PLUGIN: False}}),
-            "--setting-sources", "project,local", "--strict-mcp-config"]
+def isolation_args(stub_spawns=False):
+    """Flags that keep the host's plugins, hooks and MCP servers out of an eval run.
+
+    With `stub_spawns`, the settings also add the spawn stub as a PreToolUse hook on `Agent`.
+    Measured on Claude Code 2.1.330: a hook in `--settings` fires on the `Agent` call in
+    bypassPermissions mode, next to the plugin's own hooks, and its deny stops the spawn.
+    """
+    settings = {"enabledPlugins": {INSTALLED_PLUGIN: False}}
+    if stub_spawns:
+        command = " ".join(shlex.quote(part) for part in (sys.executable, STUB_SPAWN))
+        settings["hooks"] = {"PreToolUse": [{"matcher": "Agent|Task",
+                                             "hooks": [{"type": "command", "command": command}]}]}
+    return ["--settings", json.dumps(settings), "--setting-sources", "project,local", "--strict-mcp-config"]
 
 
 # ---------------------------------------------------------------- graders
@@ -250,7 +313,10 @@ def log_text(entry):
 
 
 def matches(spec, entry):
-    if entry.get("cmd") != spec.get("cmd"):
+    # A spec with only a `kind` (for example `write`) matches every call of that kind.
+    if "kind" in spec and entry.get("kind") != spec["kind"]:
+        return False
+    if ("cmd" in spec or "kind" not in spec) and entry.get("cmd") != spec.get("cmd"):
         return False
     # No re.M here: the args text holds the body lines too, and `^` must anchor at the issue number.
     if "args" in spec and not re.search(spec["args"], log_text(entry)):
@@ -261,7 +327,7 @@ def matches(spec, entry):
 
 
 def describe(spec):
-    parts = [spec.get("cmd", "?")]
+    parts = [spec.get("cmd") or f"any {spec.get('kind', '?')} call"]
     if "args" in spec:
         parts.append(f"args /{spec['args']}/")
     if "body" in spec:
@@ -285,7 +351,7 @@ def grade_gh_log(grader, ctx):
     for spec in grader.get("forbid", []):
         for entry in ctx["gh_log"]:
             if matches(spec, entry):
-                problems.append(f"forbidden {spec['cmd']} (seq {entry['seq']}: {' '.join(map(str, entry['argv']))})")
+                problems.append(f"forbidden {describe(spec)} (seq {entry['seq']}: {' '.join(map(str, entry['argv']))})")
     if problems:
         return False, "; ".join(problems), 0.0
     return True, f"{len(grader.get('expect', []))} expected, {len(grader.get('forbid', []))} forbidden", 0.0
@@ -315,8 +381,23 @@ def render_writes(entries):
     return "\n".join(lines) or "(no tracker writes)"
 
 
+def judge_once(args, ctx):
+    """Ask the judge once; return (passed, answer, cost). A judge call that fails is a FAIL vote."""
+    code, stdout, stderr, timed_out = run_claude(args, ctx["sandbox"], ctx["judge_env"], 300)
+    result = parse_result(stdout)
+    if timed_out or result is None:
+        return False, f"judge failed (exit {code}): {(stderr or stdout or '').strip()[:200]}", 0.0
+    answer = (result.get("result") or "").strip()
+    return answer.upper().startswith("PASS"), answer, float(result.get("total_cost_usd") or 0.0)
+
+
 def grade_llm(grader, ctx):
-    """A cheap judge reads the target against the rubric and answers PASS or FAIL."""
+    """A cheap judge reads the target against the rubric; the majority of JUDGE_VOTES answers decides.
+
+    One vote can contradict itself: in #111's candidate, a FAIL answer gave a reason that the
+    run met the rubric. The judge stops as soon as one answer has a majority, so a clear run
+    costs 2 calls and a split run costs 3.
+    """
     target = grader.get("target", "final")
     material = ctx["final"] if target == "final" else render_writes(ctx["gh_log"])
     prompt = (
@@ -326,13 +407,15 @@ def grade_llm(grader, ctx):
     )
     args = ["-p", prompt, "--model", grader.get("model", JUDGE_MODEL), "--tools", "",
             "--output-format", "json", "--no-session-persistence", *isolation_args()]
-    code, stdout, stderr, timed_out = run_claude(args, ctx["sandbox"], ctx["judge_env"], 300)
-    result = parse_result(stdout)
-    if timed_out or result is None:
-        return False, f"judge failed (exit {code}): {(stderr or stdout or '').strip()[:200]}", 0.0
-    answer = (result.get("result") or "").strip()
-    cost = float(result.get("total_cost_usd") or 0.0)
-    return answer.upper().startswith("PASS"), answer[:300], cost
+    majority = JUDGE_VOTES // 2 + 1
+    votes, cost = [], 0.0
+    while max(sum(v[0] for v in votes), sum(not v[0] for v in votes)) < majority:
+        passed, answer, vote_cost = judge_once(args, ctx)
+        votes.append((passed, answer))
+        cost += vote_cost
+    passed = sum(v[0] for v in votes) >= majority
+    reason = next(answer for vote, answer in votes if vote == passed)
+    return passed, f"{sum(v[0] == passed for v in votes)}/{len(votes)} votes: {reason[:300]}", cost
 
 
 # ---------------------------------------------------------------- worker graders
@@ -340,6 +423,10 @@ def grade_llm(grader, ctx):
 VERDICT_PATH = ".eval/verdict.json"
 OUTCOMES = {"ready-to-merge", "checkpoint", "needs-feedback", "blocked"}
 HIDDEN_COMMAND = [sys.executable, "-m", "unittest", "discover", "-s", ".", "-p", "hidden_test*.py"]
+# The words that name the pre-patch run. issue-worker.md gives no fixed field for it, so
+# workers say it in their own words ("failed before the fix" in #111's candidate).
+PREPATCH_RUN = (r"(?i)\bpre-?(patch|fix|change)|\bunpatched\b"
+                r"|\b(before|without) (the|my|this|any) (fix|change|patch|implementation)\b")
 
 
 def acceptance_criteria(tracker, number):
@@ -453,7 +540,7 @@ def grade_verdict(grader, ctx):
                 problems.append(f"criterion {index} has no evidence")
     if grader.get("prepatch"):
         checks = str(verdict.get("localChecks") or "")
-        if not (re.search(r"(?i)pre-?patch", checks) and re.search(r"(?i)fail", checks)):
+        if not (re.search(PREPATCH_RUN, checks) and re.search(r"(?i)\bfail", checks)):
             problems.append(f"localChecks names no pre-patch failing run: {checks[:160]!r}")
     if problems:
         return False, "; ".join(problems), 0.0
@@ -482,7 +569,9 @@ def grade_diff_scope(grader, ctx):
             return False, reason, 0.0
         ref, sha = found
         changed = git(repo, "diff", "--no-ext-diff", "--name-only", base, sha).splitlines()
-        outside = [path for path in changed if not path_allowed(path, grader.get("allow", []))]
+        # A worker brief asks for docs of a changed interface, so the case's docs are always allowed.
+        allow = grader.get("allow", []) + ctx["case"].get("docs_paths", [])
+        outside = [path for path in changed if not path_allowed(path, allow)]
         if outside:
             problems.append(f"{ref} changes paths outside the allowlist: {', '.join(outside)}")
         if not changed:
@@ -493,9 +582,108 @@ def grade_diff_scope(grader, ctx):
     return True, detail, 0.0
 
 
+# ---------------------------------------------------------------- checker graders
+
+CHECKER_VERDICT_PATH = ".eval/checker-verdict.json"
+# The keys and statuses of the return contract in issue-flow/agents/criteria-checker.md.
+CHECKER_KEYS = ("issue", "head", "headSha", "criteria", "testsRun", "notes")
+CHECKER_STATUSES = ("met", "unmet", "unclear")
+
+
+def grade_checker_verdict(grader, ctx):
+    """The checker's verdict follows its contract, names the head it checked, and gives the expected statuses.
+
+    `expect: all-met` passes when every criterion is `met`. `expect: unmet` passes when each
+    criterion that `criteria` lists (counted from 1) is `unmet`; `unclear` does not count.
+    """
+    verdict, reason = read_verdict(os.path.join(ctx["repo"], grader.get("path", CHECKER_VERDICT_PATH)))
+    if verdict is None:
+        return False, reason, 0.0
+    with open(ctx["case"]["tracker_path"]) as handle:
+        expected = acceptance_criteria(json.load(handle), grader["issue"])
+    problems = []
+    if str(verdict.get("issue", "")).lstrip("#") != str(grader["issue"]):
+        problems.append(f"issue {verdict.get('issue')!r}, expected {grader['issue']}")
+    head, sha = str(verdict.get("headSha") or ""), ctx.get("head_sha") or ""
+    if not (re.fullmatch(r"[0-9a-f]{7,40}", head) and sha.startswith(head)):
+        problems.append(f"headSha {verdict.get('headSha')!r} is not the head under review {sha[:12]}")
+    if not str(verdict.get("testsRun") or "").strip():
+        problems.append("testsRun is empty")
+    criteria = [c for c in verdict.get("criteria") or [] if isinstance(c, dict)]
+    if len(criteria) != len(expected):
+        problems.append(f"criteria has {len(criteria)} entries for {len(expected)} acceptance criteria")
+    statuses = [c.get("status") for c in criteria]
+    for index, criterion in enumerate(criteria, start=1):
+        if criterion.get("status") not in CHECKER_STATUSES:
+            problems.append(f"criterion {index} status {criterion.get('status')!r} is not one of {list(CHECKER_STATUSES)}")
+        if not str(criterion.get("evidence") or "").strip():
+            problems.append(f"criterion {index} has no evidence")
+    if grader.get("expect") == "all-met" and any(status != "met" for status in statuses):
+        problems.append(f"expected every criterion met, got {statuses}")
+    if grader.get("expect") == "unmet":
+        for number in grader.get("criteria", []):
+            got = statuses[number - 1] if number <= len(statuses) else None
+            if got != "unmet":
+                problems.append(f"criterion {number} is {got!r}, expected 'unmet'")
+    if problems:
+        return False, "; ".join(problems), 0.0
+    return True, f"statuses {statuses} on {head[:8]}", 0.0
+
+
+def spawn_matches(spec, spawn):
+    # A field that the call did not set matches as empty text, so {"model": "."} means "set a model".
+    return all(re.search(pattern, "" if spawn.get(field) is None else str(spawn[field]), re.M)
+               for field, pattern in spec.items() if field != "count")
+
+
+def describe_spawn(spec):
+    return "Agent " + " ".join(f"{field} /{pattern}/" for field, pattern in spec.items() if field != "count")
+
+
+def grade_spawns(grader, ctx):
+    """Every `expect` entry matches a recorded Agent call, `count` times when it gives a count;
+    no recorded call matches a `forbid` entry."""
+    problems = []
+    for spec in grader.get("expect", []):
+        matched = sum(1 for spawn in ctx["spawns"] if spawn_matches(spec, spawn))
+        if "count" in spec and matched != spec["count"]:
+            # A retry after a refused spawn is a second spawn, so "exactly N" needs its own check.
+            problems.append(f"{matched} of {describe_spawn(spec)}, expected {spec['count']}")
+        elif not matched:
+            problems.append(f"missing {describe_spawn(spec)}")
+    for spec in grader.get("forbid", []):
+        for spawn in ctx["spawns"]:
+            if spawn_matches(spec, spawn):
+                problems.append(f"forbidden {describe_spawn(spec)} (seq {spawn.get('seq')}: "
+                                f"{spawn.get('subagent_type')} model={spawn.get('model')})")
+    if problems:
+        return False, "; ".join(problems), 0.0
+    return True, (f"{len(ctx['spawns'])} spawn(s); {len(grader.get('expect', []))} expected, "
+                  f"{len(grader.get('forbid', []))} forbidden"), 0.0
+
+
+def grade_refs_unchanged(grader, ctx):
+    """No branch of origin changed, and no local branch that the runner made moved: the agent wrote no commit."""
+    problems = []
+    now = refs_of(os.path.join(ctx["sandbox"], "origin.git"))
+    if now != ctx["start_refs"]:
+        moved = sorted(ref for ref in set(now) | set(ctx["start_refs"]) if now.get(ref) != ctx["start_refs"].get(ref))
+        problems.append(f"origin refs changed: {', '.join(moved)}")
+    local = refs_of(ctx["repo"])
+    # A harness worktree adds a branch of its own, so only the branches that existed at the start count.
+    moved = sorted(ref for ref, sha in ctx["start_local_refs"].items() if local.get(ref) != sha)
+    if moved:
+        problems.append(f"local refs moved: {', '.join(moved)}")
+    if problems:
+        return False, "; ".join(problems), 0.0
+    return True, f"{len(now)} origin ref(s) unchanged", 0.0
+
+
 # Other suites add grader types here; each returns (passed, detail, cost_usd).
 GRADERS = {"gh_log": grade_gh_log, "file": grade_file, "llm": grade_llm,
-           "hidden_tests": grade_hidden_tests, "verdict": grade_verdict, "diff_scope": grade_diff_scope}
+           "hidden_tests": grade_hidden_tests, "verdict": grade_verdict, "diff_scope": grade_diff_scope,
+           "checker_verdict": grade_checker_verdict, "refs_unchanged": grade_refs_unchanged,
+           "spawns": grade_spawns}
 
 
 # ---------------------------------------------------------------- one run
@@ -524,6 +712,7 @@ def main_model(result, requested):
 def run_case(case, run_number, args, variant, budget_left, run_dir):
     """Run one case once and return its record."""
     sandbox, repo = build_sandbox(case)
+    state = start_state(case, sandbox, repo)
     # A run in bypassPermissions mode can write its plugin files; it gets a copy of its own.
     plugin = os.path.join(sandbox, "plugin")
     shutil.copytree(args.plugin_dir, plugin, symlinks=True, ignore=shutil.ignore_patterns(".git"))
@@ -531,7 +720,10 @@ def run_case(case, run_number, args, variant, budget_left, run_dir):
     model = args.main_model or case.get("model")
     # A worker brief names the plugin under test as its pluginRoot.
     prompt = case["prompt"].replace("{plugin_dir}", plugin)
-    claude_args = ["-p", prompt, "--plugin-dir", plugin, *isolation_args(),
+    if state["head_sha"]:
+        # A checker brief names the exact commit under review, and the runner made that commit just now.
+        prompt = prompt.replace("{head_sha}", state["head_sha"])
+    claude_args = ["-p", prompt, "--plugin-dir", plugin, *isolation_args(case.get("stub_spawns") is True),
                    "--permission-mode", "bypassPermissions", "--output-format", "json",
                    "--effort", args.effort]
     if model:
@@ -560,13 +752,14 @@ def run_case(case, run_number, args, variant, budget_left, run_dir):
         handle.write(stdout or "")
     with open(os.path.join(run_dir, "claude-stderr.txt"), "w") as handle:
         handle.write(stderr or "")
-    for name in ("gh-log.jsonl", "tracker.json"):
+    for name in ("gh-log.jsonl", "tracker.json", "spawn-log.jsonl"):
         if os.path.exists(os.path.join(sandbox, name)):
             shutil.copyfile(os.path.join(sandbox, name), os.path.join(run_dir, name))
 
     result = result or {}
     ctx = {"sandbox": sandbox, "repo": repo, "gh_log": read_jsonl(os.path.join(sandbox, "gh-log.jsonl")),
-           "final": result.get("result") or "", "judge_env": sandbox_env(sandbox), "case": case}
+           "spawns": read_jsonl(os.path.join(sandbox, "spawn-log.jsonl")),
+           "final": result.get("result") or "", "judge_env": sandbox_env(sandbox), "case": case, **state}
     graders, judge_cost = [], 0.0
     for grader in case["graders"]:
         try:
@@ -639,7 +832,7 @@ def write_results(out, results):
 def main(argv=None):
     parser = argparse.ArgumentParser(description="Run the issue-flow eval cases on claude -p.")
     parser.add_argument("--plugin-dir", required=True, help="the issue-flow plugin directory to test")
-    parser.add_argument("--suite", required=True, help="pm or worker")
+    parser.add_argument("--suite", required=True, help="pm, worker or checker")
     parser.add_argument("--case", help="only the cases whose name matches this glob")
     parser.add_argument("--tag", help="only the cases that carry this tag")
     parser.add_argument("--runs", type=int, help="runs per case; overrides the case's own count")

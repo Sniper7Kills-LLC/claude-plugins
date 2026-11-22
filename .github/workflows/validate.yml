@@ -67,6 +67,9 @@ jobs:
       - name: Test the worker eval cases and their graders
         run: python3 scripts/test-worker-cases.py
 
+      - name: Test the criteria checker, its eval cases and their graders
+        run: python3 scripts/test-checker-cases.py
+
       - name: Test the rule-coverage check
         run: python3 scripts/test-rule-coverage.py
 

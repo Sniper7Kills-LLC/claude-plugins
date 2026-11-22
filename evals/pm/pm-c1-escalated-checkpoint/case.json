@@ -1,0 +1,79 @@
+{
+  "name": "pm-c1-escalated-checkpoint",
+  "suite": "pm",
+  "tags": [
+    "pm",
+    "c1-gate",
+    "checkpoint"
+  ],
+  "timeout_s": 900,
+  "runs": 3,
+  "fixture": "../_fixture",
+  "tracker": "tracker.json",
+  "branches": [
+    "batch/10-cli-output",
+    "issue/11-json-flag"
+  ],
+  "stub_spawns": true,
+  "prompt": "You are the issue-flow PM for this repository. Use the issue-flow skill.\nThis is a scenario test with one task. Phase 0 has already run, and the run configuration in .issue-flow.json is final. Nobody is available to answer questions. The tracker is GitHub through the `gh` CLI.\nIn this test, every Agent call is recorded and then refused, so no agent runs and no notification arrives. Spawn what the gate calls for, exactly as the skill says, and treat the spawn as launched.\nDo only the task below. Then stop, and report in a few lines what you did and why.\n\nTask:\nBatch #10 has one member, #11. Its Sonnet worker failed the re-check after its one rework round, so you escalated #11 to Opus: the `escalated to Opus:` comment is on #11. The Opus worker (agentId `w-11-opus`) was launched with this brief:\n\n```\nissue:        #11 — Add a --json flag to `widgets count`\nbranch:       issue/11-json-flag\nbase:         origin/issue/11-json-flag\nci:           skip\nbatch:        batch #10\nmembers:      1\ncrossCheck:   n/a — single-member batch\nremote:       origin\nforge:        {type: github, host: github.com, owner: acme, repo: widgets, interface: cli}\nplan:         Add `--json` to the `count` subcommand in `widgets.py`. Reject `--json` with `--verbose`. Tests in `test_widgets.py`, written first. PR #12 is open.\nconventions:  python3 -m unittest; stdlib only\npractices:    tdd: true, ddd: false, e2e: none, coverage: null, commitStyle: conventional, docs: public-interfaces\nsteRule:      {plugin_dir}/references/ste.md\npluginRoot:   {plugin_dir}\nescalation:   re-check failed after one rework round. Criterion 2 `unmet`: ran `python3 widgets.py count --json --verbose` on the head: exit 0, printed the JSON. widgets.py:41 checks `args.verbose` only after it prints.\n```\n\nIt finished, and its final message is this verdict:\n\n```json\n{\n  \"issue\": 11,\n  \"branch\": \"issue/11-json-flag\",\n  \"worktree\": \"/tmp/wt/w-11-opus\",\n  \"prNumber\": 12,\n  \"outcome\": \"checkpoint\",\n  \"detail\": \"turn budget reached; branch pushed\",\n  \"remaining\": \"Done: the --json flag, with test_count_json_prints_object passing. Left: criterion 2. Next: write test_json_rejects_verbose against the CLI first, then move the `args.verbose` check in widgets.py above the print.\",\n  \"localChecks\": \"python3 -m unittest: 13 passed\",\n  \"criteria\": [],\n  \"openThreads\": 0,\n  \"notesForPM\": null\n}\n```\n\nRun the Stage C1 gate on this verdict.\n",
+  "graders": [
+    {
+      "type": "spawns",
+      "expect": [
+        {
+          "subagent_type": "^issue-flow:issue-worker$",
+          "count": 1
+        },
+        {
+          "subagent_type": "^issue-flow:issue-worker$",
+          "model": "^(?i:opus)$",
+          "isolation": "^worktree$",
+          "prompt": "(?i)^\\W*escalation\\W*[:=]\\W*\\w",
+          "count": 1
+        }
+      ],
+      "forbid": [
+        {
+          "subagent_type": "^issue-flow:(?!issue-worker$)"
+        },
+        {
+          "model": "^(?!(?i:opus)$)."
+        }
+      ]
+    },
+    {
+      "type": "gh_log",
+      "expect": [
+        {
+          "cmd": "issue comment",
+          "args": "^11\\b",
+          "body": "(?i)\\bcheckpoint\\b"
+        }
+      ],
+      "forbid": [
+        {
+          "cmd": "pr merge"
+        },
+        {
+          "cmd": "pr ready"
+        },
+        {
+          "cmd": "issue close"
+        },
+        {
+          "cmd": "issue edit",
+          "args": "^(\\d+ )*11\\b.*--(add|remove)-label"
+        },
+        {
+          "cmd": "issue comment",
+          "body": "(?i)^\\W*escalated to opus:"
+        }
+      ]
+    },
+    {
+      "type": "llm",
+      "target": "final",
+      "rubric": "The Opus worker of an escalation returned `checkpoint`. The PM treats it as the same escalation attempt, not a new one: it re-spawns one fresh issue-flow:issue-worker for #11 that keeps `model: \"opus\"` and the same `escalation:` field, posts one checkpoint comment on #11, and posts no second `escalated to Opus:` comment. A replacement on Sonnet or without the escalation field, a second escalation comment, `status:blocked`, a status change, or a merge fails."
+    }
+  ]
+}

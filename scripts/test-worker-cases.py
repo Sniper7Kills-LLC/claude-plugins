@@ -22,9 +22,12 @@ RUNNER = os.path.join(ROOT, "scripts", "run-evals.py")
 EVALS = os.path.join(ROOT, "evals")
 WORKER = os.path.join(EVALS, "worker")
 FIXTURE = os.path.join(WORKER, "_fixture")
+LARGE_FIXTURE = os.path.join(WORKER, "_fixture_large")
+# The fixture tag of a case names the fixture that the case starts from.
+FIXTURES = {"small": FIXTURE, "large": LARGE_FIXTURE}
 GIT_ENV = {"GIT_AUTHOR_NAME": "t", "GIT_AUTHOR_EMAIL": "t@example.invalid",
            "GIT_COMMITTER_NAME": "t", "GIT_COMMITTER_EMAIL": "t@example.invalid"}
-TIERS = {"easy": 2, "medium": 3, "hard": 3}
+TIERS = {"easy": 2, "medium": 5, "hard": 4}
 
 failures = []
 
@@ -82,8 +85,9 @@ def is_ambiguous(case):
 
 def test_suite_shape():
     cases = worker_cases()
-    check(len(cases) == 8, f"the worker suite has 8 cases, got {len(cases)}")
+    check(len(cases) == 11, f"the worker suite has 11 cases, got {len(cases)}")
     tiers = {tier: 0 for tier in TIERS}
+    per_fixture = {tag: 0 for tag in FIXTURES}
     for case in cases:
         name = case["name"]
         check(case["suite"] == "worker", f"{name}: suite is worker")
@@ -93,8 +97,12 @@ def test_suite_shape():
         check(len(found) == 1, f"{name}: tagged with exactly one of easy, medium, hard, got {tags}")
         for tier in found:
             tiers[tier] += 1
-        check(os.path.realpath(case["fixture_path"]) == os.path.realpath(FIXTURE),
-              f"{name}: starts from evals/worker/_fixture")
+        fixture_tags = [tag for tag in FIXTURES if tag in tags]
+        check(len(fixture_tags) == 1, f"{name}: tagged with exactly one of small, large, got {tags}")
+        for tag in fixture_tags:
+            per_fixture[tag] += 1
+            check(os.path.realpath(case["fixture_path"]) == os.path.realpath(FIXTURES[tag]),
+                  f"{name}: a {tag} case starts from {os.path.relpath(FIXTURES[tag], EVALS)}")
         check(case.get("model") == "haiku", f"{name}: the dispatcher runs on haiku, got {case.get('model')}")
         prompt = case["prompt"]
         for needle in ("issue-flow:issue-worker", '"worktree"', "{plugin_dir}", ".eval/verdict.json",
@@ -122,19 +130,37 @@ def test_suite_shape():
             check(os.path.isdir(hidden) and any(f.startswith("hidden_test") for f in os.listdir(hidden)),
                   f"{name}: hidden/ holds hidden_test*.py files")
             check(os.path.isfile(patch), f"{name}: has reference.patch")
-    check(tiers == TIERS, f"2 easy, 3 medium and 3 hard cases, got {tiers}")
+    check(tiers == TIERS, f"2 easy, 5 medium and 4 hard cases, got {tiers}")
+    check(per_fixture == {"small": 8, "large": 3}, f"8 small and 3 large cases, got {per_fixture}")
+    check(sum("locate" in c["tags"] for c in cases if "large" in c["tags"]) == 1,
+          "one large case is the locate-heavy one")
     check(sum(is_ambiguous(c) for c in cases) == 1, "exactly one case is the ambiguous one")
-    check(not any(name.startswith("hidden_test") for _, _, names in os.walk(FIXTURE) for name in names),
-          "the fixture holds no hidden test")
+    for fixture in FIXTURES.values():
+        check(not any(name.startswith("hidden_test") for _, _, names in os.walk(fixture) for name in names),
+              f"{os.path.basename(fixture)} holds no hidden test")
+
+
+def fixture_files(fixture):
+    return [os.path.join(top, name) for top, dirs, names in os.walk(fixture)
+            if "__pycache__" not in top.split(os.sep) for name in names if not name.endswith(".pyc")]
+
+
+def test_large_fixture_size():
+    """The large fixture gives a worker something to locate: 20 to 40 files in several packages."""
+    files = fixture_files(LARGE_FIXTURE)
+    check(20 <= len(files) <= 40, f"_fixture_large holds 20 to 40 files, got {len(files)}")
+    packages = {os.path.dirname(os.path.relpath(path, LARGE_FIXTURE)) for path in files
+                if path.endswith("__init__.py")}
+    check(len(packages) >= 5, f"_fixture_large has at least 5 packages, got {sorted(packages)}")
 
 
 # ---------------------------------------------------------------- reference check
 
 
-def fixture_copy():
+def fixture_copy(fixture=FIXTURE):
     work = tempfile.mkdtemp(prefix="worker-ref-")
     repo = os.path.join(work, "repo")
-    shutil.copytree(FIXTURE, repo)
+    shutil.copytree(fixture, repo, ignore=shutil.ignore_patterns("__pycache__"))
     git(repo, "init", "-q", "-b", "main")
     git(repo, "add", "-A")
     git(repo, "-c", "commit.gpgsign=false", "commit", "-q", "-m", "fixture")
@@ -142,12 +168,14 @@ def fixture_copy():
 
 
 def test_fixture_tests_pass():
-    work, repo = fixture_copy()
-    try:
-        result = unittest_run(repo, "test*.py")
-        check(result.returncode == 0, f"the fixture's own tests pass: {result.stderr[-800:]}")
-    finally:
-        shutil.rmtree(work, ignore_errors=True)
+    for fixture in FIXTURES.values():
+        work, repo = fixture_copy(fixture)
+        try:
+            result = unittest_run(repo, "test*.py")
+            check(result.returncode == 0 and re.search(r"Ran [1-9]", result.stderr),
+                  f"the own tests of {os.path.basename(fixture)} pass: {result.stderr[-800:]}")
+        finally:
+            shutil.rmtree(work, ignore_errors=True)
 
 
 def test_reference_check():
@@ -156,7 +184,7 @@ def test_reference_check():
         if is_ambiguous(case):
             continue
         name = case["name"]
-        work, repo = fixture_copy()
+        work, repo = fixture_copy(case["fixture_path"])
         try:
             hidden = os.path.join(case["dir"], "hidden")
             for entry in os.listdir(hidden):
@@ -173,7 +201,7 @@ def test_reference_check():
             changed = git(repo, "diff", "--name-only").stdout.split() + \
                 git(repo, "ls-files", "--others", "--exclude-standard").stdout.split()
             changed = [p for p in changed if not os.path.basename(p).startswith("hidden_test")]
-            allow = graders_of(case, "diff_scope")[0]["allow"]
+            allow = graders_of(case, "diff_scope")[0]["allow"] + case.get("docs_paths", [])
             runner = load_runner()
             outside = [p for p in changed if not runner.path_allowed(p, allow)]
             check(not outside, f"{name}: reference.patch stays inside the allowlist, outside: {outside}")
@@ -319,6 +347,71 @@ def test_graders_on_the_ambiguous_case():
         shutil.rmtree(sandbox, ignore_errors=True)
 
 
+# localChecks texts that report a failing pre-patch run in other words. The first is from
+# worker-easy-low-stock-boundary run 1 of #111's candidate, which the old grader failed.
+PREPATCH_WORDINGS = (
+    "python3 -m unittest: 13 tests passed. No lint, typecheck or build step exists. tdd: the new "
+    "boundary test failed before the fix (['A2'] != ['A2','H1']) and passes after it",
+    "python3 -m unittest: 12 passed; pre-patch: 2 new tests fail as expected",
+    "Prepatch run: 3 new tests FAILED",
+    "the new tests fail without the change (ImportError on parse_price)",
+    "on the pre-fix code the 2 new tests failed",
+    "the new tests failed on the unpatched code",
+    "2 new tests fail on the pre-patched code",
+)
+# localChecks texts that do not report a failing pre-patch run.
+NO_PREPATCH = (
+    "python3 -m unittest: 12 passed",
+    "pre-patch: not run",
+    "the tests pass before and after the fix",
+    "one old test failed and I fixed it",
+)
+
+
+def test_verdict_accepts_equivalent_prepatch_wording():
+    case = next(c for c in worker_cases() if not is_ambiguous(c))
+    runner, sandbox, repo, ctx = sandbox_for(case)
+    try:
+        grader = graders_of(case, "verdict")[0]
+        for text in PREPATCH_WORDINGS:
+            write_verdict(repo, dict(golden_verdict(case), localChecks=text))
+            passed, detail, _ = run_grader(runner, grader, ctx)
+            check(passed is True, f"verdict accepts the pre-patch wording {text[-60:]!r}, got {detail!r}")
+        for text in NO_PREPATCH:
+            write_verdict(repo, dict(golden_verdict(case), localChecks=text))
+            passed, detail, _ = run_grader(runner, grader, ctx)
+            check(passed is False and "pre-patch" in detail, f"verdict refuses {text!r}, got {detail!r}")
+    finally:
+        shutil.rmtree(sandbox, ignore_errors=True)
+
+
+def test_diff_scope_allows_the_docs_of_every_case():
+    """A worker that also updates the docs that its brief requires passes diff_scope in every case."""
+    for case in worker_cases():
+        if is_ambiguous(case):
+            continue
+        name = case["name"]
+        check("README.md" in case.get("docs_paths", []),
+              f"{name}: docs_paths holds README.md, got {case.get('docs_paths')}")
+        number = issue_of(case)
+        runner, sandbox, repo, ctx = sandbox_for(case)
+        try:
+            with open(os.path.join(repo, "README.md")) as handle:
+                readme = handle.read()
+            commit_patch(repo, f"issue/{number}-docs", os.path.join(case["dir"], "reference.patch"),
+                         {"README.md": readme + "\nThe changed interface is documented here.\n"})
+            scope = graders_of(case, "diff_scope")[0]
+            passed, detail, _ = run_grader(runner, scope, ctx)
+            check(passed is True, f"{name}: diff_scope allows README.md next to the fix, got {detail!r}")
+            git(repo, "branch", "-q", "-D", f"issue/{number}-docs")
+            commit_patch(repo, f"issue/{number}-notes", None, {"NOTES.md": "x\n"})
+            passed, detail, _ = run_grader(runner, scope, ctx)
+            check(passed is False and "NOTES.md" in detail,
+                  f"{name}: diff_scope still refuses other paths, got {detail!r}")
+        finally:
+            shutil.rmtree(sandbox, ignore_errors=True)
+
+
 def test_path_allowed():
     runner = load_runner()
     check(runner.path_allowed("tests/test_items.py", ["tests/*"]), "a glob matches a path below it")
@@ -449,7 +542,7 @@ def run_suite(extra_env, *args):
 def test_do_nothing_worker_fails_every_case():
     result, results, captures, plugin = run_suite({}, "--tag", "worker")
     records = (results or {}).get("records", [])
-    check(len(records) == 8, f"--tag worker runs all 8 cases, got {len(records)}: {result.stderr}")
+    check(len(records) == 11, f"--tag worker runs all 11 cases, got {len(records)}: {result.stderr}")
     check(all(r["error"] is None for r in records), f"no case errors, got {[r['error'] for r in records]}")
     check(all(r["ok"] is False for r in records), "a worker that does nothing fails every case")
     check(result.returncode == 1, f"a failing suite exits 1, got {result.returncode}")
@@ -477,8 +570,9 @@ def test_golden_worker_passes_every_case():
                   f"{case['name']}: the record has the wall time, got {records[0].get('wall_s')}")
 
 
-for test in (test_suite_shape, test_fixture_tests_pass, test_reference_check, test_path_allowed,
+for test in (test_suite_shape, test_large_fixture_size, test_fixture_tests_pass, test_reference_check, test_path_allowed,
              test_acceptance_criteria_parser, test_graders_on_a_clear_case,
+             test_verdict_accepts_equivalent_prepatch_wording, test_diff_scope_allows_the_docs_of_every_case,
              test_graders_on_the_ambiguous_case, test_fake_gh_worker_subcommands,
              test_do_nothing_worker_fails_every_case,
              test_golden_worker_passes_every_case):

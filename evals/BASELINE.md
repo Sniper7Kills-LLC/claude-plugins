@@ -20,7 +20,9 @@ The run records are in `evals/baselines/0.20.0/pm/` and `evals/baselines/0.20.0/
 | Judge model | `claude-haiku-5-5`, for the `llm` graders of the PM suite |
 | Effort | `medium`. The runner did not pass `--effort` yet. See "The runs inherited a Claude Code session". |
 
-The PM suite has 6 cases (18 runs) and the worker suite has 8 cases (24 runs).
+The PM suite has 6 cases (18 runs) and the worker suite has 8 cases (24 runs). These 8
+cases now carry the tag `small`. The 3 cases on the large fixture came later and have their
+own baseline: see "Worker suite, large fixture".
 
 ## Actual spend
 
@@ -103,6 +105,88 @@ documents the price format of a stock file. The brief asks for docs on public in
 so that change is correct. The allowlist of the case did not include `README.md`. The fix
 adds it, and the case then ran 3 more times. `superseded-worker-medium-price-parse.json`
 keeps the first 3 runs.
+
+## Worker suite, large fixture
+
+The 3 cases tagged `large` start from `evals/worker/_fixture_large/`, a 40-file order
+service (Sniper7Kills-LLC/claude-plugins#117). The run records are in
+`evals/baselines/0.20.0/worker-large/`. The same cases on the head of batch #115 are in
+`evals/candidates/batch-115/worker-large/`, for comparison.
+
+| Item | 0.20.0 | Batch #115 head |
+|---|---|---|
+| Plugin | a git worktree of the tag `issue-flow--v0.20.0` (`c3974fe`) | a git worktree of `batch/115-token-speed` at `b341a1d` |
+| Worker model | `claude-opus-5-5` | `claude-sonnet-5-5` (Sniper7Kills-LLC/claude-plugins#109) |
+| PM skill | one `SKILL.md` | the dispatcher plus per-stage files (Sniper7Kills-LLC/claude-plugins#107) |
+| Date | 2026-11-21 (UTC) | 2026-11-21 (UTC) |
+| Runs | 3 per case, 9 in total | 3 per case, 9 in total |
+| Spent | $3.69, under the ceiling of $25 | $1.25, under the ceiling of $25 |
+
+The dispatcher is `claude-haiku-5-5` and the effort is `medium` on both sides. The runner
+and the graders are those of Sniper7Kills-LLC/claude-plugins#117 on both sides.
+
+| Case | Tier | Variant | ok | Hidden tests | Mean cost (range) | Worker tokens | Worker turns | Wall time (range) |
+|---|---|---|---|---|---|---|---|---|
+| `worker-large-medium-report-midnight` | medium | 0.20.0 | 3/3 | 3/3 | $0.40 ($0.36–$0.46) | 650k | 17.0 | 88 s (84–97) |
+| | | batch head | 3/3 | 3/3 | $0.11 ($0.10–$0.14) | 370k | 11.7 | 37 s (33–42) |
+| `worker-large-locate-repeated-sku` | medium, `locate` | 0.20.0 | 3/3 | 3/3 | $0.40 ($0.39–$0.41) | 650k | 16.7 | 91 s (89–93) |
+| | | batch head | 3/3 | 3/3 | $0.13 ($0.11–$0.15) | 384k | 11.0 | 39 s (38–42) |
+| `worker-large-hard-one-discount` | hard | 0.20.0 | 3/3 | 3/3 | $0.43 ($0.34–$0.55) | 623k | 15.7 | 88 s (79–97) |
+| | | batch head | 3/3 | 3/3 | $0.18 ($0.14–$0.24) | 485k | 13.3 | 49 s (44–57) |
+
+For the 9 runs of 0.20.0: 9/9 ok, hidden-test pass rate 9/9, mean cost $0.41 per run, 641k
+worker tokens and 16.4 worker turns per run, and 89 s of wall time. For the batch head:
+9/9 ok, 9/9, $0.14, 413k, 12.0 turns and 42 s. `scripts/eval-compare.py` gives `ship` for
+the batch head against this baseline: the same pass rate, and a cost 66% lower.
+
+- On 0.20.0, a worker on the large fixture uses 641k tokens per run, against 472k on the
+  small fixture. The cost per run is $0.41 against $0.35. The large fixture thus gives a
+  worker more to read, but all 3 cases passed 9/9 on both sides. Like the small fixture,
+  it has no headroom on scores.
+- A worker case does not load the PM skill, so the Sonnet worker is the likely cause of
+  the batch head's gain. This measurement does not test the two changes apart.
+
+## PM session case
+
+`pm-session-batch` is a session-level PM case (Sniper7Kills-LLC/claude-plugins#116,
+`evals/README.md`, "Session-level PM cases"). The run records are in
+`evals/baselines/0.20.0/pm-session/`. The same case was run on the head of batch #115 for comparison.
+That head had the split PM skill (#107). #107 is closed, so its run records are not kept.
+The numbers are in the table below and on #107. These are new baselines, not a
+ship decision.
+
+| Item | 0.20.0 | Batch #115 head |
+|---|---|---|
+| Plugin | a git worktree of the tag `issue-flow--v0.20.0` (`c3974fe`) | a git worktree of `batch/115-token-speed` at `2ef9bd7` |
+| Case, runner and fake `gh` | this repository at `0e4c65a` (case tree `c62b068`) | the same |
+| Date | 2026-11-21 (UTC) | 2026-11-21 (UTC) |
+| Runs | 3 | 3 |
+| Spent, judges included | $3.48, under the ceiling of $25 | $3.94, under the ceiling of $25 |
+
+The model is `claude-opus-5-5` and the effort is `medium` on both sides. The `llm` judge
+takes the majority of votes (Sniper7Kills-LLC/claude-plugins#117) on both sides.
+
+| Variant | ok | Mean score (range) | PM tokens | Tracker calls (range) | Turns | Mean cost (range) | Duration (range) |
+|---|---|---|---|---|---|---|---|
+| 0.20.0 | 3/3 | 0.92 (0.75–1.00) | 1,443k | 102.3 (96–114) | 21.3 | $1.16 ($1.07–$1.30) | 160 s (144–185) |
+| batch head | 3/3 | 1.00 (1.00–1.00) | 1,692k | 77.3 (69–83) | 26.7 | $1.31 ($1.28–$1.33) | 204 s (194–224) |
+
+- "PM tokens" is the sum of the four token counts of the main agent. No run spawned a
+  subagent.
+- "Tracker calls" is `tracker_calls.total`: every line of the run's gh log. It includes
+  the 3 reads of the SessionStart preflight hook and 12 refused `gh pr view <branch>`
+  calls from Claude Code itself in each run. Without them, the PM made 87.3 calls per
+  run on 0.20.0 and 62.3 on the batch head.
+- On this case, the batch head made 24% fewer tracker calls, but used 17% more PM tokens,
+  5.3 more turns and 13% more cost than 0.20.0. The split PM skill
+  (Sniper7Kills-LLC/claude-plugins#107) is the likely cause, because the session reads
+  several stage files. This measurement does not test that. On this result the operator
+  reverted #107 before batch #115 merged; the batch ships one `SKILL.md`, as in 0.20.0.
+- The one score below 1.00 is 0.20.0 run 2: the judge found the questions on #63 too
+  generic. The deterministic graders passed.
+- The first version of the case gave #51 weak evidence for one criterion. The 0.20.0 PM
+  correctly refused to merge #51 in 2 of 3 runs. The case was fixed, and all the runs above
+  were made after the fix. The runs from before the fix are not kept.
 
 ## What the baseline can and cannot show
 

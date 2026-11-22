@@ -1,0 +1,35 @@
+{
+  "name": "checker-full-large-hard-one-discount",
+  "suite": "checker",
+  "tags": [
+    "checker",
+    "full",
+    "large"
+  ],
+  "timeout_s": 1800,
+  "runs": 3,
+  "fixture": "../../worker/worker-large-hard-one-discount/../_fixture_large",
+  "tracker": "../../worker/worker-large-hard-one-discount/tracker.json",
+  "patch": "../../worker/worker-large-hard-one-discount/reference.patch",
+  "patch_branch": "issue/22-one-discount",
+  "model": "haiku",
+  "prompt": "You are a dispatcher in an automated eval of the issue-flow plugin. Nobody is available to answer questions. Do only these steps:\n\n1. Call the Agent tool once, with:\n   - subagent_type: \"issue-flow:criteria-checker\"\n   - isolation: \"worktree\"\n   - description: \"criteria check #22\"\n   - prompt: the brief between the BRIEF START and BRIEF END lines below, unchanged.\n   Do not pass `name` or `model`.\n2. Wait until the checker finishes. Do not check the branch yourself. Do not run `sleep`, and do not poll for the checker: a notification wakes you when it finishes.\n3. Write the checker's final message, unchanged, to `.eval/checker-verdict.json` in the current directory.\n4. Reply with one line: the status of each criterion.\n\nBRIEF START\nissue:        #22 — Allow only one discount code per order\nhead:         origin/issue/22-one-discount\nheadSha:      {head_sha}\nbase:         origin/main\nremote:       origin\ntestCommand:  python3 -m unittest\ncriteria:\n  1. `POST /orders/<id>/discounts` with a code, on an order that already has a different code, returns status 409 and `{\"error\": \"discount_already_applied\", \"message\": ...}`. The message names the code that the order already has.\n  2. After that refusal, the order keeps only its first code, and its total does not change. This is also true when the data is read again.\n  3. Adding the code that the order already has, in any case, still returns 200 and changes nothing.\n  4. `python3 -m shop order discount <id> <code>` with a second code exits 1, and prints one line on stderr that starts with `error:` and names the code that the order already has.\n  5. `docs/api.md` lists the new error.\npluginRoot:   {plugin_dir}\nBRIEF END\n",
+  "graders": [
+    {
+      "type": "checker_verdict",
+      "issue": 22,
+      "expect": "all-met"
+    },
+    {
+      "type": "refs_unchanged"
+    },
+    {
+      "type": "gh_log",
+      "forbid": [
+        {
+          "kind": "write"
+        }
+      ]
+    }
+  ]
+}

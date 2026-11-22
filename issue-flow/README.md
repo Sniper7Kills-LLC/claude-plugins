@@ -150,6 +150,8 @@ The autonomous loop. It has two roles.
   resolves conflicts, merges, monitors deployments, and posts status digests.
 - **The sub-agents — background agents with self-contained prompts.**
   `issue-flow:issue-worker` builds one issue and returns a verdict.
+  `issue-flow:criteria-checker` checks the worker's branch against the acceptance
+  criteria before the PM merges it. It never sees the worker's verdict.
   `issue-flow:deploy-verifier` checks the live site in a real browser. The deploy
   *watch* is not an agent — it is one background shell command per merge.
 
@@ -159,6 +161,7 @@ One worker's life, end to end:
 sequenceDiagram
     participant PM
     participant W as worker (own worktree)
+    participant C as criteria checker (own worktree)
     participant F as forge
     PM->>F: plan comment + assign (the claim)
     PM->>F: batch cross-check comment
@@ -167,6 +170,8 @@ sequenceDiagram
     W->>W: implement · self-review · full local suite
     W-->>PM: verdict — ready-to-merge, criteria, localChecks
     PM->>F: gate — criteria evidenced, threads resolved, practices met
+    PM->>C: spawn — the criteria and the PR head, not the verdict
+    C-->>PM: met, unmet or unclear for each criterion, with evidence
     PM->>F: squash sub-merge, explicit "[skip ci]" message
     PM->>F: status batched + tick the tracking checklist
 ```
@@ -382,8 +387,20 @@ promotion from `dev` to the live branch.
    stays quiet. The loop continues while workable backlog remains.
 
 **Model tiers.** Each agent's own `model:` frontmatter is authoritative. The current
-summary: PM and issue-worker run on **Opus**; a worker's children, the deploy-verifier,
-the ux-explorer, the code-auditor and the review-scribe run on **Sonnet**.
+summary: the PM runs on **Opus**. The issue-worker, a worker's children, the
+criteria-checker, the deploy-verifier, the ux-explorer, the code-auditor and the review-scribe run on **Sonnet**.
+
+One exception exists. When a Sonnet worker fails an issue (a failed criteria re-check after
+one rework round, or a technical `blocked`), the PM gives the issue one attempt by an Opus
+worker on the same branch. That spawn passes `model: "opus"` and an `escalation:` field
+in the brief, and the spawn guard allows no other model override on an issue-flow agent.
+A `needs-feedback` verdict is never escalated (Sniper7Kills-LLC/claude-plugins#120).
+
+The issue-worker moved from Opus to Sonnet after the worker eval suite
+(Sniper7Kills-LLC/claude-plugins#109). On 8 cases with 3 runs each, Sonnet passed the
+hidden tests on 21 of 21 runs, the same as Opus. Its mean cost per run was $0.10, against
+$0.35 for Opus: 72% lower. The records are in
+`evals/candidates/109-sonnet-worker/worker/`.
 
 ## Install
 

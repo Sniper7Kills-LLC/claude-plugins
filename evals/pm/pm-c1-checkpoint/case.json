@@ -1,0 +1,85 @@
+{
+  "name": "pm-c1-checkpoint",
+  "suite": "pm",
+  "tags": [
+    "pm",
+    "c1-gate",
+    "checkpoint"
+  ],
+  "timeout_s": 900,
+  "runs": 3,
+  "fixture": "../_fixture",
+  "tracker": "tracker.json",
+  "branches": [
+    "batch/10-cli-output",
+    "issue/11-json-flag"
+  ],
+  "stub_spawns": true,
+  "prompt": "You are the issue-flow PM for this repository. Use the issue-flow skill.\nThis is a scenario test with one task. Phase 0 has already run, and the run configuration in .issue-flow.json is final. Nobody is available to answer questions. The tracker is GitHub through the `gh` CLI.\nIn this test, every Agent call is recorded and then refused, so no agent runs and no notification arrives. Spawn what the gate calls for, exactly as the skill says, and treat the spawn as launched.\nDo only the task below. Then stop, and report in a few lines what you did and why.\n\nTask:\nBatch #10 has one member, #11. Its worker (agentId `w-11`) runs on Sonnet. You launched it with this brief:\n\n```\nissue:        #11 — Add a --json flag to `widgets count`\nbranch:       issue/11-json-flag\nbase:         origin/batch/10-cli-output\nci:           skip\nbatch:        batch #10\nmembers:      1\ncrossCheck:   n/a — single-member batch\nremote:       origin\nforge:        {type: github, host: github.com, owner: acme, repo: widgets, interface: cli}\nplan:         Add `--json` to the `count` subcommand in `widgets.py`. Reject `--json` with `--verbose`. Tests in `test_widgets.py`, written first.\nconventions:  python3 -m unittest; stdlib only\npractices:    tdd: true, ddd: false, e2e: none, coverage: null, commitStyle: conventional, docs: public-interfaces\nsteRule:      {plugin_dir}/references/ste.md\npluginRoot:   {plugin_dir}\n```\n\nThe worker opened draft PR #12, so #11 carries `status:in-review`. It finished, and its final message is this verdict:\n\n```json\n{\n  \"issue\": 11,\n  \"branch\": \"issue/11-json-flag\",\n  \"worktree\": \"/tmp/wt/w-11\",\n  \"prNumber\": 12,\n  \"outcome\": \"checkpoint\",\n  \"detail\": \"turn budget reached; branch pushed\",\n  \"remaining\": \"Done: the --json flag, with test_count_json_prints_object passing. Left: criterion 2. Next: write test_json_rejects_verbose against the CLI first, then move the `args.verbose` check in widgets.py above the print.\",\n  \"localChecks\": \"python3 -m unittest: 13 passed\",\n  \"criteria\": [],\n  \"openThreads\": 0,\n  \"notesForPM\": null\n}\n```\n\nRun the Stage C1 gate on this verdict.\n",
+  "graders": [
+    {
+      "type": "spawns",
+      "expect": [
+        {
+          "subagent_type": "^issue-flow:issue-worker$",
+          "count": 1
+        },
+        {
+          "subagent_type": "^issue-flow:issue-worker$",
+          "isolation": "^worktree$",
+          "prompt": "(?i)^\\W*base\\W*[:=]\\W*\\S*issue/11-json-flag\\b"
+        },
+        {
+          "subagent_type": "^issue-flow:issue-worker$",
+          "prompt": "test_json_rejects_verbose"
+        }
+      ],
+      "forbid": [
+        {
+          "model": "."
+        },
+        {
+          "subagent_type": "^issue-flow:(?!issue-worker$)"
+        },
+        {
+          "subagent_type": "^issue-flow:issue-worker$",
+          "prompt": "(?i)^\\W*escalation\\W*[:=]\\W*\\w"
+        }
+      ]
+    },
+    {
+      "type": "gh_log",
+      "expect": [
+        {
+          "cmd": "issue comment",
+          "args": "^11\\b",
+          "body": "(?i)\\bcheckpoint\\b"
+        }
+      ],
+      "forbid": [
+        {
+          "cmd": "pr merge"
+        },
+        {
+          "cmd": "pr ready"
+        },
+        {
+          "cmd": "issue close"
+        },
+        {
+          "cmd": "issue edit",
+          "args": "^(\\d+ )*11\\b.*--(add|remove)-label"
+        },
+        {
+          "cmd": "issue comment",
+          "body": "(?i)^\\W*escalated to opus:"
+        }
+      ]
+    },
+    {
+      "type": "llm",
+      "target": "final",
+      "rubric": "The PM treats the checkpoint as routine flow control. It re-spawns one fresh worker for #11 on the published branch, with the same brief and the verdict's `remaining` text added to the plan, and with no model override. It posts one short checkpoint comment on #11 and leaves the status label as it is. A SendMessage to the old worker, an escalation to Opus, a status change, a gate, or a merge fails."
+    }
+  ]
+}

@@ -1,0 +1,74 @@
+{
+  "name": "pm-c1-feedback-no-escalation",
+  "suite": "pm",
+  "tags": [
+    "pm",
+    "c1-gate",
+    "escalation"
+  ],
+  "timeout_s": 900,
+  "runs": 3,
+  "fixture": "../_fixture",
+  "tracker": "tracker.json",
+  "branches": [
+    "batch/10-cli-output",
+    "issue/11-json-flag"
+  ],
+  "stub_spawns": true,
+  "prompt": "You are the issue-flow PM for this repository. Use the issue-flow skill.\nThis is a scenario test with one task. Phase 0 has already run, and the run configuration in .issue-flow.json is final. Nobody is available to answer questions. The tracker is GitHub through the `gh` CLI.\nIn this test, every Agent call is recorded and then refused, so no agent runs and no notification arrives. Spawn what the gate calls for, exactly as the skill says, and treat the spawn as launched.\nDo only the task below. Then stop, and report in a few lines what you did and why.\n\nTask:\nThe worker for #11 (agentId `w-11`) runs on Sonnet. It finished, and its final message is this verdict:\n\n```json\n{\n  \"issue\": 11,\n  \"branch\": \"issue/11-json-flag\",\n  \"worktree\": \"/tmp/wt/w-11\",\n  \"prNumber\": 12,\n  \"outcome\": \"needs-feedback\",\n  \"detail\": \"the two criteria conflict with the --verbose contract\",\n  \"question\": \"Criterion 2 says `--json --verbose` exits 2. But the README says that `--verbose` works with every output mode, and `widgets list --json --verbose` already prints a `debug` key. Should `count` reject the combination (criterion 2), or add a `debug` key like `list`?\",\n  \"openThreads\": 0,\n  \"notesForPM\": null\n}\n```\n\nRun the Stage C1 gate on this verdict.\n",
+  "graders": [
+    {
+      "type": "gh_log",
+      "expect": [
+        {
+          "cmd": "issue edit",
+          "args": "^(\\d+ )*11\\b.*--add-label[ =]\\S*status:needs-feedback"
+        },
+        {
+          "cmd": "issue comment",
+          "args": "^11\\b",
+          "body": "(?i)debug"
+        }
+      ],
+      "forbid": [
+        {
+          "cmd": "pr merge"
+        },
+        {
+          "cmd": "pr ready"
+        },
+        {
+          "cmd": "issue close"
+        },
+        {
+          "cmd": "issue edit",
+          "args": "^(\\d+ )*11\\b.*--add-label[ =]\\S*status:batched"
+        },
+        {
+          "cmd": "issue comment",
+          "body": "(?i)escalat"
+        },
+        {
+          "cmd": "issue edit",
+          "args": "^(\\d+ )*11\\b.*--add-label[ =]\\S*status:blocked"
+        }
+      ]
+    },
+    {
+      "type": "spawns",
+      "forbid": [
+        {
+          "model": "."
+        },
+        {
+          "subagent_type": "^issue-flow:issue-worker$"
+        }
+      ]
+    },
+    {
+      "type": "llm",
+      "target": "final",
+      "rubric": "The PM treats the verdict as a product question: it labels #11 `status:needs-feedback`, posts the worker's question about `--json --verbose` on #11, and parks it. It does not escalate #11 to Opus and does not spawn another worker. An escalation, a new worker, or a guess at the answer fails."
+    }
+  ]
+}

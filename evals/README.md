@@ -20,6 +20,7 @@ token counts per run. The operator decided on 2026-11-21 to use our own runner o
 | Path | Content |
 |---|---|
 | `evals/fakegh/gh` | The fake `gh`. It serves the tracker of one run and logs every call. |
+| `evals/stub-spawn.py` | The spawn stub. In a case with `stub_spawns`, it records each `Agent` call and refuses it (see "The spawn stub"). |
 | `evals/pm/<case>/case.json` | One PM case (the case format is below). |
 | `evals/pm/<case>/tracker.json` | The tracker state at the start of that case. |
 | `evals/pm/_fixture/` | The git repo that the PM cases start from. A directory without `case.json` is not a case. |
@@ -27,9 +28,12 @@ token counts per run. The operator decided on 2026-11-21 to use our own runner o
 | `evals/worker/<case>/tracker.json` | The tracker state for that case: one issue, with its acceptance criteria. |
 | `evals/worker/<case>/hidden/` | The hidden tests of that case. The agent never sees them. |
 | `evals/worker/<case>/reference.patch` | A reference solution. A test proves that the hidden tests pass with it. |
-| `evals/worker/_fixture/` | The project that the worker cases start from. |
+| `evals/worker/_fixture/` | The small project that the cases tagged `small` start from. |
+| `evals/worker/_fixture_large/` | The large project that the cases tagged `large` start from (Sniper7Kills-LLC/claude-plugins#117). |
+| `evals/checker/<case>/case.json` | One criteria-checker case (Sniper7Kills-LLC/claude-plugins#119). The checker suite is below. |
 | `evals/results/` | Run results. Git ignores this directory. |
 | `evals/baselines/<version>/` | Committed baseline run records and summaries, for example `0.20.0/pm/`. |
+| `evals/candidates/<issue>-<slug>/<suite>/` | Committed results of a candidate change, measured against a baseline, for example `109-sonnet-worker/worker/`. |
 | `evals/BASELINE.md` | The numbers of the current baseline, for both suites. |
 | `evals/rule-inventory.json` | The rule inventory of the PM `SKILL.md` at 0.20.0. `python3 scripts/rule-coverage.py extract` makes it, and `check` verifies a skill tree against it (Sniper7Kills-LLC/claude-plugins#104). |
 
@@ -42,7 +46,7 @@ python3 scripts/run-evals.py --plugin-dir issue-flow --suite pm
 | Flag | Effect |
 |---|---|
 | `--plugin-dir <path>` | The plugin directory to test. It must contain `.claude-plugin/plugin.json`. |
-| `--suite pm\|worker` | The suite: the directory under `evals/`. |
+| `--suite pm\|worker\|checker` | The suite: the directory under `evals/`. |
 | `--case <glob>` | Run only the cases whose name matches the glob. |
 | `--tag <tag>` | Run only the cases that carry the tag, for example `c1-gate`. |
 | `--runs N` | Runs per case. Without it, each case uses its own `runs` value. |
@@ -237,6 +241,10 @@ the `effort` of its agent definition or, when there is none, at the default of i
 | `branches` | no | Branches to create at `main` and push to `origin`. |
 | `disallowed_tools` | no | Tools the run cannot use, passed to `--disallowedTools`. |
 | `model` | no | The model of the run, when `--main-model` is not given. |
+| `docs_paths` | no | Globs of the documentation files that the brief's `docs` practice lets the worker change. `diff_scope` always allows them. |
+| `patch` | no | A patch file, relative to the case. The runner applies it on `patch_branch`, commits it, and pushes the branch to `origin`. `repo/` stays on `main`. Each `{head_sha}` in the prompt becomes the SHA of that commit. |
+| `patch_branch` | with `patch` | The branch that holds the patch commit. The runner refuses a `patch` without it (exit 2). |
+| `stub_spawns` | no | `true` adds the spawn stub: the run can call `Agent`, and each call is recorded and refused (see "The spawn stub"). A `spawns` grader needs it, and it cannot go with `Agent` in `disallowed_tools` (exit 2). |
 
 ### Graders
 
@@ -263,6 +271,8 @@ changes `score`, not `ok`.
   entries must match in the order given.
 - No `forbid` entry may match any call. A call that the fake refused also counts, because
   it shows the decision.
+- An entry with `kind` and no `cmd` matches every call of that kind. For example,
+  `{"kind": "write"}` in `forbid` refuses every tracker write.
 
 **`file`** (deterministic) passes when the file exists in `repo/` and its text matches the
 regular expression.
@@ -274,14 +284,43 @@ regular expression.
 A case uses a `file` grader where the agent would do something the sandbox cannot show.
 For example, a PM gate that sends work back to a worker writes the message to a file.
 
-**`llm`** (judged) asks a cheap judge: `claude -p` on Haiku, with no tools, one vote.
+**`llm`** (judged) asks a cheap judge: `claude -p` on Haiku, with no tools. The majority of
+3 votes decides.
 
 ```json
 {"type": "llm", "target": "gh_log", "rubric": "The comment on #2 asks specific questions."}
 ```
 
 `target` is `final` (the last message of the run) or `gh_log` (every tracker write, with
-its body). The judge answers PASS or FAIL and gives one sentence of reason.
+its body). Each vote answers PASS or FAIL and gives one sentence of reason. A judge call
+that fails is a FAIL vote. The judge stops when 2 votes agree, so a clear run costs 2 calls
+and a split run costs 3. The `detail` gives the vote count and the reason of the first
+vote on the winning side, for example `2/3 votes: PASS: ...`.
+
+One vote was not enough. In the candidate of Sniper7Kills-LLC/claude-plugins#111, `pm-c1-no-prepatch` run 1 got a FAIL vote
+whose reason said that the PM met the rubric. A new judgment of that run, with 3 votes, gave
+`2/2 votes: PASS`. The cost of the votes is small: the judges of the 0.20.0 PM suite cost
+$0.016 for 18 runs with one vote each, so 2 or 3 votes cost about $0.03 to $0.05 for the
+suite. The judge cost still counts against `--max-cost-usd`, as before.
+
+**`spawns`** (deterministic) reads the `Agent` calls that the spawn stub recorded. Each
+entry gives a regular expression for one or more fields of the call: `subagent_type`,
+`model`, `isolation`, `name`, `description`, `prompt` or `run_in_background`. `^`
+anchors at each line. A field that the call did not set matches as empty text, so
+`{"model": "."}` matches every call that sets a model.
+
+```json
+{"type": "spawns",
+ "expect": [{"subagent_type": "^issue-flow:issue-worker$", "model": "^(?i:opus)$"}],
+ "forbid": [{"subagent_type": "^issue-flow:(?!issue-worker$)", "model": "."}]}
+```
+
+Each `expect` entry must match a recorded call, and no `forbid` entry may match one. An
+`expect` entry can also give `count`, a positive integer: then exactly that many recorded
+calls must match it. Use it when a second spawn is the failure, for example a retry after
+the guard refused the first call. The runner refuses a `spawns` grader in a case without
+`stub_spawns`, an entry with a field that is not in the list, an entry with no field to
+match, and a `count` in a `forbid` entry (exit 2).
 
 The worker suite adds three deterministic graders: `hidden_tests`, `verdict` and
 `diff_scope`. The worker suite section below describes them. A suite adds a grader type to
@@ -314,6 +353,19 @@ the `GRADERS` table in `scripts/run-evals.py`.
 - Labels are names. An `issue edit` that adds a label not in `labels` fails, as on GitHub.
 - Issues and PRs share one number sequence. A new item gets the highest number plus 1.
 - A new comment gets the highest comment id plus 1.
+- `events` is optional. Each event adds a comment to the tracker after a call, as a person
+  would during a session. A later sweep can then find something new:
+
+  ```json
+  "events": [{"after": {"cmd": "pr merge", "args": "^53\\b"},
+              "comment": {"issue": 63, "author": "maintainer", "body": "Answer: ..."}}]
+  ```
+
+  The event fires once, after the first successful call whose `cmd` is equal to `after.cmd`
+  and whose arguments match the `after.args` regular expression. Without `args`, any
+  arguments match. The comment updates the issue's `updatedAt`. The fake then sets
+  `"fired": true` on the event. An event adds no line to the log. A refused call fires no
+  event.
 
 ## The fake `gh`
 
@@ -335,6 +387,9 @@ line comments on a diff, so `pulls/<n>/comments` always returns `[]`.
 returns more items than GitHub would, never fewer. Any other subcommand, and any `api`
 call that writes, exits 1 with a message that names the fake.
 
+After a successful call, the fake fires the tracker `events` that the call triggers (see
+the schema above).
+
 Each call adds one line to `gh-log.jsonl`:
 
 ```json
@@ -349,7 +404,8 @@ Each call adds one line to `gh-log.jsonl`:
 
 The runner writes `<out>/results.json` after each run, and one directory per run:
 `<out>/<case>/run-<k>/` holds `record.json`, `claude-stdout.json`, `claude-stderr.txt`,
-`gh-log.jsonl` and the final `tracker.json`.
+`gh-log.jsonl` and the final `tracker.json`. A case with `stub_spawns` also gets
+`spawn-log.jsonl`, the `Agent` calls of the run (see "The spawn stub").
 
 `results.json` is `{suite, variant, effort, started, finished, max_cost_usd,
 total_cost_usd, partial, records}`. Each record:
@@ -423,7 +479,7 @@ python3 scripts/eval-baseline.py evals/results/<stamp> --out evals/baselines/<ve
     --label "issue-flow (git worktree of tag issue-flow--v<version>)"
 ```
 
-The script changes each record in three ways:
+The script changes each record in these ways:
 
 - `agents` is the output of `issue-flow/scripts/usage.py --json` for the session: the
   tokens, the turns and the estimated cost of each agent.
@@ -434,8 +490,13 @@ The script changes each record in three ways:
 
 - A record with no `effort` takes the `effort` of `results.json`.
 
-It also writes `summary.json`. The exit code is 1 when a run has no transcript. Then that
-record has `agents: null`.
+- `tracker_calls` is `{total, read, write, error}`, the count of the lines in the run's
+  `gh-log.jsonl`. A run with no log gets `null`. The count is information only: no decision
+  rule reads it. Every PM run starts with 3 reads from the SessionStart preflight hook
+  (`label list`, `pr list` and `issue list`), so the lowest count is 3.
+
+It also writes `summary.json`, with `mean_tracker_calls` for each case. The exit code is 1
+when a run has no transcript. Then that record has `agents: null`.
 
 Before it writes, the script scans the whole output for a local path: `/Users/`,
 `/home/`, `/private/` or `/var/folders/`. When it finds one, it names the field, writes
@@ -533,6 +594,130 @@ The first 3 runs of `pm-triage` failed because of a grader error, not a PM error
 start of the arguments only, and `body` still matches line by line. `pm-triage` then ran
 3 more times. `superseded-pm-triage.json` keeps the first 3 runs.
 
+## Session-level PM cases
+
+A single-decision PM case gives the PM one stage and stops. It cannot show what a change
+does over a long session: fewer re-reads, a tracker read in one pass, or less context
+growth from sweep to sweep. A session-level case runs one PM through several stages in
+order, against one tracker, so those effects add up in one run
+(Sniper7Kills-LLC/claude-plugins#116).
+
+Use a session-level case when the change that you measure pays off across stages, for
+example a change to how the PM reads the tracker, or to what it keeps in context between
+sweeps. Use the single-decision cases to test one rule. A session-level run costs about
+2.5 times as much as a single-decision run ($1.16 against $0.48 on 0.20.0), and its token count varies more from run to run.
+
+```bash
+python3 scripts/run-evals.py --plugin-dir issue-flow --suite pm --tag session --runs 3 --max-cost-usd 25
+```
+
+A session-level case carries the tag `session`. It is in the `pm` suite, so a full
+`--suite pm` run includes it.
+
+### `pm-session-batch`
+
+The prompt is in `evals/pm/pm-session-batch/prompt.md`. The PM does four steps:
+
+1. The Stage A0 sweep and the Stage A triage. The tracker holds 8 backlog issues: 3 clear
+   issues, 2 unclear issues, an epic without sub-issues, an issue with two `status:`
+   labels, and an issue that is already ready.
+2. Stage B step 1 and the plan comments (step 3, plan only): the PM forms batches from the
+   ready pool and plans each member. It claims and launches nothing.
+3. The Stage C1 gate on two given verdicts of the in-flight batch #50: #51 is good and
+   sub-merges, and #52 has a criterion with "implemented" as its evidence, so it goes back
+   to the worker.
+4. A second Stage A0 sweep and Stage A triage. The tracker `events` (see the schema
+   above) add a maintainer's answer to #63 when the PM merges #51's PR. The second sweep
+   must find that answer and make #63 ready.
+
+The deterministic graders read the gh log. They check the triage labels and comments,
+the epic decomposition, the split-status repair, a `type:batch` tracking issue, a plan
+comment on each loose ready issue, the squash merge with `[skip ci]`, the `status:batched`
+swap on #51, and #63 made ready after the merge. They forbid any claim, launch or merge
+of #52. A `file` grader reads the send-back message for #52. The `llm` grader judges the
+plans and the triage questions.
+
+The case forbids every spawn, so the prompt gives the criteria checker's verdict for #51
+(C1 step 1c) in place of a spawn. Without it, the PM of Sniper7Kills-LLC/claude-plugins#119
+held #51 at step 1c in 3 of 3 runs.
+
+In this test, `gh pr merge` changes only the tracker, and the remote holds no commits of
+the workers. The prompt tells the PM so, and tells it to skip the C1 step 4b check of the
+landed message.
+
+`evals/BASELINE.md` ("PM session case") gives the numbers on 0.20.0 and on the batch #115
+head. Use `tracker_calls` (see "Make a baseline") for the tracker calls of a run. In
+each of the 6 measured runs, Claude Code itself called `gh pr view <branch> --json url`
+12 times, and the fake refused each call. These calls count as `error` lines.
+
+## The spawn stub
+
+Most PM cases put `Agent` in `disallowed_tools`, and tell the PM to write what it would
+send to a file. That cannot show the arguments of a spawn: the agent type, the `model`,
+the brief. A case with `stub_spawns: true` keeps the `Agent` tool, and the runner adds
+`evals/stub-spawn.py` as a `PreToolUse` hook on `Agent|Task` in the run's `--settings`.
+The hook writes the call's `tool_input` to `spawn-log.jsonl` in the sandbox, with `seq`
+and `tool_name`, and denies the call. No agent runs, and the run costs nothing more. The
+deny reason tells the PM that the spawn was recorded, and to treat it as launched.
+
+A live check on 2026-11-21 (Claude Code 2.1.330, one Haiku run for $0.003) showed that a
+`PreToolUse` hook in `--settings` fires on the `Agent` call in `bypassPermissions` mode,
+next to the hooks of `--plugin-dir`. Its `tool_input` holds `subagent_type`, `model`,
+`isolation`, `description` and `prompt` as the caller passed them, and the deny stops the
+spawn. The plugin's own spawn guard runs on the same call, so a spawn that the guard
+refuses is still in the log.
+
+## The escalation cases
+
+Sniper7Kills-LLC/claude-plugins#120 lets the PM escalate a failed Sonnet worker to one
+Opus worker (SKILL.md Stage C1, "Escalation to Opus"). Two single-decision cases with the
+spawn stub test it. Both carry the tags `c1-gate` and `escalation`.
+
+- **`pm-c1-escalate`.** #11 already had its one rework round. The prompt gives the new
+  `ready-to-merge` verdict and the re-check verdict of the criteria checker on the new
+  head: criterion 2 is still `unmet`. The `spawns` grader expects an
+  `issue-flow:issue-worker` spawn with `model: "opus"`, `isolation: "worktree"` and an
+  `escalation:` line in the brief. It forbids a `model` on any other issue-flow agent, and
+  any model other than Opus on the worker. The `gh_log` grader expects the comment
+  `escalated to Opus:` on #11, and forbids a merge, `status:batched` and `status:blocked`.
+- **`pm-c1-feedback-no-escalation`.** The worker of #11 returns `needs-feedback` with a
+  product question. The `gh_log` grader expects `status:needs-feedback` and the question
+  on #11, and forbids any comment about an escalation. The `spawns` grader forbids every
+  spawn with a `model`, and every new `issue-flow:issue-worker` spawn.
+
+```bash
+python3 scripts/run-evals.py --plugin-dir issue-flow --suite pm --tag escalation --runs 3 --max-cost-usd 10
+```
+
+The results on the branch of #120 are in `evals/candidates/120-escalation/`.
+
+## The checkpoint cases
+
+Sniper7Kills-LLC/claude-plugins#121 covers a `checkpoint` verdict at the Stage C1 gate.
+A checkpoint of the Opus worker of an escalation is the same attempt: its replacement
+keeps `model: "opus"` and the `escalation:` field. Two single-decision cases with the
+spawn stub test it. Both carry the tags `c1-gate` and `checkpoint`.
+
+- **`pm-c1-checkpoint`.** The Sonnet worker of #11 returns `checkpoint` with a
+  `remaining` text. The `spawns` grader expects exactly 1 `issue-flow:issue-worker`
+  spawn, with `isolation: "worktree"`, `base:` on the issue branch, and the `remaining`
+  text in the brief. It forbids any `model`, an `escalation:` field, and any other
+  issue-flow agent: a checkpoint has no gate.
+- **`pm-c1-escalated-checkpoint`.** #11 already has its `escalated to Opus:` comment, and
+  the Opus worker returns `checkpoint`. The `spawns` grader expects exactly 1
+  `issue-flow:issue-worker` spawn, and it has `model: "opus"` and the `escalation:`
+  field. It forbids any other model and any other issue-flow agent.
+
+In both cases, the `gh_log` grader expects a comment on #11 that names the checkpoint. It
+forbids a status label change on #11, a new comment that starts with
+`escalated to Opus:`, a merge, `pr ready` and `issue close`.
+
+```bash
+python3 scripts/run-evals.py --plugin-dir issue-flow --suite pm --tag checkpoint --runs 3 --max-cost-usd 10
+```
+
+The results on the branch of #121 are in `evals/candidates/121-escalated-checkpoint/`.
+
 ## The worker suite
 
 The worker suite measures the `issue-worker` agent on fixed issues. Each case gives one
@@ -542,6 +727,9 @@ decide whether the issue is done.
 ```bash
 python3 scripts/run-evals.py --plugin-dir issue-flow --suite worker --tag easy --runs 1 --max-cost-usd 5
 ```
+
+`--tag small` runs the 8 cases of the 0.20.0 worker baseline, and `--tag large` runs the 3
+cases on the large fixture. Without a tag, the suite runs all 11.
 
 ### How a worker case runs
 
@@ -564,26 +752,40 @@ worker case, not `duration_s`. `model_usage` gives the tokens and
 the cost per model, so the worker's share is the entry of its model. `usage` counts only the
 dispatcher.
 
-### The fixture
+### The fixtures
 
 `evals/worker/_fixture/` is `inventory`, a small command-line tool on the Python standard
-library. Its test command is `python3 -m unittest`, and its 11 tests pass. Each case starts
-from an untouched copy. The fixture holds no hidden test.
+library. Its test command is `python3 -m unittest`, and its 11 tests pass. It has 4 source
+files, so a worker finds the file of a bug at once.
+
+`evals/worker/_fixture_large/` is `shop`, an order service on the Python standard library:
+40 files. The `shop` package has 5 subpackages (`api`, `services`, `models`, `storage` and
+`util`), and there are tests, sample data in `data/` and `docs/api.md`. A
+request goes from `App.handle` through the router and a handler to a service, a repository
+and a model, and the command line sends each command through `App.handle` too. Its test
+command is `python3 -m unittest`, and its 27 tests pass. On this fixture, a change that
+saves locating work can show a gain (Sniper7Kills-LLC/claude-plugins#117).
+
+Each case starts from an untouched copy of its fixture. No fixture holds a hidden test.
 
 ### The cases
 
 | Case | Tags | What the worker must do |
 |---|---|---|
-| `worker-easy-low-stock-boundary` | `easy` | A one-line fix: `low` leaves out an item at the threshold. |
-| `worker-easy-negative-qty` | `easy` | A small validation: reject a negative quantity. |
-| `worker-medium-csv-format` | `medium` | A feature across 2 files: `list --format csv`. |
-| `worker-medium-money-refactor` | `medium` | A refactor with existing tests: one `format_money` function. |
-| `worker-medium-price-parse` | `medium` | A bug whose cause is not in the file the report names. |
-| `worker-hard-location` | `hard` | A change to the shared `Item` type, used in every module. |
-| `worker-hard-error-lines` | `hard` | A new error type across the loader and the command line. |
-| `worker-hard-ambiguous-tax` | `hard` | An issue with no tax rate: the worker must ask, not guess. |
+| `worker-easy-low-stock-boundary` | `small`, `easy` | A one-line fix: `low` leaves out an item at the threshold. |
+| `worker-easy-negative-qty` | `small`, `easy` | A small validation: reject a negative quantity. |
+| `worker-medium-csv-format` | `small`, `medium` | A feature across 2 files: `list --format csv`. |
+| `worker-medium-money-refactor` | `small`, `medium` | A refactor with existing tests: one `format_money` function. |
+| `worker-medium-price-parse` | `small`, `medium` | A bug whose cause is not in the file the report names. |
+| `worker-hard-location` | `small`, `hard` | A change to the shared `Item` type, used in every module. |
+| `worker-hard-error-lines` | `small`, `hard` | A new error type across the loader and the command line. |
+| `worker-hard-ambiguous-tax` | `small`, `hard` | An issue with no tax rate: the worker must ask, not guess. |
+| `worker-large-medium-report-midnight` | `large`, `medium` | The issue names the daily report. The cause is the day check in `shop/util/dates.py`, which the order list also uses. |
+| `worker-large-hard-one-discount` | `large`, `hard` | A rule across 4 layers: refuse a second discount code with a new 409 error, in the service, the API errors, the command line and `docs/api.md`. |
+| `worker-large-locate-repeated-sku` | `large`, `medium`, `locate` | The issue names the handler `get_order`. The cause is `merge_lines` in `shop/models/order.py`, below the service, the repository and `Order.from_dict`. |
 
-Every case carries the tag `worker` and one of `easy`, `medium` or `hard`.
+Every case carries the tag `worker`, one of `small` or `large` (its fixture), and one of
+`easy`, `medium` or `hard`. `scripts/eval-compare.py` reads only the tier tags.
 
 ### The worker graders
 
@@ -616,7 +818,15 @@ Every case carries the tag `worker` and one of `easy`, `medium` or `hard`.
   issue. Each entry needs `met: true` and evidence. The grader reads the criteria from the
   `## Acceptance criteria` list of the issue in the case's `tracker.json`.
 - For `needs-feedback`, `question` must not be empty.
-- With `"prepatch": true`, `localChecks` must name a pre-patch run that failed.
+- With `"prepatch": true`, `localChecks` must name a pre-patch run that failed: a word that
+  starts with `fail`, and one of these names for the run. `agents/issue-worker.md` gives no
+  fixed field for it, so a worker uses its own words.
+  - `pre-patch`, `prepatch`, `pre-fix` or `pre-change`, or `unpatched`.
+  - `before` or `without`, then `the`, `my`, `this` or `any`, then `fix`, `change`, `patch`
+    or `implementation`. For example: "the new test failed before the fix".
+
+  Before Sniper7Kills-LLC/claude-plugins#117, only `pre-patch` counted. The grader then
+  failed a worker that wrote "failed before the fix".
 
 **`diff_scope`** (deterministic) checks what the worker committed.
 
@@ -627,7 +837,14 @@ Every case carries the tag `worker` and one of `easy`, `medium` or `hard`.
 
 - `main` must stay at the fixture commit, in the repo and in `origin`.
 - With `allow`, every path that the branch `issue/<issue>-*` changes must match one of the
-  globs (`fnmatch`, so `*` also matches `/`). A branch that changes nothing fails.
+  globs (`fnmatch`, so `*` also matches `/`), or one of the case's `docs_paths`. A branch
+  that changes nothing fails.
+- Each worker brief sets `docs: public-interfaces`, so a correct worker can update the
+  docs of an interface that it changes. Every case with an allowlist has `docs_paths`:
+  `README.md` on the small fixture, and `README.md` and `docs/*` on the large one. Before
+  Sniper7Kills-LLC/claude-plugins#117, `README.md` was not allowed, and `diff_scope` failed
+  correct runs in 3 cases: `worker-medium-price-parse` (0.20.0),
+  `worker-easy-low-stock-boundary` and `worker-medium-money-refactor`.
 - With `no_commits`, no ref in the repo or in `origin` may hold a commit after the fixture
   commit. Worktree `HEAD`s count. The ambiguous case uses this.
 
@@ -640,10 +857,12 @@ The ambiguous case has no hidden tests. Its graders are `verdict` with
 `python3 scripts/test-worker-cases.py` proves that each case can tell a good result from a
 bad one. It costs nothing. For each case that has hidden tests, it checks these:
 
-1. The hidden tests fail on the untouched fixture.
+1. The hidden tests fail on the untouched fixture of the case.
 2. `reference.patch` applies, and then the hidden tests pass.
 3. The fixture's own tests still pass with the patch.
-4. The patch stays inside the `diff_scope` allowlist.
+4. The patch stays inside the `diff_scope` allowlist and the `docs_paths`.
+
+It also checks that the large fixture holds 20 to 40 files in at least 5 packages.
 
 The test also runs the whole suite on a fake `claude`. A worker that does nothing fails
 every case. A golden worker, which commits `reference.patch` and writes a correct verdict,
@@ -651,9 +870,11 @@ passes every case.
 
 ### Add a worker case
 
-1. Choose the issue and its tier. Write the acceptance criteria as observable results.
+1. Choose the fixture, the issue and its tier. Write the acceptance criteria as observable
+   results.
 2. Make `evals/worker/<name>/` with `case.json` and `tracker.json`. Copy both from a case
-   of the same kind. Give the issue a number that no other case uses.
+   of the same kind and the same fixture. Give the issue a number that no other case uses.
+   Tag the case `small` or `large`, and set `docs_paths` to the docs of that fixture.
 3. Change the brief in the prompt: the issue number, the title and the branch slug.
 4. Write `hidden/hidden_test_<slug>.py`. Test the acceptance criteria through the public
    interface (the command line, or the functions that the issue names). Do not test the
@@ -661,10 +882,76 @@ passes every case.
 5. Make `reference.patch` with `git diff` from a copy of the fixture. Add tests for the
    change to the patch, as a worker would.
 6. Set the `diff_scope` allowlist to the paths that a correct change can touch.
-7. Run `python3 scripts/test-worker-cases.py`. It must pass. Change the tier counts in it
-   when you add a case.
+7. Run `python3 scripts/test-worker-cases.py`. It must pass. Change the case, tier and
+   fixture counts in it when you add a case.
 8. Run the case once on the current release, with a cost ceiling. A case that the current
    release fails in 2 of 3 runs is a bad case: fix the case, not the finding.
+
+## The checker suite
+
+The checker suite measures the `criteria-checker` agent (Sniper7Kills-LLC/claude-plugins#119).
+The PM spawns the checker at the C1 gate, before it merges a member. The checker gets the
+acceptance criteria and the branch, never the worker's verdict, and returns `met`, `unmet`
+or `unclear` for each criterion.
+
+```bash
+python3 scripts/run-evals.py --plugin-dir issue-flow --suite checker --tag full --max-cost-usd 10
+python3 scripts/run-evals.py --plugin-dir issue-flow --suite checker --tag partial --max-cost-usd 10
+```
+
+### How a checker case runs
+
+1. The runner copies the fixture of a worker case, applies a patch on the worker's branch
+   (for example `issue/7-stock-file-errors`), commits it, and pushes it to `origin`. The
+   sandbox repo stays on `main`, as a PM checkout does.
+2. The main session is a dispatcher on Haiku. It spawns `issue-flow:criteria-checker` with
+   `isolation: "worktree"` and a brief that names the branch, the commit SHA
+   (`{head_sha}`), `origin/main`, the test command and the criteria, quoted from the
+   worker case's `tracker.json`.
+3. The checker gets its model from `agents/criteria-checker.md` of the plugin under test.
+4. The dispatcher writes the checker's final message to `.eval/checker-verdict.json`.
+
+`cost_usd` includes the checker. The checker's share is the Sonnet entry of `model_usage`.
+
+### The checker cases
+
+| Cases | Patch | Runs | The checker must |
+|---|---|---|---|
+| `checker-full-<worker case>`, tag `full` | The worker case's `reference.patch` | 3 | Find every criterion `met`. A full patch passes the hidden tests, so any other status is a false alarm. |
+| `checker-partial-hard-error-lines`, tag `partial` | `partial.patch`: `reference.patch` of `worker-hard-error-lines` without its `inventory/cli.py` section | 5 | Find criterion 2 `unmet`. |
+
+There is one `full` case for each worker case with hidden tests, so 10. The partial patch
+is the failure of batch #115: `items.load` raises `StockFileError`, and the worker's own
+test passes, but the command line still prints a traceback. 3 of the 4 hidden tests fail
+on it.
+
+### The checker graders
+
+**`checker_verdict`** (deterministic) reads `.eval/checker-verdict.json`.
+
+```json
+{"type": "checker_verdict", "issue": 7, "expect": "all-met"}
+{"type": "checker_verdict", "issue": 7, "expect": "unmet", "criteria": [2]}
+```
+
+- The verdict must name the issue, and `headSha` must be the patch commit (7 to 40 hex
+  characters, a prefix of the full SHA).
+- `criteria` needs one entry for each acceptance criterion of the issue. Each `status` is
+  `met`, `unmet` or `unclear`, and each entry needs evidence. `testsRun` must not be empty.
+- `expect: all-met` passes when every status is `met`.
+- `expect: unmet` passes when each criterion that `criteria` lists, counted from 1, is
+  `unmet`. `unclear` does not count. The other criteria can have any status.
+
+**`refs_unchanged`** (deterministic) passes when no branch of `origin` changed, and no
+branch that the runner made in `repo/` moved. The checker is read-only. A harness worktree
+adds a branch of its own, so a new local branch is allowed.
+
+Each case also has a `gh_log` grader that forbids `{"kind": "write"}`.
+
+`python3 scripts/test-checker-cases.py` tests the suite, the graders and the agent's
+return contract, with a fake `claude`. It also proves that `partial.patch` is the reference
+patch without `inventory/cli.py`, that the fixture tests pass on it, and that the hidden
+tests fail on it.
 
 ## Usage report per agent
 
@@ -700,7 +987,8 @@ is an estimate at the prices in `issue-flow/scripts/pricing.json`. `cost_usd` fr
 ## Tests
 
 `python3 scripts/test-worker-cases.py` tests the worker suite and its graders, as the
-reference check above describes.
+reference check above describes. `python3 scripts/test-checker-cases.py` tests the checker
+suite and its graders.
 
 `python3 scripts/test-eval-compare.py` tests the decision rules on synthetic results, on
 both sides of each threshold. `python3 scripts/test-eval-baseline.py` tests
@@ -716,7 +1004,8 @@ with a golden PM, which must pass. Add a golden run to the test when you add a c
 1. Make `evals/<suite>/<name>/` with `case.json` and `tracker.json`.
 2. Give the case one decision to test. The prompt names the situation and the stage, and
    it says what to do instead of an action the sandbox cannot do, for example a worker
-   launch.
+   launch. A session-level case is the exception: it tests a sequence of stages (see
+   "Session-level PM cases").
 3. Give it at least one deterministic grader that fails when the agent does nothing.
 4. For a PM case, add its golden run to `GOLDEN` in `scripts/test-run-evals.py`. For a
    worker case, follow "Add a worker case" above.

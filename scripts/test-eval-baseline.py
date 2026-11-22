@@ -142,7 +142,36 @@ def test_local_path_refused():
         check(f"nothing is written when {path.split('/')[1]}/ is in the output", not os.path.exists(out), out)
 
 
+def test_tracker_calls():
+    print("tracker calls from the gh log")
+    records = [record("pm-a", 1, "no-such-session"), record("pm-a", 2, "no-such-session"),
+               record("pm-b", 1, "no-such-session")]
+    directory = write_input(records)
+    lines = {("pm-a", 1): ["read", "read", "write", "error"], ("pm-a", 2): ["read", "write"]}
+    for (case, run_number), kinds in lines.items():
+        run_dir = os.path.join(directory, case, f"run-{run_number}")
+        os.makedirs(run_dir, exist_ok=True)
+        with open(os.path.join(run_dir, "gh-log.jsonl"), "w") as handle:
+            for seq, kind in enumerate(kinds, 1):
+                handle.write(json.dumps({"seq": seq, "argv": [], "cmd": "issue list", "time": "", "kind": kind,
+                                         "exit": 0}) + "\n")
+    out = os.path.join(TMP, "out-calls")
+    run(directory, "--out", out, "--label", "x", "--projects-root", os.path.join(TMP, "empty"))
+    data = load(os.path.join(out, "results.json"))
+    first = data["records"][0]
+    check("a record counts the lines of its gh log",
+          first.get("tracker_calls") == {"total": 4, "read": 2, "write": 1, "error": 1}, first.get("tracker_calls"))
+    check("a run with no gh log has tracker_calls null", data["records"][2].get("tracker_calls", "absent") is None,
+          data["records"][2].get("tracker_calls", "absent"))
+    summary = load(os.path.join(out, "summary.json"))
+    check("summary: mean tracker calls per run", summary["cases"]["pm-a"].get("mean_tracker_calls") == 3.0,
+          summary["cases"]["pm-a"])
+    check("summary: a case with no gh log has no mean", summary["cases"]["pm-b"].get("mean_tracker_calls") is None,
+          summary["cases"]["pm-b"])
+
+
 try:
+    test_tracker_calls()
     test_annotate_strip_and_summary()
     test_missing_transcript()
     test_local_path_refused()

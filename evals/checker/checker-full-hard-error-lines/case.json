@@ -1,0 +1,35 @@
+{
+  "name": "checker-full-hard-error-lines",
+  "suite": "checker",
+  "tags": [
+    "checker",
+    "full",
+    "small"
+  ],
+  "timeout_s": 1800,
+  "runs": 3,
+  "fixture": "../../worker/worker-hard-error-lines/../_fixture",
+  "tracker": "../../worker/worker-hard-error-lines/tracker.json",
+  "patch": "../../worker/worker-hard-error-lines/reference.patch",
+  "patch_branch": "issue/7-stock-file-errors",
+  "model": "haiku",
+  "prompt": "You are a dispatcher in an automated eval of the issue-flow plugin. Nobody is available to answer questions. Do only these steps:\n\n1. Call the Agent tool once, with:\n   - subagent_type: \"issue-flow:criteria-checker\"\n   - isolation: \"worktree\"\n   - description: \"criteria check #7\"\n   - prompt: the brief between the BRIEF START and BRIEF END lines below, unchanged.\n   Do not pass `name` or `model`.\n2. Wait until the checker finishes. Do not check the branch yourself. Do not run `sleep`, and do not poll for the checker: a notification wakes you when it finishes.\n3. Write the checker's final message, unchanged, to `.eval/checker-verdict.json` in the current directory.\n4. Reply with one line: the status of each criterion.\n\nBRIEF START\nissue:        #7 — Name the bad line when a stock file is malformed\nhead:         origin/issue/7-stock-file-errors\nheadSha:      {head_sha}\nbase:         origin/main\nremote:       origin\ntestCommand:  python3 -m unittest\ncriteria:\n  1. `items.load` raises `items.StockFileError` for a malformed line. `StockFileError` is a subclass of `ValueError`, and has the attributes `path` and `line` (the line number, counted from 1).\n  2. For a stock file whose line 3 has three fields, every command prints `<path>:3: expected 4 fields, got 3` to stderr and exits with status 2, with no traceback. `<path>` is the path as given on the command line.\n  3. A quantity or a price that is not a number is a malformed line too, with the same `<path>:<line>: <message>` form.\n  4. `parse_line` still raises `ValueError` for a malformed line.\npluginRoot:   {plugin_dir}\nBRIEF END\n",
+  "graders": [
+    {
+      "type": "checker_verdict",
+      "issue": 7,
+      "expect": "all-met"
+    },
+    {
+      "type": "refs_unchanged"
+    },
+    {
+      "type": "gh_log",
+      "forbid": [
+        {
+          "kind": "write"
+        }
+      ]
+    }
+  ]
+}

@@ -20,6 +20,7 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 RUNNER = os.path.join(ROOT, "scripts", "run-evals.py")
 FAKE_GH = os.path.join(ROOT, "evals", "fakegh", "gh")
 EVALS = os.path.join(ROOT, "evals")
+STUB_SPAWN = os.path.join(ROOT, "evals", "stub-spawn.py")
 
 failures = []
 
@@ -186,7 +187,7 @@ def test_fake_gh():
 
 FAKE_CLAUDE = r'''#!/usr/bin/env python3
 """A stand-in for `claude -p` driven by environment variables."""
-import json, os, subprocess, sys
+import json, os, re, subprocess, sys
 
 # The runner gives a run only the variables it allows, so the test settings come from a file.
 with open(os.path.join(os.path.dirname(os.path.abspath(__file__)), "fake-env.json")) as handle:
@@ -211,6 +212,17 @@ if judge:
 if conf.get("FAKE_PLUGIN_WRITE") and "--plugin-dir" in argv:
     with open(os.path.join(argv[argv.index("--plugin-dir") + 1], conf["FAKE_PLUGIN_WRITE"]), "w") as handle:
         handle.write("changed by the run\n")
+spawns = json.loads(conf.get("FAKE_PM_SPAWNS", "[]"))
+if spawns:
+    # As Claude Code does: each PreToolUse hook of --settings whose matcher fits gets the call on stdin.
+    settings = json.loads(argv[argv.index("--settings") + 1]) if "--settings" in argv else {}
+    commands = [hook["command"] for group in settings.get("hooks", {}).get("PreToolUse", [])
+                if re.fullmatch(group.get("matcher", ".*"), "Agent") for hook in group["hooks"]]
+    for tool_input in spawns:
+        for command in commands:
+            subprocess.run(command, shell=True, text=True, stdout=subprocess.DEVNULL,
+                           input=json.dumps({"hook_event_name": "PreToolUse", "tool_name": "Agent",
+                                             "tool_input": tool_input}))
 for call in json.loads(conf.get("FAKE_PM_ACTIONS", "[]")):
     subprocess.run(["gh", *call], stdout=subprocess.DEVNULL)
 for path, text in json.loads(conf.get("FAKE_PM_FILES", "{}")).items():
@@ -321,10 +333,10 @@ def test_runner_happy_path():
         check(record["session_id"] == "sess-123", f"session_id, got {record.get('session_id')}")
         check(record["model"] == "claude-test-model", f"model comes from modelUsage when none is asked, got {record.get('model')}")
         check(record["error"] is None, f"no error, got {record.get('error')}")
-        check(record.get("judge_cost_usd") == 0.01, f"the judge cost is recorded apart, got {record.get('judge_cost_usd')}")
+        check(record.get("judge_cost_usd") == 0.02, f"the judge cost of both agreeing votes is recorded apart, got {record.get('judge_cost_usd')}")
         check(record["variant"].get("version") == "9.9.9", f"the variant names the plugin version, got {record.get('variant')}")
         check([g["type"] for g in record["graders"]] == ["gh_log", "file", "llm"], f"grader order, got {record.get('graders')}")
-        check(results.get("total_cost_usd") == 0.51, f"the total adds the judge cost, got {results.get('total_cost_usd')}")
+        check(results.get("total_cost_usd") == 0.52, f"the total adds the judge cost, got {results.get('total_cost_usd')}")
 
         main = [c for c in captures if not c["judge"]]
         check(len(main) == 1, f"claude runs once for the case, got {len(main)}")
@@ -435,7 +447,7 @@ def load_runner():
 def test_real_pm_suite():
     runner = load_runner()
     cases = runner.load_cases(EVALS, "pm")
-    check(5 <= len(cases) <= 7, f"the pm suite has 5 to 7 cases, got {len(cases)}")
+    check(5 <= len(cases) <= 11, f"the pm suite has 5 to 11 cases, got {len(cases)}")
     for case in cases:
         name = case["name"]
         check("pm" in case["tags"] and len(case["tags"]) >= 2, f"{name}: tagged pm plus a stage, got {case['tags']}")
@@ -485,21 +497,98 @@ GOLDEN = {
                                "--remove-label", "status:ready"],
                               ["issue", "comment", "41", "--body", "Reject or queue?"],
                               ["issue", "comment", "42", "--body", "Reject or queue?"]], {}),
+    "pm-session-batch": (
+        [["issue", "edit", "61", "62", "68", "--add-label", "status:ready"],
+         ["issue", "edit", "63", "64", "--add-label", "status:needs-feedback"],
+         ["issue", "comment", "63", "--body", "Which file gives the wrong count? Expected count against actual?"],
+         ["issue", "comment", "64", "--body", "Which part of the output should change, and to what?"],
+         ["issue", "create", "--title", "Read CSV stock files", "--body", "Part of #65", "--label", "status:ready"],
+         ["issue", "create", "--title", "Read JSON stock files", "--body", "Part of #65", "--label", "status:ready"],
+         ["issue", "edit", "65", "--add-label", "status:blocked"],
+         ["issue", "comment", "65", "--body", "Sub-issues: #69, #70."],
+         *repair(66, "status:in-review", "status:needs-feedback"),
+         ["issue", "create", "--title", "Batch: count errors and docs", "--label", "type:batch",
+          "--body", "- [ ] #61\n- [ ] #62\n- [ ] #67\n- [ ] #68"],
+         *[["issue", "comment", str(n), "--body", "## Plan (PM)\n\nwidgets.py; test first."] for n in (61, 62, 67, 68)],
+         ["pr", "merge", "53", "--squash", "--subject", "Add a --json flag (#53)", "--body", "[skip ci]"],
+         ["issue", "edit", "51", "--add-label", "status:batched", "--remove-label", "status:in-review"],
+         ["issue", "edit", "63", "--add-label", "status:ready", "--remove-label", "status:needs-feedback"]],
+        {".eval/send-back-52.md": "Criterion `widgets count --quiet` exits 1 when the count is 0 has no evidence."}),
+    # The third element is the Agent calls of the run, as the spawn stub records them.
+    "pm-c1-escalate": (
+        [["issue", "comment", "11", "--body", "escalated to Opus: re-check failed after one rework round"]], {},
+        [{"subagent_type": "issue-flow:issue-worker", "isolation": "worktree", "model": "opus",
+          "description": "escalate #11",
+          "prompt": "issue: #11\nbase: origin/issue/11-json-flag\nescalation: re-check failed. Criterion 2 unmet."}]),
+    "pm-c1-feedback-no-escalation": (
+        [["issue", "edit", "11", "--add-label", "status:needs-feedback", "--remove-label", "status:in-review"],
+         ["issue", "comment", "11", "--body", "Should `count` reject `--json --verbose`, or add a `debug` key like `list`?"]], {}, []),
+    "pm-c1-checkpoint": (
+        [["issue", "comment", "11", "--body", "checkpoint 1: criterion 2 left, replacement spawned"]], {},
+        [{"subagent_type": "issue-flow:issue-worker", "isolation": "worktree", "description": "continue #11",
+          "prompt": "issue: #11\nbase: origin/issue/11-json-flag\n"
+                    "plan: remaining: add test_json_rejects_verbose first."}]),
+    "pm-c1-escalated-checkpoint": (
+        [["issue", "comment", "11", "--body", "checkpoint 1: criterion 2 left, Opus replacement spawned"]], {},
+        [{"subagent_type": "issue-flow:issue-worker", "isolation": "worktree", "model": "opus",
+          "description": "continue #11 on Opus",
+          "prompt": "issue: #11\nbase: origin/issue/11-json-flag\nescalation: re-check failed. Criterion 2 unmet."}]),
 }
 
 
 def test_real_cases_can_pass():
     names = [case["name"] for case in load_runner().load_cases(EVALS, "pm")]
     check(sorted(names) == sorted(GOLDEN), f"every real case has a golden run, got {names}")
-    for name, (actions, files) in GOLDEN.items():
+    for name, (actions, files, *spawns) in GOLDEN.items():
         root = tempfile.mkdtemp(prefix="run-evals-test-")
         try:
             result, results, _ = run_runner(
-                root, {"FAKE_PM_ACTIONS": json.dumps(actions), "FAKE_PM_FILES": json.dumps(files)},
+                root, {"FAKE_PM_ACTIONS": json.dumps(actions), "FAKE_PM_FILES": json.dumps(files),
+                       "FAKE_PM_SPAWNS": json.dumps(spawns[0] if spawns else [])},
                 "--evals-dir", EVALS, "--case", name, "--runs", "1")
             records = (results or {}).get("records", [])
             check(records and records[0]["ok"] and records[0]["score"] == 1.0,
                   f"{name}: the golden run passes, got {records[0]['graders'] if records else result.stderr}")
+        finally:
+            shutil.rmtree(root, ignore_errors=True)
+
+
+# A PM that is almost right in a checkpoint case: each one breaks one rule of SKILL.md C1.
+def checkpoint_near_misses():
+    plain_actions, _, plain_spawns = GOLDEN["pm-c1-checkpoint"]
+    escalated_actions, _, escalated_spawns = GOLDEN["pm-c1-escalated-checkpoint"]
+    opus = escalated_spawns[0]
+    sonnet = {key: value for key, value in opus.items() if key != "model"}
+    relabel = ["issue", "edit", "11", "--add-label", "status:in-progress", "--remove-label", "status:in-review"]
+    return [
+        ("pm-c1-escalated-checkpoint", "the replacement drops model opus", escalated_actions, [sonnet]),
+        ("pm-c1-escalated-checkpoint", "the replacement drops the escalation field", escalated_actions,
+         [dict(opus, prompt="issue: #11\nbase: origin/issue/11-json-flag")]),
+        ("pm-c1-escalated-checkpoint", "a Sonnet spawn, then the Opus retry", escalated_actions, [sonnet, opus]),
+        ("pm-c1-escalated-checkpoint", "a second escalated to Opus comment",
+         escalated_actions + [["issue", "comment", "11", "--body", "escalated to Opus: checkpoint"]], [opus]),
+        ("pm-c1-escalated-checkpoint", "no checkpoint comment", [], [opus]),
+        ("pm-c1-checkpoint", "the replacement escalates to Opus", plain_actions,
+         [dict(plain_spawns[0], model="opus")]),
+        ("pm-c1-checkpoint", "the brief has no remaining text", plain_actions,
+         [dict(plain_spawns[0], prompt="issue: #11\nbase: origin/issue/11-json-flag")]),
+        ("pm-c1-checkpoint", "two replacements", plain_actions, plain_spawns * 2),
+        ("pm-c1-checkpoint", "the status label changes", plain_actions + [relabel], plain_spawns),
+        ("pm-c1-checkpoint", "no checkpoint comment", [], plain_spawns),
+    ]
+
+
+def test_checkpoint_cases_reject_near_misses():
+    for name, label, actions, spawns in checkpoint_near_misses():
+        root = tempfile.mkdtemp(prefix="run-evals-test-")
+        try:
+            result, results, _ = run_runner(
+                root, {"FAKE_PM_ACTIONS": json.dumps(actions), "FAKE_PM_FILES": "{}",
+                       "FAKE_PM_SPAWNS": json.dumps(spawns)},
+                "--evals-dir", EVALS, "--case", name, "--runs", "1")
+            records = (results or {}).get("records", [])
+            check(records and records[0]["ok"] is False, f"{name}: {label} fails, got "
+                  f"{records[0]['graders'] if records else result.stderr}")
         finally:
             shutil.rmtree(root, ignore_errors=True)
 
@@ -525,7 +614,7 @@ def test_host_session_env_is_dropped():
         result, _, captures = run_runner(
             root, {"FAKE_PM_ACTIONS": GOOD_ACTIONS, "FAKE_PM_FILES": GOOD_FILES,
                    **HOST_SESSION_ENV, **HOST_KEPT_ENV})
-        check(len(captures) == 2, f"the case and its judge both run, got {len(captures)}: {result.stderr}")
+        check(len(captures) == 3, f"the case and its 2 agreeing judge votes run, got {len(captures)}: {result.stderr}")
         for capture in captures:
             env = capture.get("env", {})
             who = "the judge" if capture["judge"] else "the run"
@@ -579,7 +668,7 @@ def test_git_isolation_env():
     try:
         build_evals(root)
         result, _, captures = run_runner(root, {"FAKE_PM_ACTIONS": GOOD_ACTIONS, "FAKE_PM_FILES": GOOD_FILES})
-        check(len(captures) == 2, f"the case and its judge both run, got {len(captures)}: {result.stderr}")
+        check(len(captures) == 3, f"the case and its 2 agreeing judge votes run, got {len(captures)}: {result.stderr}")
         for capture in captures:
             env = capture.get("env", {})
             who = "the judge" if capture["judge"] else "the run"
@@ -716,6 +805,92 @@ def test_run_claude_timeout():
         shutil.rmtree(root, ignore_errors=True)
 
 
+# The judge answer of pm-c1-no-prepatch run 1 in #111's candidate: FAIL, with a reason that passes.
+CONTRADICTORY_FAIL = ("FAIL The PM sent #11 back for a missing pre-patch run, which is the outcome the rubric "
+                      "requires, but the rubric also says the PM \"asks for that run,\" and the material shows it "
+                      "did: the send-back message requests \"the pre-patch test result.\" So the PM's decision "
+                      "matches the rubric.")
+
+
+def judge_with(answers):
+    """Grade one llm grader on a fake judge that gives these answers in order; return (result, calls)."""
+    runner = load_runner()
+    queue, calls = list(answers), []
+
+    def fake_run_claude(args, cwd, env, timeout_s):
+        calls.append(args)
+        answer = queue.pop(0)
+        if answer is None:
+            return 1, "", "judge crashed", False
+        return 0, json.dumps({"type": "result", "subtype": "success", "result": answer,
+                              "total_cost_usd": 0.01}), "", False
+
+    runner.run_claude = fake_run_claude
+    ctx = {"final": "Sent #11 back.", "gh_log": [], "sandbox": tempfile.gettempdir(), "judge_env": {}}
+    return runner.grade_llm({"type": "llm", "target": "final", "rubric": "x"}, ctx), calls
+
+
+def test_judge_takes_a_majority_of_votes():
+    (passed, detail, cost), calls = judge_with([CONTRADICTORY_FAIL, "PASS: it sent #11 back.", "PASS: yes."])
+    check(passed is True and len(calls) == 3,
+          f"two PASS votes outvote one contradictory FAIL, got {passed} after {len(calls)} calls: {detail!r}")
+    check(abs(cost - 0.03) < 1e-9, f"the judge cost adds every vote, got {cost}")
+    check("2/3" in detail, f"the detail gives the vote count, got {detail!r}")
+    (passed, detail, cost), calls = judge_with(["PASS: a.", "PASS: b.", "FAIL: c."])
+    check(passed is True and len(calls) == 2 and abs(cost - 0.02) < 1e-9,
+          f"the judge stops when 2 votes agree, got {passed} after {len(calls)} calls, cost {cost}")
+    (passed, detail, _), calls = judge_with(["FAIL: a.", "PASS: b.", "FAIL: c."])
+    check(passed is False and len(calls) == 3, f"two FAIL votes fail the grader, got {passed}: {detail!r}")
+    (passed, detail, _), calls = judge_with([None, "PASS: b.", "PASS: c."])
+    check(passed is True and len(calls) == 3, f"a judge call that fails counts as one FAIL vote, got {passed}: {detail!r}")
+    (passed, detail, _), calls = judge_with([None, None, "PASS: c."])
+    check(passed is False and "judge failed" in detail, f"two failed judge calls fail the grader, got {detail!r}")
+
+
+def test_fake_gh_events():
+    work = fresh_gh_dir()
+    try:
+        tracker = read_tracker(work)
+        tracker["events"] = [{"after": {"cmd": "pr merge", "args": "^7\\b"},
+                              "comment": {"issue": 1, "author": "maintainer", "body": "Answer: use -v."}}]
+        with open(os.path.join(work, "tracker.json"), "w") as handle:
+            json.dump(tracker, handle)
+        gh(work, "issue", "comment", "1", "--body", "Which flag?")
+        check(len(read_tracker(work)["issues"][0]["comments"]) == 1, "a call that is not the trigger fires no event")
+        result = gh(work, "pr", "merge", "99")
+        check(result.returncode == 1 and len(read_tracker(work)["issues"][0]["comments"]) == 1,
+              "a refused call fires no event")
+        result = gh(work, "pr", "merge", "7", "--squash")
+        state = read_tracker(work)
+        comments = state["issues"][0]["comments"]
+        check(result.returncode == 0 and len(comments) == 2 and comments[-1]["author"] == "maintainer"
+              and comments[-1]["body"] == "Answer: use -v.", f"the trigger call adds the event comment, got {comments}")
+        check(state["issues"][0].get("updatedAt") == comments[-1]["createdAt"],
+              "the event comment updates the issue, so a sweep by update time finds it")
+        check(state["events"][0].get("fired") is True, "the event is marked fired")
+        check([e["cmd"] for e in read_log(work)] == ["issue comment", "pr merge", "pr merge"],
+              f"an event adds no log line, got {read_log(work)}")
+        gh(work, "pr", "edit", "7", "--title", "again")
+        check(len(read_tracker(work)["issues"][0]["comments"]) == 2, "an event fires once")
+    finally:
+        shutil.rmtree(work, ignore_errors=True)
+
+
+def test_session_case_events():
+    """The session case's event must fire on a call that its graders expect, on an issue that exists."""
+    with open(os.path.join(EVALS, "pm", "pm-session-batch", "tracker.json")) as handle:
+        tracker = json.load(handle)
+    with open(os.path.join(EVALS, "pm", "pm-session-batch", "case.json")) as handle:
+        case = json.load(handle)
+    numbers = {item["number"] for item in tracker["issues"] + tracker["prs"]}
+    expected = {spec["cmd"] for grader in case["graders"] for spec in grader.get("expect", [])}
+    check(tracker.get("events"), "the session case has an event for its second sweep")
+    for event in tracker.get("events", []):
+        check(event["after"]["cmd"] in expected, f"the event trigger is a call the graders expect, got {event['after']}")
+        check(event["comment"]["issue"] in numbers, f"the event names an issue of the tracker, got {event['comment']}")
+        check(not event.get("fired"), "the event starts unfired")
+
+
 def test_readme_names_the_environment():
     with open(os.path.join(EVALS, "README.md")) as handle:
         readme = handle.read()
@@ -726,12 +901,123 @@ def test_readme_names_the_environment():
         check(f"`{name}" in readme, f"evals/README.md names {name}")
 
 
+def test_spawn_grader():
+    runner = load_runner()
+    escalation = {"seq": 1, "tool_name": "Agent", "subagent_type": "issue-flow:issue-worker", "model": "opus",
+                  "isolation": "worktree", "prompt": "issue: #11\nescalation: re-check failed"}
+    checker = {"seq": 2, "tool_name": "Agent", "subagent_type": "issue-flow:criteria-checker",
+               "isolation": "worktree", "prompt": "issue: #11"}
+    grade = runner.GRADERS["spawns"]
+    passed, detail, _ = grade({"type": "spawns", "expect": [
+        {"subagent_type": "^issue-flow:issue-worker$", "model": "^opus$", "prompt": "^escalation: \\S"}]},
+        {"spawns": [checker, escalation]})
+    check(passed, f"an expected spawn matches on every field it names, got {detail}")
+    passed, detail, _ = grade({"type": "spawns", "expect": [{"subagent_type": "issue-worker", "model": "^opus$"}]},
+                              {"spawns": [checker]})
+    check(not passed and "missing" in detail, f"an expected spawn that never came fails, got {detail}")
+    passed, detail, _ = grade({"type": "spawns", "forbid": [{"model": "."}]}, {"spawns": [checker, escalation]})
+    check(not passed and "forbidden" in detail and "seq 1" in detail,
+          f"a forbid entry matches a spawn that set the field, and names it, got {detail}")
+    passed, detail, _ = grade({"type": "spawns", "forbid": [{"model": "."}]}, {"spawns": [checker]})
+    check(passed, f"a field the spawn does not set matches as empty text, got {detail}")
+    passed, detail, _ = grade({"type": "spawns", "forbid": [{"model": "."}]}, {"spawns": []})
+    check(passed, f"no spawn passes a forbid-only grader, got {detail}")
+    once = {"type": "spawns", "expect": [{"subagent_type": "^issue-flow:issue-worker$", "count": 1}]}
+    passed, detail, _ = grade(once, {"spawns": [checker, escalation]})
+    check(passed, f"a count entry passes when exactly that many spawns match, got {detail}")
+    retry = dict(escalation, seq=3, model=None)
+    passed, detail, _ = grade(once, {"spawns": [escalation, retry]})
+    check(not passed and "2" in detail and "expected 1" in detail,
+          f"a count entry fails on a second matching spawn, and gives both counts, got {detail}")
+    passed, detail, _ = grade(once, {"spawns": [checker]})
+    check(not passed, f"a count entry fails when no spawn matches, got {detail}")
+
+
+def test_stub_spawn_hook():
+    work = tempfile.mkdtemp(prefix="stub-spawn-test-")
+    try:
+        log = os.path.join(work, "spawn-log.jsonl")
+        payload = {"hook_event_name": "PreToolUse", "tool_name": "Agent",
+                   "tool_input": {"subagent_type": "issue-flow:issue-worker", "model": "opus", "prompt": "x"}}
+        for _ in range(2):
+            result = subprocess.run([sys.executable, STUB_SPAWN], input=json.dumps(payload), text=True,
+                                    capture_output=True, env=dict(os.environ, IFE_SPAWN_LOG=log))
+        output = json.loads(result.stdout or "{}").get("hookSpecificOutput", {})
+        check(result.returncode == 0 and output.get("permissionDecision") == "deny",
+              f"the stub refuses the spawn, so no agent runs, got {result.returncode} {result.stdout!r}")
+        check("recorded" in output.get("permissionDecisionReason", ""),
+              f"the refusal tells the agent that the spawn was recorded, got {output}")
+        entries = []
+        if os.path.exists(log):
+            with open(log) as handle:
+                entries = [json.loads(line) for line in handle if line.strip()]
+        check([e.get("seq") for e in entries] == [1, 2] and entries[0].get("model") == "opus"
+              and entries[0].get("tool_name") == "Agent",
+              f"the stub logs each call's input with a running seq, got {entries}")
+    finally:
+        shutil.rmtree(work, ignore_errors=True)
+
+
+def test_stub_spawns_case():
+    spawn = {"subagent_type": "issue-flow:issue-worker", "model": "opus", "prompt": "escalation: x"}
+    case = dict(CASE, stub_spawns=True, graders=[
+        {"type": "spawns", "expect": [{"subagent_type": "issue-worker", "model": "^opus$"}]}])
+    root = tempfile.mkdtemp(prefix="run-evals-test-")
+    try:
+        build_evals(root, case)
+        result, results, captures = run_runner(root, {"FAKE_PM_SPAWNS": json.dumps([spawn])})
+        record = (results or {}).get("records", [{}])[0]
+        check(record.get("ok") is True, f"a stubbed spawn reaches the spawns grader, got {record.get('graders')} {result.stderr}")
+        main = [c for c in captures if not c["judge"]]
+        settings = json.loads(main[0]["argv"][main[0]["argv"].index("--settings") + 1]) if main else {}
+        check(settings.get("enabledPlugins", {}).get("issue-flow@sniper7kills") is False,
+              f"the stub hook keeps the installed plugin off, got {settings}")
+        check("--disallowedTools" not in (main[0]["argv"] if main else []),
+              "a stub_spawns case keeps the Agent tool, so the agent can call it")
+    finally:
+        shutil.rmtree(root, ignore_errors=True)
+
+    root = tempfile.mkdtemp(prefix="run-evals-test-")
+    try:
+        build_evals(root)
+        result, _, captures = run_runner(root, {})
+        main = [c for c in captures if not c["judge"]]
+        settings = json.loads(main[0]["argv"][main[0]["argv"].index("--settings") + 1]) if main else {}
+        check("hooks" not in settings, f"a case without stub_spawns adds no hook, got {settings}")
+    finally:
+        shutil.rmtree(root, ignore_errors=True)
+
+    for label, bad in (("a spawns grader needs stub_spawns",
+                        dict(CASE, graders=[{"type": "spawns", "forbid": [{"model": "."}]}])),
+                       ("a spawns entry names only spawn fields",
+                        dict(CASE, stub_spawns=True, graders=[{"type": "spawns", "expect": [{"modle": "opus"}]}])),
+                       ("a spawns count goes in an expect entry only",
+                        dict(CASE, stub_spawns=True, graders=[{"type": "spawns", "forbid": [{"model": ".", "count": 1}]}])),
+                       ("a spawns count is a positive integer",
+                        dict(CASE, stub_spawns=True, graders=[{"type": "spawns", "expect": [{"model": ".", "count": "1"}]}])),
+                       ("a spawns count needs a field to match",
+                        dict(CASE, stub_spawns=True, graders=[{"type": "spawns", "expect": [{"count": 1}]}])),
+                       ("stub_spawns cannot disallow Agent",
+                        dict(CASE, stub_spawns=True, disallowed_tools=["Agent"],
+                             graders=[{"type": "spawns", "forbid": [{"model": "."}]}]))):
+        root = tempfile.mkdtemp(prefix="run-evals-test-")
+        try:
+            build_evals(root, bad)
+            result, _, captures = run_runner(root, {})
+            check(result.returncode == 2 and not captures, f"{label}: exit 2, got {result.returncode}: {result.stderr}")
+        finally:
+            shutil.rmtree(root, ignore_errors=True)
+
+
 for test in (test_fake_gh, test_runner_happy_path, test_runner_failures_and_ceiling,
              test_args_anchor_ignores_body_lines, test_ordered_and_model, test_real_pm_suite,
              test_real_cases_can_pass, test_host_session_env_is_dropped, test_effort_is_passed_and_recorded,
              test_readme_names_the_environment, test_git_isolation_env, test_plugin_copy_protects_the_plugin,
+             test_judge_takes_a_majority_of_votes,
              test_agent_repo_cannot_run_code_on_the_host, test_a_case_needs_a_deterministic_grader,
-             test_run_claude_timeout):
+             test_run_claude_timeout, test_fake_gh_events, test_session_case_events,
+             test_spawn_grader, test_stub_spawn_hook, test_stub_spawns_case,
+             test_checkpoint_cases_reject_near_misses):
     try:
         test()
     except Exception as error:  # a crash in one test must not hide the others

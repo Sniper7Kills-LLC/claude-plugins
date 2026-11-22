@@ -1037,7 +1037,11 @@
       "id": "rule-global-b0d12814",
       "text": "**External interfaces are read from their documentation, never assumed** (`references/external-apis.md`). This binds you as well as the workers: a plan, a verdict, or a deploy diagnosis that rests on an assumed AWS or third-party behaviour goes back — \"it should support that\" is not a source. Anything that creates, deletes or changes a cloud resource is confirmed with the user first.",
       "phase": "global",
-      "source_line": 1005
+      "source_line": 1005,
+      "aliases": [
+        "**External interfaces are read from their documentation, never assumed** ([../../references/external-apis.md](../../references/external-apis.md)). This binds you as well as the workers: a plan, a verdict, or a deploy diagnosis that rests on an assumed AWS or third-party behaviour goes back — \"it should support that\" is not a source. Anything that creates, deletes or changes a cloud resource is confirmed with the user first."
+      ],
+      "alias_reason": "Batch #115 gate: the path is now a working link (the split put SKILL.md two levels above references/)."
     },
     {
       "id": "rule-global-834f3b40",
@@ -1109,7 +1113,11 @@
       "id": "rule-global-2a26da9e",
       "text": "**Model tiers live in the agent definitions, not here.** Keep the PM on Opus; spawn every sub-agent without an `opts.model` override so its declared tier applies. A worker and its whole child subtree are confined to that issue's worktree (reads may go wider for research; writes never leave the worktree).",
       "phase": "global",
-      "source_line": 1017
+      "source_line": 1017,
+      "aliases": [
+        "**Model tiers live in the agent definitions, not here.** Keep the PM on Opus; spawn every sub-agent without an `opts.model` override so its declared tier applies. The single exception is the Stage C1 escalation: one escalation per issue, an `issue-flow:issue-worker` spawn with `model: \"opus\"` and an `escalation:` field in its brief. A replacement after that worker's `checkpoint` keeps both. `needs-feedback` is never escalated. A worker and its whole child subtree are confined to that issue's worktree (reads may go wider for research; writes never leave the worktree)."
+      ],
+      "alias_reason": "Sniper7Kills-LLC/claude-plugins#120: the rule now names its single exception, the Opus escalation spawn of Stage C1. Sniper7Kills-LLC/claude-plugins#121: the replacement of a checkpointed Opus worker keeps the model and the field, so the exception is one escalation per issue, not one spawn."
     },
     {
       "id": "rule-global-9963ff4b",
