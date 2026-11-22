@@ -1,19 +1,19 @@
 {
   "suite": "worker",
   "variant": {
-    "plugin_dir": "issue-flow (git worktree of tag issue-flow--v0.20.0)",
+    "plugin_dir": "issue-flow 0.20.0 (worktree of tag issue-flow--v0.20.0)",
     "git_sha": "c3974fe577b7ce45383f564c3ed54b5a99080a9d",
     "version": "0.20.0"
   },
   "effort": "medium",
-  "started": "20261121T190930Z",
-  "finished": "20261121T200454Z",
+  "started": "20261122T150304Z",
+  "finished": "20261122T153821Z",
   "partial": false,
   "models": [
     "claude-haiku-5-5",
     "claude-opus-5-5"
   ],
-  "total_cost_usd": 8.378159,
+  "total_cost_usd": 7.920361,
   "runs": 24,
   "suite_means": {
     "runs": 24,
@@ -24,21 +24,22 @@
       1.0
     ],
     "hidden_pass_rate": 1.0,
-    "mean_cost_usd": 0.3491,
+    "mean_cost_usd": 0.33,
     "cost_range": [
-      0.1354,
-      0.6037
+      0.1118,
+      0.5404
     ],
     "mean_turns": 2.5,
-    "mean_duration_s": 125.5934,
+    "mean_duration_s": 87.7834,
     "duration_range": [
-      27.9,
-      908.2
+      31.6,
+      134.7
     ],
-    "mean_main_tokens": 120211.5417,
-    "mean_subagent_tokens": 472165.375,
-    "mean_subagent_turns": 13.1667,
-    "mean_agent_cost_usd": 0.3478,
+    "mean_main_tokens": 111750.375,
+    "mean_subagent_tokens": 473635.3333,
+    "mean_subagent_turns": 13.375,
+    "mean_agent_cost_usd": 0.33,
+    "mean_tracker_calls": 8.7917,
     "errors": 0
   },
   "cases": {
@@ -51,21 +52,22 @@
         1.0
       ],
       "hidden_pass_rate": 1.0,
-      "mean_cost_usd": 0.2596,
+      "mean_cost_usd": 0.2643,
       "cost_range": [
-        0.2125,
-        0.3514
+        0.2238,
+        0.3311
       ],
-      "mean_turns": 2.6667,
-      "mean_duration_s": 69.3123,
+      "mean_turns": 2.3333,
+      "mean_duration_s": 74.9127,
       "duration_range": [
-        62.3,
-        79.1
+        72.9,
+        77.9
       ],
-      "mean_main_tokens": 111867.0,
-      "mean_subagent_tokens": 323077.6667,
-      "mean_subagent_turns": 10.3333,
-      "mean_agent_cost_usd": 0.2596,
+      "mean_main_tokens": 110631.6667,
+      "mean_subagent_tokens": 374750.6667,
+      "mean_subagent_turns": 12.0,
+      "mean_agent_cost_usd": 0.2643,
+      "mean_tracker_calls": 9.0,
       "errors": 0
     },
     "worker-easy-negative-qty": {
@@ -77,21 +79,22 @@
         1.0
       ],
       "hidden_pass_rate": 1.0,
-      "mean_cost_usd": 0.2615,
+      "mean_cost_usd": 0.2594,
       "cost_range": [
-        0.2438,
-        0.2755
+        0.2222,
+        0.2871
       ],
-      "mean_turns": 2.3333,
-      "mean_duration_s": 78.5203,
+      "mean_turns": 2.6667,
+      "mean_duration_s": 77.88,
       "duration_range": [
-        75.1,
-        80.7
+        63.4,
+        86.5
       ],
-      "mean_main_tokens": 102924.3333,
-      "mean_subagent_tokens": 412392.6667,
-      "mean_subagent_turns": 13.0,
-      "mean_agent_cost_usd": 0.2615,
+      "mean_main_tokens": 119414.6667,
+      "mean_subagent_tokens": 398014.3333,
+      "mean_subagent_turns": 12.0,
+      "mean_agent_cost_usd": 0.2594,
+      "mean_tracker_calls": 9.0,
       "errors": 0
     },
     "worker-hard-ambiguous-tax": {
@@ -103,21 +106,22 @@
         1.0
       ],
       "hidden_pass_rate": null,
-      "mean_cost_usd": 0.176,
+      "mean_cost_usd": 0.1269,
       "cost_range": [
-        0.1354,
-        0.2209
+        0.1118,
+        0.1395
       ],
-      "mean_turns": 2.0,
-      "mean_duration_s": 327.5463,
+      "mean_turns": 2.6667,
+      "mean_duration_s": 39.5083,
       "duration_range": [
-        27.9,
-        908.2
+        31.6,
+        47.2
       ],
-      "mean_main_tokens": 129384.3333,
-      "mean_subagent_tokens": 184151.0,
-      "mean_subagent_turns": 6.3333,
-      "mean_agent_cost_usd": 0.176,
+      "mean_main_tokens": 110022.0,
+      "mean_subagent_tokens": 186374.3333,
+      "mean_subagent_turns": 6.6667,
+      "mean_agent_cost_usd": 0.1269,
+      "mean_tracker_calls": 3.0,
       "errors": 0
     },
     "worker-hard-error-lines": {
@@ -129,21 +133,22 @@
         1.0
       ],
       "hidden_pass_rate": 1.0,
-      "mean_cost_usd": 0.4814,
+      "mean_cost_usd": 0.4389,
       "cost_range": [
-        0.411,
-        0.541
+        0.4131,
+        0.4583
       ],
-      "mean_turns": 3.0,
-      "mean_duration_s": 124.653,
+      "mean_turns": 2.6667,
+      "mean_duration_s": 111.4287,
       "duration_range": [
-        113.6,
-        136.9
+        110.7,
+        112.0
       ],
-      "mean_main_tokens": 146788.6667,
-      "mean_subagent_tokens": 637250.0,
-      "mean_subagent_turns": 16.3333,
-      "mean_agent_cost_usd": 0.4814,
+      "mean_main_tokens": 114249.0,
+      "mean_subagent_tokens": 611879.0,
+      "mean_subagent_turns": 16.0,
+      "mean_agent_cost_usd": 0.4389,
+      "mean_tracker_calls": 11.6667,
       "errors": 0
     },
     "worker-hard-location": {
@@ -155,21 +160,22 @@
         1.0
       ],
       "hidden_pass_rate": 1.0,
-      "mean_cost_usd": 0.5349,
+      "mean_cost_usd": 0.4778,
       "cost_range": [
-        0.4694,
-        0.6037
+        0.438,
+        0.5404
       ],
-      "mean_turns": 2.6667,
-      "mean_duration_s": 130.57,
+      "mean_turns": 2.3333,
+      "mean_duration_s": 120.2987,
       "duration_range": [
-        114.5,
-        145.3
+        109.6,
+        134.7
       ],
-      "mean_main_tokens": 122994.0,
-      "mean_subagent_tokens": 696656.6667,
-      "mean_subagent_turns": 16.6667,
-      "mean_agent_cost_usd": 0.5349,
+      "mean_main_tokens": 113059.6667,
+      "mean_subagent_tokens": 612221.6667,
+      "mean_subagent_turns": 15.3333,
+      "mean_agent_cost_usd": 0.4778,
+      "mean_tracker_calls": 9.6667,
       "errors": 0
     },
     "worker-medium-csv-format": {
@@ -181,21 +187,22 @@
         1.0
       ],
       "hidden_pass_rate": 1.0,
-      "mean_cost_usd": 0.3877,
+      "mean_cost_usd": 0.4375,
       "cost_range": [
-        0.278,
-        0.466
+        0.4213,
+        0.4612
       ],
-      "mean_turns": 2.3333,
-      "mean_duration_s": 96.7357,
+      "mean_turns": 2.6667,
+      "mean_duration_s": 107.852,
       "duration_range": [
-        74.6,
-        116.1
+        101.6,
+        111.4
       ],
-      "mean_main_tokens": 113207.6667,
-      "mean_subagent_tokens": 541474.3333,
-      "mean_subagent_turns": 14.6667,
-      "mean_agent_cost_usd": 0.3877,
+      "mean_main_tokens": 112826.3333,
+      "mean_subagent_tokens": 661096.0,
+      "mean_subagent_turns": 17.3333,
+      "mean_agent_cost_usd": 0.4375,
+      "mean_tracker_calls": 10.3333,
       "errors": 0
     },
     "worker-medium-money-refactor": {
@@ -207,21 +214,22 @@
         1.0
       ],
       "hidden_pass_rate": 1.0,
-      "mean_cost_usd": 0.3714,
+      "mean_cost_usd": 0.3525,
       "cost_range": [
-        0.3434,
-        0.3964
+        0.2987,
+        0.3841
       ],
       "mean_turns": 2.3333,
-      "mean_duration_s": 92.104,
+      "mean_duration_s": 90.1003,
       "duration_range": [
-        89.3,
-        94.3
+        81.3,
+        98.8
       ],
-      "mean_main_tokens": 113050.0,
-      "mean_subagent_tokens": 537387.0,
+      "mean_main_tokens": 102579.0,
+      "mean_subagent_tokens": 532936.3333,
       "mean_subagent_turns": 15.0,
-      "mean_agent_cost_usd": 0.3613,
+      "mean_agent_cost_usd": 0.3525,
+      "mean_tracker_calls": 8.6667,
       "errors": 0
     },
     "worker-medium-price-parse": {
@@ -233,21 +241,22 @@
         1.0
       ],
       "hidden_pass_rate": 1.0,
-      "mean_cost_usd": 0.3202,
+      "mean_cost_usd": 0.283,
       "cost_range": [
-        0.2793,
-        0.3598
+        0.2538,
+        0.3238
       ],
-      "mean_turns": 2.6667,
-      "mean_duration_s": 85.3053,
+      "mean_turns": 2.3333,
+      "mean_duration_s": 80.2867,
       "duration_range": [
-        77.2,
-        89.8
+        70.8,
+        92.9
       ],
-      "mean_main_tokens": 121476.3333,
-      "mean_subagent_tokens": 444933.6667,
-      "mean_subagent_turns": 13.0,
-      "mean_agent_cost_usd": 0.3202,
+      "mean_main_tokens": 111220.6667,
+      "mean_subagent_tokens": 411810.3333,
+      "mean_subagent_turns": 12.6667,
+      "mean_agent_cost_usd": 0.283,
+      "mean_tracker_calls": 9.0,
       "errors": 0
     }
   }

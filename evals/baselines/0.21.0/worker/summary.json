@@ -1,0 +1,263 @@
+{
+  "suite": "worker",
+  "variant": {
+    "plugin_dir": "issue-flow 0.21.0 (batch 125 head)",
+    "git_sha": "7fa8a75d5dce60717b2df35fccfc5dc523fa7a0a",
+    "version": "0.21.0"
+  },
+  "effort": "medium",
+  "started": "20261122T155445Z",
+  "finished": "20261122T160752Z",
+  "partial": false,
+  "models": [
+    "claude-haiku-5-5",
+    "claude-sonnet-5-5"
+  ],
+  "total_cost_usd": 2.268855,
+  "runs": 24,
+  "suite_means": {
+    "runs": 24,
+    "ok_rate": 1.0,
+    "mean_score": 1.0,
+    "score_range": [
+      1.0,
+      1.0
+    ],
+    "hidden_pass_rate": 1.0,
+    "mean_cost_usd": 0.0945,
+    "cost_range": [
+      0.0424,
+      0.15
+    ],
+    "mean_turns": 2.4167,
+    "mean_duration_s": 32.4258,
+    "duration_range": [
+      14.5,
+      52.7
+    ],
+    "mean_main_tokens": 106052.0,
+    "mean_subagent_tokens": 274314.625,
+    "mean_subagent_turns": 8.875,
+    "mean_agent_cost_usd": 0.0945,
+    "mean_tracker_calls": 4.375,
+    "errors": 0
+  },
+  "cases": {
+    "worker-easy-low-stock-boundary": {
+      "runs": 3,
+      "ok_rate": 1.0,
+      "mean_score": 1.0,
+      "score_range": [
+        1.0,
+        1.0
+      ],
+      "hidden_pass_rate": 1.0,
+      "mean_cost_usd": 0.1043,
+      "cost_range": [
+        0.0979,
+        0.1153
+      ],
+      "mean_turns": 2.6667,
+      "mean_duration_s": 28.793,
+      "duration_range": [
+        21.8,
+        32.7
+      ],
+      "mean_main_tokens": 111100.3333,
+      "mean_subagent_tokens": 295668.3333,
+      "mean_subagent_turns": 9.6667,
+      "mean_agent_cost_usd": 0.1043,
+      "mean_tracker_calls": 5.3333,
+      "errors": 0
+    },
+    "worker-easy-negative-qty": {
+      "runs": 3,
+      "ok_rate": 1.0,
+      "mean_score": 1.0,
+      "score_range": [
+        1.0,
+        1.0
+      ],
+      "hidden_pass_rate": 1.0,
+      "mean_cost_usd": 0.0929,
+      "cost_range": [
+        0.0629,
+        0.1117
+      ],
+      "mean_turns": 2.3333,
+      "mean_duration_s": 32.0943,
+      "duration_range": [
+        23.9,
+        38.2
+      ],
+      "mean_main_tokens": 102152.0,
+      "mean_subagent_tokens": 304384.3333,
+      "mean_subagent_turns": 10.0,
+      "mean_agent_cost_usd": 0.0929,
+      "mean_tracker_calls": 5.6667,
+      "errors": 0
+    },
+    "worker-hard-ambiguous-tax": {
+      "runs": 3,
+      "ok_rate": 1.0,
+      "mean_score": 1.0,
+      "score_range": [
+        1.0,
+        1.0
+      ],
+      "hidden_pass_rate": null,
+      "mean_cost_usd": 0.0483,
+      "cost_range": [
+        0.0424,
+        0.0516
+      ],
+      "mean_turns": 2.0,
+      "mean_duration_s": 16.2403,
+      "duration_range": [
+        14.5,
+        17.5
+      ],
+      "mean_main_tokens": 101309.3333,
+      "mean_subagent_tokens": 141137.0,
+      "mean_subagent_turns": 5.0,
+      "mean_agent_cost_usd": 0.0483,
+      "mean_tracker_calls": 3.0,
+      "errors": 0
+    },
+    "worker-hard-error-lines": {
+      "runs": 3,
+      "ok_rate": 1.0,
+      "mean_score": 1.0,
+      "score_range": [
+        1.0,
+        1.0
+      ],
+      "hidden_pass_rate": 1.0,
+      "mean_cost_usd": 0.1042,
+      "cost_range": [
+        0.0879,
+        0.1129
+      ],
+      "mean_turns": 2.6667,
+      "mean_duration_s": 39.3737,
+      "duration_range": [
+        34.8,
+        42.5
+      ],
+      "mean_main_tokens": 113074.6667,
+      "mean_subagent_tokens": 269634.6667,
+      "mean_subagent_turns": 8.6667,
+      "mean_agent_cost_usd": 0.1042,
+      "mean_tracker_calls": 4.0,
+      "errors": 0
+    },
+    "worker-hard-location": {
+      "runs": 3,
+      "ok_rate": 1.0,
+      "mean_score": 1.0,
+      "score_range": [
+        1.0,
+        1.0
+      ],
+      "hidden_pass_rate": 1.0,
+      "mean_cost_usd": 0.1266,
+      "cost_range": [
+        0.0937,
+        0.15
+      ],
+      "mean_turns": 2.3333,
+      "mean_duration_s": 44.039,
+      "duration_range": [
+        34.2,
+        52.7
+      ],
+      "mean_main_tokens": 112305.6667,
+      "mean_subagent_tokens": 327089.3333,
+      "mean_subagent_turns": 10.0,
+      "mean_agent_cost_usd": 0.1266,
+      "mean_tracker_calls": 4.6667,
+      "errors": 0
+    },
+    "worker-medium-csv-format": {
+      "runs": 3,
+      "ok_rate": 1.0,
+      "mean_score": 1.0,
+      "score_range": [
+        1.0,
+        1.0
+      ],
+      "hidden_pass_rate": 1.0,
+      "mean_cost_usd": 0.0983,
+      "cost_range": [
+        0.0883,
+        0.109
+      ],
+      "mean_turns": 2.6667,
+      "mean_duration_s": 34.54,
+      "duration_range": [
+        33.0,
+        37.5
+      ],
+      "mean_main_tokens": 103157.3333,
+      "mean_subagent_tokens": 275959.3333,
+      "mean_subagent_turns": 8.6667,
+      "mean_agent_cost_usd": 0.0983,
+      "mean_tracker_calls": 4.3333,
+      "errors": 0
+    },
+    "worker-medium-money-refactor": {
+      "runs": 3,
+      "ok_rate": 1.0,
+      "mean_score": 1.0,
+      "score_range": [
+        1.0,
+        1.0
+      ],
+      "hidden_pass_rate": 1.0,
+      "mean_cost_usd": 0.0759,
+      "cost_range": [
+        0.0637,
+        0.0981
+      ],
+      "mean_turns": 2.3333,
+      "mean_duration_s": 28.1937,
+      "duration_range": [
+        22.0,
+        34.4
+      ],
+      "mean_main_tokens": 102241.6667,
+      "mean_subagent_tokens": 217359.6667,
+      "mean_subagent_turns": 7.3333,
+      "mean_agent_cost_usd": 0.0759,
+      "mean_tracker_calls": 4.0,
+      "errors": 0
+    },
+    "worker-medium-price-parse": {
+      "runs": 3,
+      "ok_rate": 1.0,
+      "mean_score": 1.0,
+      "score_range": [
+        1.0,
+        1.0
+      ],
+      "hidden_pass_rate": 1.0,
+      "mean_cost_usd": 0.1056,
+      "cost_range": [
+        0.0857,
+        0.123
+      ],
+      "mean_turns": 2.3333,
+      "mean_duration_s": 36.1323,
+      "duration_range": [
+        29.6,
+        42.3
+      ],
+      "mean_main_tokens": 103075.0,
+      "mean_subagent_tokens": 363284.3333,
+      "mean_subagent_turns": 11.6667,
+      "mean_agent_cost_usd": 0.1056,
+      "mean_tracker_calls": 4.0,
+      "errors": 0
+    }
+  }
+}

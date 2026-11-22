@@ -106,7 +106,7 @@ def test_suite_shape():
         check(case.get("model") == "haiku", f"{name}: the dispatcher runs on haiku, got {case.get('model')}")
         prompt = case["prompt"]
         for needle in ("issue-flow:issue-worker", '"worktree"', "{plugin_dir}", ".eval/verdict.json",
-                       f"#{issue_of(case)}", "ci:           skip", "batch:        standalone"):
+                       f"#{issue_of(case)}", "ci:           skip"):
             check(needle in prompt, f"{name}: the prompt holds {needle!r}")
         # A dispatcher that sleeps to hold its turn makes wall_s measure the sleep, not the worker.
         check("Do not run `sleep`" in prompt and "Do not end your turn" not in prompt,
@@ -138,6 +138,33 @@ def test_suite_shape():
     for fixture in FIXTURES.values():
         check(not any(name.startswith("hidden_test") for _, _, names in os.walk(fixture) for name in names),
               f"{os.path.basename(fixture)} holds no hidden test")
+
+
+def brief_fields(case):
+    """The `key: value` lines of the brief between BRIEF START and BRIEF END."""
+    body = case["prompt"].split("BRIEF START\n", 1)[1].split("BRIEF END", 1)[0]
+    return {m.group(1): m.group(2).strip() for m in re.finditer(r"^(\w+):\s+(.*)$", body, re.M)}
+
+
+def test_briefs_are_consistent():
+    """A `ci: skip` brief is a batch member: the worker agent file defines `ci: skip` that way."""
+    for case in worker_cases():
+        name = case["name"]
+        fields = brief_fields(case)
+        check(fields.get("ci") == "skip", f"{name}: the brief has ci: skip")
+        batch = re.fullmatch(r"batch #(\d+)", fields.get("batch", ""))
+        check(batch, f"{name}: ci: skip needs batch: batch #<n>, got {fields.get('batch')!r}")
+        check(fields.get("members") == "1", f"{name}: the brief has members: 1, got {fields.get('members')!r}")
+        check(fields.get("crossCheck", "").startswith("n/a"),
+              f"{name}: a single-member batch has crossCheck: n/a, got {fields.get('crossCheck')!r}")
+        if not batch:
+            continue
+        with open(case["tracker_path"]) as handle:
+            tracker = json.load(handle)
+        tracking = [i for i in tracker["issues"] if i["number"] == int(batch.group(1))]
+        check(len(tracking) == 1 and "type:batch" in tracking[0]["labels"],
+              f"{name}: the tracker holds the type:batch issue #{batch.group(1)}")
+        check(int(batch.group(1)) != issue_of(case), f"{name}: the batch issue is not the case issue")
 
 
 def fixture_files(fixture):
@@ -570,7 +597,7 @@ def test_golden_worker_passes_every_case():
                   f"{case['name']}: the record has the wall time, got {records[0].get('wall_s')}")
 
 
-for test in (test_suite_shape, test_large_fixture_size, test_fixture_tests_pass, test_reference_check, test_path_allowed,
+for test in (test_suite_shape, test_briefs_are_consistent, test_large_fixture_size, test_fixture_tests_pass, test_reference_check, test_path_allowed,
              test_acceptance_criteria_parser, test_graders_on_a_clear_case,
              test_verdict_accepts_equivalent_prepatch_wording, test_diff_scope_allows_the_docs_of_every_case,
              test_graders_on_the_ambiguous_case, test_fake_gh_worker_subcommands,

@@ -2,7 +2,10 @@
 
 This file records the numbers of issue-flow 0.20.0 on both eval suites. A later change is
 compared with these numbers by `scripts/eval-compare.py` (Sniper7Kills-LLC/claude-plugins#106).
-The run records are in `evals/baselines/0.20.0/pm/` and `evals/baselines/0.20.0/worker/`.
+The PM run records are in `evals/baselines/0.20.0/pm/`. The worker suite was measured again after
+Sniper7Kills-LLC/claude-plugins#124: its records are in `evals/baselines/0.20.0/worker/` and
+`worker-large/` (Opus worker), and in `evals/baselines/0.21.0/worker/` and `worker-large/`
+(Sonnet worker). See "Worker suite".
 `evals/README.md` says how to compare a candidate.
 
 ## The setup
@@ -10,7 +13,7 @@ The run records are in `evals/baselines/0.20.0/pm/` and `evals/baselines/0.20.0/
 | Item | Value |
 |---|---|
 | Plugin | issue-flow 0.20.0, a git worktree of the tag `issue-flow--v0.20.0` (commit `c3974fe`) |
-| Date | 2026-11-21 (UTC): PM suite 18:34–18:47, worker suite 19:09–20:04 |
+| Date | 2026-11-21 (UTC): PM suite 18:34–18:47. The worker suite was measured again on 2026-11-22 (see "Worker suite"). |
 | Claude Code | 2.1.330 |
 | Runner | `scripts/run-evals.py`, one run at a time |
 | Runs | 3 per case |
@@ -20,16 +23,15 @@ The run records are in `evals/baselines/0.20.0/pm/` and `evals/baselines/0.20.0/
 | Judge model | `claude-haiku-5-5`, for the `llm` graders of the PM suite |
 | Effort | `medium`. The runner did not pass `--effort` yet. See "The runs inherited a Claude Code session". |
 
-The PM suite has 6 cases (18 runs) and the worker suite has 8 cases (24 runs). These 8
-cases now carry the tag `small`. The 3 cases on the large fixture came later and have their
-own baseline: see "Worker suite, large fixture".
+The PM suite has 6 cases (18 runs). The worker suite has 11 cases (33 runs per variant):
+8 cases carry the tag `small` and 3 carry the tag `large`. Its numbers are in "Worker suite".
 
 ## Actual spend
 
 | Suite | Kept runs | Superseded runs | Spent |
 |---|---|---|---|
 | PM | $8.66, judges $0.016 | $1.33, in `superseded-pm-triage.json` | $10.00 |
-| Worker | $8.38 | $1.04, in `superseded-worker-medium-price-parse.json` | $9.42, under the ceiling of $150 |
+| Worker | replaced: see "Worker suite" | n/a | n/a |
 
 The costs are `cost_usd`, the `total_cost_usd` of each `claude -p` result. This value
 includes the subagents, and it governs the decision rules. The per-agent estimate of
@@ -67,84 +69,73 @@ tokens per run.
 
 ## Worker suite
 
-| Case | ok rate | Hidden tests | Mean score (range) | Mean cost (range) | Dispatcher tokens | Worker tokens | Worker turns | Wall time (range) |
-|---|---|---|---|---|---|---|---|---|
-| `worker-easy-low-stock-boundary` | 3/3 | 3/3 | 1.00 (1.00–1.00) | $0.26 ($0.21–$0.35) | 112k | 323k | 10.3 | 69 s (62–79) |
-| `worker-easy-negative-qty` | 3/3 | 3/3 | 1.00 (1.00–1.00) | $0.26 ($0.24–$0.28) | 103k | 412k | 13.0 | 79 s (75–81) |
-| `worker-medium-csv-format` | 3/3 | 3/3 | 1.00 (1.00–1.00) | $0.39 ($0.28–$0.47) | 113k | 541k | 14.7 | 97 s (75–116) |
-| `worker-medium-money-refactor` | 3/3 | 3/3 | 1.00 (1.00–1.00) | $0.37 ($0.34–$0.40) | 113k | 537k | 15.0 | 92 s (89–94) |
-| `worker-medium-price-parse` | 3/3 | 3/3 | 1.00 (1.00–1.00) | $0.32 ($0.28–$0.36) | 121k | 445k | 13.0 | 85 s (77–90) |
-| `worker-hard-location` | 3/3 | 3/3 | 1.00 (1.00–1.00) | $0.53 ($0.47–$0.60) | 123k | 697k | 16.7 | 131 s (114–145) |
-| `worker-hard-error-lines` | 3/3 | 3/3 | 1.00 (1.00–1.00) | $0.48 ($0.41–$0.54) | 147k | 637k | 16.3 | 125 s (114–137) |
-| `worker-hard-ambiguous-tax` | 3/3 | n/a | 1.00 (1.00–1.00) | $0.18 ($0.14–$0.22) | 129k | 184k | 6.3 | 328 s (28–908) |
+The worker suite has 11 cases: 8 on the small fixture and 3 on the large fixture. It was
+measured again on 2026-11-22 (UTC), after the brief fix of Sniper7Kills-LLC/claude-plugins#124.
+The old runs, made with the contradictory brief, are no longer the baseline (see "The brief
+fix in this baseline").
 
-| Tier | Runs | Hidden tests | Mean cost per run |
-|---|---|---|---|
-| easy | 6 | 6/6 | $0.26 |
-| medium | 9 | 9/9 | $0.36 |
-| hard | 9 | 6/6 (the ambiguous case has none) | $0.40 |
+| Item | 0.20.0 | 0.21.0 |
+|---|---|---|
+| Plugin | a worktree of the tag `issue-flow--v0.20.0` (`c3974fe`) | `issue-flow/` of batch #125 (`7fa8a75`) |
+| Worker model | `claude-opus-5-5` | `claude-sonnet-5-5` |
+| Dispatcher model | `claude-haiku-5-5` | `claude-haiku-5-5` |
+| Runs | 3 per case, 33 in total | 3 per case, 33 in total |
+| Spent | $7.92 small + $3.57 large | $2.27 small + $1.35 large |
+| Records | `evals/baselines/0.20.0/worker/`, `worker-large/` | `evals/baselines/0.21.0/worker/`, `worker-large/` |
 
-For the suite: 24/24 runs ok, hidden-test pass rate 21/21 (100%), mean cost $0.35 per run,
-120k dispatcher tokens and 472k worker tokens per run, and 13.2 worker turns per run.
+Every ceiling was `--max-cost-usd 10` per invocation. The effort is `medium`. Every run on
+both sides passed: 66/66 ok, mean score 1.00, hidden-test pass rate 100% on the cases that
+have hidden tests. Each cell below reads "0.20.0 / 0.21.0".
+
+| Case | Tier | Hidden tests | Mean cost | Worker tokens | Worker turns | Wall time |
+|---|---|---|---|---|---|---|
+| `worker-easy-low-stock-boundary` | easy | 3/3 / 3/3 | $0.26 / $0.10 | 375k / 296k | 12.0 / 9.7 | 75 s / 29 s |
+| `worker-easy-negative-qty` | easy | 3/3 / 3/3 | $0.26 / $0.09 | 398k / 304k | 12.0 / 10.0 | 78 s / 32 s |
+| `worker-medium-csv-format` | medium | 3/3 / 3/3 | $0.44 / $0.10 | 661k / 276k | 17.3 / 8.7 | 108 s / 35 s |
+| `worker-medium-money-refactor` | medium | 3/3 / 3/3 | $0.35 / $0.08 | 533k / 217k | 15.0 / 7.3 | 90 s / 28 s |
+| `worker-medium-price-parse` | medium | 3/3 / 3/3 | $0.28 / $0.11 | 412k / 363k | 12.7 / 11.7 | 80 s / 36 s |
+| `worker-hard-location` | hard | 3/3 / 3/3 | $0.48 / $0.13 | 612k / 327k | 15.3 / 10.0 | 120 s / 44 s |
+| `worker-hard-error-lines` | hard | 3/3 / 3/3 | $0.44 / $0.10 | 612k / 270k | 16.0 / 8.7 | 111 s / 39 s |
+| `worker-hard-ambiguous-tax` | hard | n/a | $0.13 / $0.05 | 186k / 141k | 6.7 / 5.0 | 40 s / 16 s |
+| `worker-large-medium-report-midnight` | medium | 3/3 / 3/3 | $0.38 / $0.10 | 641k / 328k | 17.7 / 10.3 | 110 s / 34 s |
+| `worker-large-locate-repeated-sku` | medium, `locate` | 3/3 / 3/3 | $0.37 / $0.16 | 576k / 573k | 15.3 / 15.7 | 106 s / 48 s |
+| `worker-large-hard-one-discount` | hard | 3/3 / 3/3 | $0.44 / $0.18 | 690k / 586k | 17.0 / 14.7 | 109 s / 53 s |
+
+| Tier | Runs per variant | Hidden tests | Mean cost per run | Mean wall time |
+|---|---|---|---|---|
+| easy | 6 | 6/6 / 6/6 | $0.26 / $0.10 | 76 s / 30 s |
+| medium | 15 | 15/15 / 15/15 | $0.36 / $0.11 | 99 s / 36 s |
+| hard | 12 | 9/9 / 9/9 (the ambiguous case has none) | $0.37 / $0.12 | 95 s / 38 s |
+
+| Fixture | Variant | Mean cost | Worker tokens | Worker turns | Wall time |
+|---|---|---|---|---|---|
+| small, 24 runs | 0.20.0 | $0.33 | 474k | 13.4 | 88 s |
+| | 0.21.0 | $0.09 | 274k | 8.9 | 32 s |
+| large, 9 runs | 0.20.0 | $0.40 | 636k | 16.7 | 108 s |
+| | 0.21.0 | $0.15 | 496k | 13.6 | 45 s |
 
 - The worker tokens and turns come from `issue-flow/scripts/usage.py`, by `session_id`
-  (`agents` and `tokens` in each record). No worker spawned a subagent of its own.
-- The worker is `claude-opus-5-5` on all 24 runs, and the dispatcher is `claude-haiku-5-5`.
+  (`agents` and `tokens` in each record). `summary.json` calls them `subagent` values.
 - The duration is `wall_s`. `duration_s` and `turns` count only the dispatcher, because the
   worker runs in the background.
-- `worker-hard-ambiguous-tax` run 2 took 908 s, but its worker finished in 47 s. The Haiku
-  dispatcher started `sleep 900` in the background to keep its turn open, and the
-  `claude -p` process waited for it. The grade and the cost are not affected. Use the
-  median, 47 s, for this case.
+- A worker case does not load the PM skill, so the worker model and the worker agent file
+  are the only differences between the two variants.
+- A `ci: skip` worker now makes about 4.4 tracker calls per run on 0.21.0 against 8.8 on
+  0.20.0.
 
-### The case fix in this baseline
+### The brief fix in this baseline
 
-The first 3 runs of `worker-medium-price-parse` failed only on `diff_scope`. Each worker
-passed the hidden tests and wrote a correct verdict. Each also updated `README.md`, which
-documents the price format of a stock file. The brief asks for docs on public interfaces,
-so that change is correct. The allowlist of the case did not include `README.md`. The fix
-adds it, and the case then ran 3 more times. `superseded-worker-medium-price-parse.json`
-keeps the first 3 runs.
+Until Sniper7Kills-LLC/claude-plugins#124, each worker case sent `ci: skip` with
+`batch: standalone`. The worker agent file defines `ci: skip` as a batch member that opens a
+draft PR. The brief thus contradicted the contract of the worker, and a worker had to guess.
+Each case now sends `batch: batch #<n>`, `members: 1` and `crossCheck: n/a — single-member
+batch`, and its `tracker.json` holds the `type:batch` issue `<n>`. `scripts/test-worker-cases.py`
+checks this (`test_briefs_are_consistent`).
 
-## Worker suite, large fixture
-
-The 3 cases tagged `large` start from `evals/worker/_fixture_large/`, a 40-file order
-service (Sniper7Kills-LLC/claude-plugins#117). The run records are in
-`evals/baselines/0.20.0/worker-large/`. The same cases on the head of batch #115 are in
-`evals/candidates/batch-115/worker-large/`, for comparison.
-
-| Item | 0.20.0 | Batch #115 head |
-|---|---|---|
-| Plugin | a git worktree of the tag `issue-flow--v0.20.0` (`c3974fe`) | a git worktree of `batch/115-token-speed` at `b341a1d` |
-| Worker model | `claude-opus-5-5` | `claude-sonnet-5-5` (Sniper7Kills-LLC/claude-plugins#109) |
-| PM skill | one `SKILL.md` | the dispatcher plus per-stage files (Sniper7Kills-LLC/claude-plugins#107) |
-| Date | 2026-11-21 (UTC) | 2026-11-21 (UTC) |
-| Runs | 3 per case, 9 in total | 3 per case, 9 in total |
-| Spent | $3.69, under the ceiling of $25 | $1.25, under the ceiling of $25 |
-
-The dispatcher is `claude-haiku-5-5` and the effort is `medium` on both sides. The runner
-and the graders are those of Sniper7Kills-LLC/claude-plugins#117 on both sides.
-
-| Case | Tier | Variant | ok | Hidden tests | Mean cost (range) | Worker tokens | Worker turns | Wall time (range) |
-|---|---|---|---|---|---|---|---|---|
-| `worker-large-medium-report-midnight` | medium | 0.20.0 | 3/3 | 3/3 | $0.40 ($0.36–$0.46) | 650k | 17.0 | 88 s (84–97) |
-| | | batch head | 3/3 | 3/3 | $0.11 ($0.10–$0.14) | 370k | 11.7 | 37 s (33–42) |
-| `worker-large-locate-repeated-sku` | medium, `locate` | 0.20.0 | 3/3 | 3/3 | $0.40 ($0.39–$0.41) | 650k | 16.7 | 91 s (89–93) |
-| | | batch head | 3/3 | 3/3 | $0.13 ($0.11–$0.15) | 384k | 11.0 | 39 s (38–42) |
-| `worker-large-hard-one-discount` | hard | 0.20.0 | 3/3 | 3/3 | $0.43 ($0.34–$0.55) | 623k | 15.7 | 88 s (79–97) |
-| | | batch head | 3/3 | 3/3 | $0.18 ($0.14–$0.24) | 485k | 13.3 | 49 s (44–57) |
-
-For the 9 runs of 0.20.0: 9/9 ok, hidden-test pass rate 9/9, mean cost $0.41 per run, 641k
-worker tokens and 16.4 worker turns per run, and 89 s of wall time. For the batch head:
-9/9 ok, 9/9, $0.14, 413k, 12.0 turns and 42 s. `scripts/eval-compare.py` gives `ship` for
-the batch head against this baseline: the same pass rate, and a cost 66% lower.
-
-- On 0.20.0, a worker on the large fixture uses 641k tokens per run, against 472k on the
-  small fixture. The cost per run is $0.41 against $0.35. The large fixture thus gives a
-  worker more to read, but all 3 cases passed 9/9 on both sides. Like the small fixture,
-  it has no headroom on scores.
-- A worker case does not load the PM skill, so the Sonnet worker is the likely cause of
-  the batch head's gain. This measurement does not test the two changes apart.
+The records of the first 0.20.0 baseline, made with the old brief, are replaced. The files
+in `evals/candidates/*` are records of the old brief too. They stay as they are, and they
+are not comparable with the numbers above. `scripts/eval-compare.py` runs on the new
+baselines only.
 
 ## PM session case
 
@@ -218,9 +209,9 @@ takes the majority of votes (Sniper7Kills-LLC/claude-plugins#117) on both sides.
   session.
   `scripts/eval-compare.py` refuses a candidate with another effort (exit 5). The default
   `--effort medium` of the runner matches the baseline.
-- **Dispatcher wait.** The 908 s run of `worker-hard-ambiguous-tax` (see "Worker suite")
-  came from a dispatcher that ran `sleep`. The worker case prompts now tell the dispatcher
-  not to run `sleep` and not to poll. A candidate run then has no such outlier, and its
-  mean wall time for this case can be lower than the baseline's for that reason alone.
+- **Dispatcher wait.** In the first 0.20.0 worker baseline, one run of
+  `worker-hard-ambiguous-tax` took 908 s, because a dispatcher ran `sleep`. The worker case
+  prompts now tell the dispatcher not to run `sleep` and not to poll. The records in this
+  file were made with that prompt, and they have no such outlier.
 - **Costs are estimates.** `total_cost_usd` is a client-side estimate at list prices, not
   billing data.

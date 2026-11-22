@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "pluginVersion": "0.20.0",
+  "pluginVersion": "0.21.0",
   "forge": {
     "type": "github",
     "host": "github.com",
