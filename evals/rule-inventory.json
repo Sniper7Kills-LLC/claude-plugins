@@ -1113,7 +1113,11 @@
       "id": "rule-global-2a26da9e",
       "text": "**Model tiers live in the agent definitions, not here.** Keep the PM on Opus; spawn every sub-agent without an `opts.model` override so its declared tier applies. A worker and its whole child subtree are confined to that issue's worktree (reads may go wider for research; writes never leave the worktree).",
       "phase": "global",
-      "source_line": 1017
+      "source_line": 1017,
+      "aliases": [
+        "**Model tiers live in the agent definitions, not here.** Keep the PM on Opus; spawn every sub-agent without an `opts.model` override so its declared tier applies. The single exception is the Stage C1 escalation: one `issue-flow:issue-worker` spawn per issue with `model: \"opus\"` and an `escalation:` field in its brief. `needs-feedback` is never escalated. A worker and its whole child subtree are confined to that issue's worktree (reads may go wider for research; writes never leave the worktree)."
+      ],
+      "alias_reason": "Sniper7Kills-LLC/claude-plugins#120: the rule now names its single exception, the Opus escalation spawn of Stage C1."
     },
     {
       "id": "rule-global-9963ff4b",

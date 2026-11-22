@@ -23,6 +23,7 @@ import importlib.util
 import json
 import os
 import re
+import shlex
 import shutil
 import signal
 import subprocess
@@ -32,6 +33,9 @@ import time
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 FAKE_GH_DIR = os.path.join(ROOT, "evals", "fakegh")
+STUB_SPAWN = os.path.join(ROOT, "evals", "stub-spawn.py")
+# The tool_input fields of an Agent call that a `spawns` grader entry can match.
+SPAWN_FIELDS = ("subagent_type", "model", "isolation", "name", "description", "prompt", "run_in_background")
 INSTALLED_PLUGIN = "issue-flow@sniper7kills"
 JUDGE_MODEL = "haiku"
 # An odd count, so that the votes cannot tie.
@@ -132,6 +136,17 @@ def validate_case(case, path):
         raise CaseError(f"{path}: a case needs at least one deterministic grader; an llm grader is only a second score")
     if "patch" in case and not (isinstance(case["patch"], str) and isinstance(case.get("patch_branch"), str)):
         raise CaseError(f"{path}: a 'patch' needs a 'patch_branch' to commit it on")
+    spawn_graders = [grader for grader in case["graders"] if grader["type"] == "spawns"]
+    if spawn_graders and case.get("stub_spawns") is not True:
+        raise CaseError(f"{path}: a 'spawns' grader needs 'stub_spawns': true, or no spawn is recorded")
+    if case.get("stub_spawns") and "Agent" in case.get("disallowed_tools", []):
+        raise CaseError(f"{path}: 'stub_spawns' needs the Agent tool; remove it from 'disallowed_tools'")
+    for grader in spawn_graders:
+        for spec in grader.get("expect", []) + grader.get("forbid", []):
+            unknown = set(spec) - set(SPAWN_FIELDS)
+            if unknown or not spec:
+                raise CaseError(f"{path}: a 'spawns' entry names spawn fields only ({', '.join(SPAWN_FIELDS)}),"
+                                f" got {sorted(spec)}")
 
 
 # ---------------------------------------------------------------- sandbox
@@ -218,6 +233,7 @@ def sandbox_env(sandbox):
         PATH=FAKE_GH_DIR + os.pathsep + env.get("PATH", ""),
         IFE_TRACKER=os.path.join(sandbox, "tracker.json"),
         IFE_GH_LOG=os.path.join(sandbox, "gh-log.jsonl"),
+        IFE_SPAWN_LOG=os.path.join(sandbox, "spawn-log.jsonl"),
         GH_TOKEN=FAKE_TOKEN, GITHUB_TOKEN=FAKE_TOKEN,
         GH_CONFIG_DIR=os.path.join(sandbox, "gh-config"), GH_PROMPT_DISABLED="1",
         **GIT_ISOLATION, **SANDBOX_GIT,
@@ -265,10 +281,19 @@ def parse_result(stdout):
     return data if isinstance(data, dict) else None
 
 
-def isolation_args():
-    """Flags that keep the host's plugins, hooks and MCP servers out of an eval run."""
-    return ["--settings", json.dumps({"enabledPlugins": {INSTALLED_PLUGIN: False}}),
-            "--setting-sources", "project,local", "--strict-mcp-config"]
+def isolation_args(stub_spawns=False):
+    """Flags that keep the host's plugins, hooks and MCP servers out of an eval run.
+
+    With `stub_spawns`, the settings also add the spawn stub as a PreToolUse hook on `Agent`.
+    Measured on Claude Code 2.1.330: a hook in `--settings` fires on the `Agent` call in
+    bypassPermissions mode, next to the plugin's own hooks, and its deny stops the spawn.
+    """
+    settings = {"enabledPlugins": {INSTALLED_PLUGIN: False}}
+    if stub_spawns:
+        command = " ".join(shlex.quote(part) for part in (sys.executable, STUB_SPAWN))
+        settings["hooks"] = {"PreToolUse": [{"matcher": "Agent|Task",
+                                             "hooks": [{"type": "command", "command": command}]}]}
+    return ["--settings", json.dumps(settings), "--setting-sources", "project,local", "--strict-mcp-config"]
 
 
 # ---------------------------------------------------------------- graders
@@ -597,6 +622,33 @@ def grade_checker_verdict(grader, ctx):
     return True, f"statuses {statuses} on {head[:8]}", 0.0
 
 
+def spawn_matches(spec, spawn):
+    # A field that the call did not set matches as empty text, so {"model": "."} means "set a model".
+    return all(re.search(pattern, "" if spawn.get(field) is None else str(spawn[field]), re.M)
+               for field, pattern in spec.items())
+
+
+def describe_spawn(spec):
+    return "Agent " + " ".join(f"{field} /{pattern}/" for field, pattern in spec.items())
+
+
+def grade_spawns(grader, ctx):
+    """Every `expect` entry matches a recorded Agent call; no recorded call matches a `forbid` entry."""
+    problems = []
+    for spec in grader.get("expect", []):
+        if not any(spawn_matches(spec, spawn) for spawn in ctx["spawns"]):
+            problems.append(f"missing {describe_spawn(spec)}")
+    for spec in grader.get("forbid", []):
+        for spawn in ctx["spawns"]:
+            if spawn_matches(spec, spawn):
+                problems.append(f"forbidden {describe_spawn(spec)} (seq {spawn.get('seq')}: "
+                                f"{spawn.get('subagent_type')} model={spawn.get('model')})")
+    if problems:
+        return False, "; ".join(problems), 0.0
+    return True, (f"{len(ctx['spawns'])} spawn(s); {len(grader.get('expect', []))} expected, "
+                  f"{len(grader.get('forbid', []))} forbidden"), 0.0
+
+
 def grade_refs_unchanged(grader, ctx):
     """No branch of origin changed, and no local branch that the runner made moved: the agent wrote no commit."""
     problems = []
@@ -617,7 +669,8 @@ def grade_refs_unchanged(grader, ctx):
 # Other suites add grader types here; each returns (passed, detail, cost_usd).
 GRADERS = {"gh_log": grade_gh_log, "file": grade_file, "llm": grade_llm,
            "hidden_tests": grade_hidden_tests, "verdict": grade_verdict, "diff_scope": grade_diff_scope,
-           "checker_verdict": grade_checker_verdict, "refs_unchanged": grade_refs_unchanged}
+           "checker_verdict": grade_checker_verdict, "refs_unchanged": grade_refs_unchanged,
+           "spawns": grade_spawns}
 
 
 # ---------------------------------------------------------------- one run
@@ -657,7 +710,7 @@ def run_case(case, run_number, args, variant, budget_left, run_dir):
     if state["head_sha"]:
         # A checker brief names the exact commit under review, and the runner made that commit just now.
         prompt = prompt.replace("{head_sha}", state["head_sha"])
-    claude_args = ["-p", prompt, "--plugin-dir", plugin, *isolation_args(),
+    claude_args = ["-p", prompt, "--plugin-dir", plugin, *isolation_args(case.get("stub_spawns") is True),
                    "--permission-mode", "bypassPermissions", "--output-format", "json",
                    "--effort", args.effort]
     if model:
@@ -686,12 +739,13 @@ def run_case(case, run_number, args, variant, budget_left, run_dir):
         handle.write(stdout or "")
     with open(os.path.join(run_dir, "claude-stderr.txt"), "w") as handle:
         handle.write(stderr or "")
-    for name in ("gh-log.jsonl", "tracker.json"):
+    for name in ("gh-log.jsonl", "tracker.json", "spawn-log.jsonl"):
         if os.path.exists(os.path.join(sandbox, name)):
             shutil.copyfile(os.path.join(sandbox, name), os.path.join(run_dir, name))
 
     result = result or {}
     ctx = {"sandbox": sandbox, "repo": repo, "gh_log": read_jsonl(os.path.join(sandbox, "gh-log.jsonl")),
+           "spawns": read_jsonl(os.path.join(sandbox, "spawn-log.jsonl")),
            "final": result.get("result") or "", "judge_env": sandbox_env(sandbox), "case": case, **state}
     graders, judge_cost = [], 0.0
     for grader in case["graders"]:

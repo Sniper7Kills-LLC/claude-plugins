@@ -1,0 +1,76 @@
+{
+  "name": "pm-c1-escalate",
+  "suite": "pm",
+  "tags": [
+    "pm",
+    "c1-gate",
+    "escalation"
+  ],
+  "timeout_s": 900,
+  "runs": 3,
+  "fixture": "../_fixture",
+  "tracker": "tracker.json",
+  "branches": [
+    "batch/10-cli-output",
+    "issue/11-json-flag"
+  ],
+  "stub_spawns": true,
+  "prompt": "You are the issue-flow PM for this repository. Use the issue-flow skill.\nThis is a scenario test with one task. Phase 0 has already run, and the run configuration in .issue-flow.json is final. Nobody is available to answer questions. The tracker is GitHub through the `gh` CLI.\nIn this test, every Agent call is recorded and then refused, so no agent runs and no notification arrives. Spawn what the gate calls for, exactly as the skill says, and treat the spawn as launched.\nDo only the task below. Then stop, and report in a few lines what you did and why.\n\nTask:\nBatch #10 has one member, #11. Its worker (agentId `w-11`) runs on Sonnet. This is the second pass of the Stage C1 gate for #11:\n\n1. The worker's first `ready-to-merge` passed steps 1 and 1b. The criteria checker (step 1c) then found criterion 2 `unmet`.\n2. You sent #11 back to `w-11` by SendMessage, with the checker's finding quoted. That was its rework round.\n3. `w-11` returned this verdict on a new head:\n\n```json\n{\n  \"issue\": 11,\n  \"branch\": \"issue/11-json-flag\",\n  \"worktree\": \"/tmp/wt/w-11\",\n  \"prNumber\": 12,\n  \"outcome\": \"ready-to-merge\",\n  \"detail\": \"fixed the --json --verbose check after review\",\n  \"localChecks\": \"python3 -m unittest: 15 passed; pre-patch: 3 new tests fail as expected (test_count_json_prints_object, test_json_rejects_verbose, test_json_verbose_message)\",\n  \"criteria\": [\n    {\n      \"text\": \"`widgets count --json` prints `{\\\"count\\\": N}` and exits 0\",\n      \"met\": true,\n      \"evidence\": \"test_widgets.py::test_count_json_prints_object passes\"\n    },\n    {\n      \"text\": \"`widgets count --json --verbose` exits 2 with the message `--json and --verbose cannot be combined`\",\n      \"met\": true,\n      \"evidence\": \"test_widgets.py::test_json_verbose_message passes\"\n    }\n  ],\n  \"openThreads\": 0,\n  \"notesForPM\": null\n}\n```\n\n4. Steps 1 and 1b pass on it. The re-check by the criteria checker on the new head already ran. Its verdict:\n\n```json\n{\n  \"issue\": 11,\n  \"head\": \"origin/issue/11-json-flag\",\n  \"headSha\": \"9c1e4b7d2a6f8e0b3c5d7f9a1b2c4d6e8f0a1b3c\",\n  \"criteria\": [\n    {\n      \"text\": \"1. `widgets count --json` prints `{\\\"count\\\": N}` and exits 0\",\n      \"status\": \"met\",\n      \"evidence\": \"ran `python3 widgets.py count --json` on the head: printed {\\\"count\\\": 3}, exit 0\"\n    },\n    {\n      \"text\": \"2. `widgets count --json --verbose` exits 2 with the message `--json and --verbose cannot be combined`\",\n      \"status\": \"unmet\",\n      \"evidence\": \"ran `python3 widgets.py count --json --verbose` on the head: exit 0, printed the JSON. widgets.py:41 checks `args.verbose` only after it prints. test_json_verbose_message calls a helper, not the CLI.\"\n    }\n  ],\n  \"testsRun\": \"python3 -m unittest: 15 passed\",\n  \"notes\": \"criterion 2 also failed the first check\"\n}\n```\n\nAct on the re-check, as Stage C1 says. Do not run the checker again.\n",
+  "graders": [
+    {
+      "type": "spawns",
+      "expect": [
+        {
+          "subagent_type": "^issue-flow:issue-worker$",
+          "model": "^(?i:opus)$",
+          "isolation": "^worktree$",
+          "prompt": "(?i)^\\W*escalation\\W*[:=]\\W*\\w"
+        }
+      ],
+      "forbid": [
+        {
+          "subagent_type": "^issue-flow:(?!issue-worker$)",
+          "model": "."
+        },
+        {
+          "subagent_type": "^issue-flow:issue-worker$",
+          "model": "^(?!(?i:opus)$)."
+        }
+      ]
+    },
+    {
+      "type": "gh_log",
+      "expect": [
+        {
+          "cmd": "issue comment",
+          "args": "^11\\b",
+          "body": "(?i)escalated to opus:"
+        }
+      ],
+      "forbid": [
+        {
+          "cmd": "pr merge"
+        },
+        {
+          "cmd": "pr ready"
+        },
+        {
+          "cmd": "issue close"
+        },
+        {
+          "cmd": "issue edit",
+          "args": "^(\\d+ )*11\\b.*--add-label[ =]\\S*status:batched"
+        },
+        {
+          "cmd": "issue edit",
+          "args": "^(\\d+ )*11\\b.*--add-label[ =]\\S*status:blocked"
+        }
+      ]
+    },
+    {
+      "type": "llm",
+      "target": "final",
+      "rubric": "The PM does not merge #11 and does not send it back to the Sonnet worker a second time. Because the re-check after the one rework round still finds criterion 2 unmet, it escalates #11 to one Opus worker on the same branch, with the checker's finding for criterion 2 in the brief, and it records the escalation in a comment on #11. A second rework round, a merge, or a waiver of the criterion fails."
+    }
+  ]
+}

@@ -20,6 +20,7 @@ token counts per run. The operator decided on 2026-11-21 to use our own runner o
 | Path | Content |
 |---|---|
 | `evals/fakegh/gh` | The fake `gh`. It serves the tracker of one run and logs every call. |
+| `evals/stub-spawn.py` | The spawn stub. In a case with `stub_spawns`, it records each `Agent` call and refuses it (see "The spawn stub"). |
 | `evals/pm/<case>/case.json` | One PM case (the case format is below). |
 | `evals/pm/<case>/tracker.json` | The tracker state at the start of that case. |
 | `evals/pm/_fixture/` | The git repo that the PM cases start from. A directory without `case.json` is not a case. |
@@ -243,6 +244,7 @@ the `effort` of its agent definition or, when there is none, at the default of i
 | `docs_paths` | no | Globs of the documentation files that the brief's `docs` practice lets the worker change. `diff_scope` always allows them. |
 | `patch` | no | A patch file, relative to the case. The runner applies it on `patch_branch`, commits it, and pushes the branch to `origin`. `repo/` stays on `main`. Each `{head_sha}` in the prompt becomes the SHA of that commit. |
 | `patch_branch` | with `patch` | The branch that holds the patch commit. The runner refuses a `patch` without it (exit 2). |
+| `stub_spawns` | no | `true` adds the spawn stub: the run can call `Agent`, and each call is recorded and refused (see "The spawn stub"). A `spawns` grader needs it, and it cannot go with `Agent` in `disallowed_tools` (exit 2). |
 
 ### Graders
 
@@ -300,6 +302,22 @@ whose reason said that the PM met the rubric. A new judgment of that run, with 3
 `2/2 votes: PASS`. The cost of the votes is small: the judges of the 0.20.0 PM suite cost
 $0.016 for 18 runs with one vote each, so 2 or 3 votes cost about $0.03 to $0.05 for the
 suite. The judge cost still counts against `--max-cost-usd`, as before.
+
+**`spawns`** (deterministic) reads the `Agent` calls that the spawn stub recorded. Each
+entry gives a regular expression for one or more fields of the call: `subagent_type`,
+`model`, `isolation`, `name`, `description`, `prompt` or `run_in_background`. `^`
+anchors at each line. A field that the call did not set matches as empty text, so
+`{"model": "."}` matches every call that sets a model.
+
+```json
+{"type": "spawns",
+ "expect": [{"subagent_type": "^issue-flow:issue-worker$", "model": "^(?i:opus)$"}],
+ "forbid": [{"subagent_type": "^issue-flow:(?!issue-worker$)", "model": "."}]}
+```
+
+Each `expect` entry must match a recorded call, and no `forbid` entry may match one. The
+runner refuses a `spawns` grader in a case without `stub_spawns`, and an entry with a field
+that is not in the list (exit 2).
 
 The worker suite adds three deterministic graders: `hidden_tests`, `verdict` and
 `diff_scope`. The worker suite section below describes them. A suite adds a grader type to
@@ -383,7 +401,8 @@ Each call adds one line to `gh-log.jsonl`:
 
 The runner writes `<out>/results.json` after each run, and one directory per run:
 `<out>/<case>/run-<k>/` holds `record.json`, `claude-stdout.json`, `claude-stderr.txt`,
-`gh-log.jsonl` and the final `tracker.json`.
+`gh-log.jsonl` and the final `tracker.json`. A case with `stub_spawns` also gets
+`spawn-log.jsonl`, the `Agent` calls of the run (see "The spawn stub").
 
 `results.json` is `{suite, variant, effort, started, finished, max_cost_usd,
 total_cost_usd, partial, records}`. Each record:
@@ -627,6 +646,47 @@ landed message.
 head. Use `tracker_calls` (see "Make a baseline") for the tracker calls of a run. In
 each of the 6 measured runs, Claude Code itself called `gh pr view <branch> --json url`
 12 times, and the fake refused each call. These calls count as `error` lines.
+
+## The spawn stub
+
+Most PM cases put `Agent` in `disallowed_tools`, and tell the PM to write what it would
+send to a file. That cannot show the arguments of a spawn: the agent type, the `model`,
+the brief. A case with `stub_spawns: true` keeps the `Agent` tool, and the runner adds
+`evals/stub-spawn.py` as a `PreToolUse` hook on `Agent|Task` in the run's `--settings`.
+The hook writes the call's `tool_input` to `spawn-log.jsonl` in the sandbox, with `seq`
+and `tool_name`, and denies the call. No agent runs, and the run costs nothing more. The
+deny reason tells the PM that the spawn was recorded, and to treat it as launched.
+
+A live check on 2026-11-21 (Claude Code 2.1.330, one Haiku run for $0.003) showed that a
+`PreToolUse` hook in `--settings` fires on the `Agent` call in `bypassPermissions` mode,
+next to the hooks of `--plugin-dir`. Its `tool_input` holds `subagent_type`, `model`,
+`isolation`, `description` and `prompt` as the caller passed them, and the deny stops the
+spawn. The plugin's own spawn guard runs on the same call, so a spawn that the guard
+refuses is still in the log.
+
+## The escalation cases
+
+Sniper7Kills-LLC/claude-plugins#120 lets the PM escalate a failed Sonnet worker to one
+Opus worker (SKILL.md Stage C1, "Escalation to Opus"). Two single-decision cases with the
+spawn stub test it. Both carry the tags `c1-gate` and `escalation`.
+
+- **`pm-c1-escalate`.** #11 already had its one rework round. The prompt gives the new
+  `ready-to-merge` verdict and the re-check verdict of the criteria checker on the new
+  head: criterion 2 is still `unmet`. The `spawns` grader expects an
+  `issue-flow:issue-worker` spawn with `model: "opus"`, `isolation: "worktree"` and an
+  `escalation:` line in the brief. It forbids a `model` on any other issue-flow agent, and
+  any model other than Opus on the worker. The `gh_log` grader expects the comment
+  `escalated to Opus:` on #11, and forbids a merge, `status:batched` and `status:blocked`.
+- **`pm-c1-feedback-no-escalation`.** The worker of #11 returns `needs-feedback` with a
+  product question. The `gh_log` grader expects `status:needs-feedback` and the question
+  on #11, and forbids any comment about an escalation. The `spawns` grader forbids every
+  spawn with a `model`, and every new `issue-flow:issue-worker` spawn.
+
+```bash
+python3 scripts/run-evals.py --plugin-dir issue-flow --suite pm --tag escalation --runs 3 --max-cost-usd 10
+```
+
+The results on the branch of #120 are in `evals/candidates/120-escalation/`.
 
 ## The worker suite
 

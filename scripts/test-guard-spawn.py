@@ -12,6 +12,7 @@ does not understand.
 
 import json
 import os
+import re
 import subprocess
 import sys
 
@@ -26,6 +27,7 @@ def run(payload, env=None):
     environment = dict(os.environ)
     environment.pop("ISSUE_FLOW_SPAWN_GUARD", None)
     environment.pop("ISSUE_FLOW_FORK_GUARD", None)
+    environment.pop("ISSUE_FLOW_MODEL_GUARD", None)
     environment.update(env or {})
     result = subprocess.run(
         [sys.executable, HOOK],
@@ -276,6 +278,83 @@ elif "approve only if deliberate" not in asked["hookSpecificOutput"]["permission
 expect("a fork with no prompt allows the call", spawn(subagent_type="fork"), False)
 expect("a fork with a non-string prompt allows the call", spawn(subagent_type="fork", prompt=42), False)
 expect("a non-string subagent_type allows the call", spawn(subagent_type=["fork"], prompt=BRIEF), False)
+
+# --- a model override on an issue-flow agent (issue #120) --------------------
+# SKILL.md: an issue-flow agent's tier is its definition's `model:` line. The one
+# exception is an Opus escalation of a failed worker, whose brief carries `escalation:`.
+NO_ESCALATION = re.sub(r"(?m)^escalation:.*\n(?:[ \t]+\S.*\n)*", "", BRIEF)
+if NO_ESCALATION == BRIEF:
+    failures.append(f"the handoff brief in {TEMPLATE} should document an `escalation:` field")
+ESCALATED = NO_ESCALATION + (
+    "escalation:   re-check failed after one rework round. Criterion 2 unmet:"
+    " `widgets count --json --verbose` exits 0.\n"
+)
+
+
+def worker(model, prompt, **extra):
+    return spawn(subagent_type="issue-flow:issue-worker", isolation="worktree",
+                 description="escalate #42", model=model, prompt=prompt, **extra)
+
+
+expect("an Opus worker with an escalation field is allowed", worker("opus", ESCALATED), False)
+expect("the model value is matched case-insensitively", worker(" Opus ", ESCALATED), False)
+expect(
+    "an escalation field with list and bold markup counts",
+    worker("opus", NO_ESCALATION + "- **escalation:** blocked: the suite cannot pass\n"),
+    False,
+)
+output = expect("an Opus worker with no escalation field is denied", worker("opus", NO_ESCALATION), True)
+if output:
+    reason = output["hookSpecificOutput"]["permissionDecisionReason"]
+    for expected in ("SKILL.md", "`escalation:`", "ISSUE_FLOW_MODEL_GUARD", "issue-flow:issue-worker"):
+        if expected not in reason:
+            failures.append(f"the model deny reason should mention {expected!r}: {reason[:200]}")
+expect(
+    "an escalation label mid-line is not a field",
+    worker("opus", NO_ESCALATION + "Note: no escalation: yet.\n"),
+    True,
+)
+expect("an empty escalation field does not count", worker("opus", NO_ESCALATION + "escalation:\n"), True)
+expect("an escalation goes to Opus only, not Sonnet", worker("sonnet", ESCALATED), True)
+expect("an escalation goes to Opus only, not Haiku", worker("haiku", ESCALATED), True)
+expect(
+    "an Opus override on the criteria checker is denied, escalation or not",
+    spawn(subagent_type="issue-flow:criteria-checker", model="opus", prompt=ESCALATED),
+    True,
+)
+expect(
+    "an override equal to the declared tier is still an override",
+    spawn(subagent_type="issue-flow:deploy-verifier", model="sonnet", prompt="check the URL"),
+    True,
+)
+expect("a worker with no model is allowed", worker(None, NO_ESCALATION), False)
+expect(
+    "a worker's general-purpose child on Sonnet is not the guard's business",
+    spawn(subagent_type="general-purpose", model="sonnet", prompt="review the diff"),
+    False,
+)
+expect("a child with no type on Sonnet is allowed", spawn(model="sonnet", prompt="x"), False)
+expect(
+    "another plugin's agent with a model is allowed",
+    spawn(subagent_type="other-plugin:helper", model="opus", prompt="x"),
+    False,
+)
+expect("a non-string model allows the call", worker(["opus"], NO_ESCALATION), False)
+expect(
+    "ISSUE_FLOW_MODEL_GUARD=off allows an override",
+    worker("opus", NO_ESCALATION),
+    False,
+    env={"ISSUE_FLOW_MODEL_GUARD": "off"},
+)
+expect(
+    "turning off the name check leaves the model check on",
+    worker("opus", NO_ESCALATION),
+    True,
+    env={"ISSUE_FLOW_SPAWN_GUARD": "off"},
+)
+asked = run(worker("opus", NO_ESCALATION), env={"ISSUE_FLOW_MODEL_GUARD": "ask"})
+if not asked or asked["hookSpecificOutput"].get("permissionDecision") != "ask":
+    failures.append(f"model ask mode should ask, not deny: {asked}")
 
 if failures:
     for failure in failures:

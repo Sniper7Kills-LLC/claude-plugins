@@ -390,6 +390,12 @@ promotion from `dev` to the live branch.
 summary: the PM runs on **Opus**. The issue-worker, a worker's children, the
 criteria-checker, the deploy-verifier, the ux-explorer, the code-auditor and the review-scribe run on **Sonnet**.
 
+One exception exists. When a Sonnet worker fails an issue (a failed criteria re-check after
+one rework round, or a technical `blocked`), the PM gives the issue one attempt by an Opus
+worker on the same branch. That spawn passes `model: "opus"` and an `escalation:` field
+in the brief, and the spawn guard allows no other model override on an issue-flow agent.
+A `needs-feedback` verdict is never escalated (Sniper7Kills-LLC/claude-plugins#120).
+
 The issue-worker moved from Opus to Sonnet after the worker eval suite
 (Sniper7Kills-LLC/claude-plugins#109). On 8 cases with 3 runs each, Sonnet passed the
 hidden tests on 21 of 21 runs, the same as Opus. Its mean cost per run was $0.10, against

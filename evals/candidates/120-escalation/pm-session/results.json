@@ -1,0 +1,385 @@
+{
+  "suite": "pm",
+  "variant": {
+    "plugin_dir": "issue-flow (issue/120-opus-escalation at 251b5eb)",
+    "git_sha": "251b5ebee5f1a7ec8cdcbfb15d3972336ff2705e",
+    "version": "0.20.0"
+  },
+  "effort": "medium",
+  "started": "20261122T010148Z",
+  "finished": "20261122T011003Z",
+  "max_cost_usd": 10.0,
+  "total_cost_usd": 3.264799,
+  "partial": false,
+  "records": [
+    {
+      "case": "pm-session-batch",
+      "run": 1,
+      "variant": {
+        "plugin_dir": "issue-flow (issue/120-opus-escalation at 251b5eb)",
+        "git_sha": "251b5ebee5f1a7ec8cdcbfb15d3972336ff2705e",
+        "version": "0.20.0"
+      },
+      "effort": "medium",
+      "ok": true,
+      "score": 1.0,
+      "graders": [
+        {
+          "type": "gh_log",
+          "passed": true,
+          "detail": "21 expected, 10 forbidden"
+        },
+        {
+          "type": "gh_log",
+          "passed": true,
+          "detail": "3 expected, 0 forbidden"
+        },
+        {
+          "type": "file",
+          "passed": true,
+          "detail": ".eval/send-back-52.md matches /exits 1 when the count is 0/"
+        },
+        {
+          "type": "llm",
+          "passed": true,
+          "detail": "2/3 votes: PASS: Every new batch member (#61, #62, #67, #68, #69, #70) has a plan comment naming its files, its tests written first, and its build order, and the #63 and #64 questions are specific, with #63 made status:ready after the maintainer's answer."
+        }
+      ],
+      "deterministic": {
+        "passed": 3,
+        "total": 3
+      },
+      "llm": {
+        "passed": 1,
+        "total": 1
+      },
+      "cost_usd": 1.07352,
+      "judge_cost_usd": 0.004012,
+      "usage": {
+        "input": 38,
+        "output": 13772,
+        "cache_read": 1228760,
+        "cache_write": 69022
+      },
+      "model_usage": {
+        "claude-opus-5-5": {
+          "inputTokens": 38,
+          "outputTokens": 13772,
+          "cacheReadInputTokens": 1228760,
+          "cacheCreationInputTokens": 69022,
+          "webSearchRequests": 0,
+          "costUSD": 1.07352,
+          "contextWindow": 1000000,
+          "maxOutputTokens": 128000,
+          "thinkingTokens": 3897,
+          "cacheCreationEphemeral5mInputTokens": 0,
+          "cacheCreationEphemeral1hInputTokens": 69022,
+          "canonicalModel": "claude-opus-5-5",
+          "provider": "firstParty",
+          "costBasis": "list"
+        }
+      },
+      "turns": 20,
+      "duration_s": 157.987,
+      "wall_s": 158.598,
+      "session_id": "9b5a4554-5c34-4135-b27f-b863688e4500",
+      "transcript": null,
+      "model": "claude-opus-5-5",
+      "error": null,
+      "sandbox": null,
+      "agents": {
+        "agents": [
+          {
+            "type": "main",
+            "id": "9b5a4554-5c34-4135-b27f-b863688e4500",
+            "turns": 19,
+            "input": 38,
+            "output": 13772,
+            "cache_read": 1228760,
+            "cache_write": 69022,
+            "model": "claude-opus-5-5",
+            "cost_usd": 1.07352
+          }
+        ],
+        "totals": {
+          "turns": 19,
+          "input": 38,
+          "output": 13772,
+          "cache_read": 1228760,
+          "cache_write": 69022,
+          "cost_usd": 1.07352,
+          "unpriced_models": [],
+          "skipped_lines": 0,
+          "by_type": {
+            "main": {
+              "agents": 1,
+              "turns": 19,
+              "input": 38,
+              "output": 13772,
+              "cache_read": 1228760,
+              "cache_write": 69022,
+              "cost_usd": 1.07352
+            }
+          }
+        },
+        "pricing_date": "2026-11-21"
+      },
+      "tokens": {
+        "main": 1311592,
+        "subagents": 0
+      },
+      "tracker_calls": {
+        "total": 94,
+        "read": 44,
+        "write": 33,
+        "error": 17
+      }
+    },
+    {
+      "case": "pm-session-batch",
+      "run": 2,
+      "variant": {
+        "plugin_dir": "issue-flow (issue/120-opus-escalation at 251b5eb)",
+        "git_sha": "251b5ebee5f1a7ec8cdcbfb15d3972336ff2705e",
+        "version": "0.20.0"
+      },
+      "effort": "medium",
+      "ok": true,
+      "score": 1.0,
+      "graders": [
+        {
+          "type": "gh_log",
+          "passed": true,
+          "detail": "21 expected, 10 forbidden"
+        },
+        {
+          "type": "gh_log",
+          "passed": true,
+          "detail": "3 expected, 0 forbidden"
+        },
+        {
+          "type": "file",
+          "passed": true,
+          "detail": ".eval/send-back-52.md matches /exits 1 when the count is 0/"
+        },
+        {
+          "type": "llm",
+          "passed": true,
+          "detail": "2/2 votes: PASS: The new batch members (#61, #62, #67, #68 under #71, and #69, #70 under epic #65) each have plans naming files, tests written first, and build order, and the #63 and #64 questions ask for specific files, expected versus actual counts, and exact output text. After the #63 answer, the PM recorde"
+        }
+      ],
+      "deterministic": {
+        "passed": 3,
+        "total": 3
+      },
+      "llm": {
+        "passed": 1,
+        "total": 1
+      },
+      "cost_usd": 1.0591452000000001,
+      "judge_cost_usd": 0.004123,
+      "usage": {
+        "input": 38,
+        "output": 13474,
+        "cache_read": 1207966,
+        "cache_write": 68490
+      },
+      "model_usage": {
+        "claude-opus-5-5": {
+          "inputTokens": 38,
+          "outputTokens": 13474,
+          "cacheReadInputTokens": 1207966,
+          "cacheCreationInputTokens": 68490,
+          "webSearchRequests": 0,
+          "costUSD": 1.0591452000000001,
+          "contextWindow": 1000000,
+          "maxOutputTokens": 128000,
+          "thinkingTokens": 3262,
+          "cacheCreationEphemeral5mInputTokens": 0,
+          "cacheCreationEphemeral1hInputTokens": 68490,
+          "canonicalModel": "claude-opus-5-5",
+          "provider": "firstParty",
+          "costBasis": "list"
+        }
+      },
+      "turns": 20,
+      "duration_s": 147.764,
+      "wall_s": 148.395,
+      "session_id": "089aa8f0-02f4-49b8-a035-e021b39c7f30",
+      "transcript": null,
+      "model": "claude-opus-5-5",
+      "error": null,
+      "sandbox": null,
+      "agents": {
+        "agents": [
+          {
+            "type": "main",
+            "id": "089aa8f0-02f4-49b8-a035-e021b39c7f30",
+            "turns": 19,
+            "input": 38,
+            "output": 13474,
+            "cache_read": 1207966,
+            "cache_write": 68490,
+            "model": "claude-opus-5-5",
+            "cost_usd": 1.059145
+          }
+        ],
+        "totals": {
+          "turns": 19,
+          "input": 38,
+          "output": 13474,
+          "cache_read": 1207966,
+          "cache_write": 68490,
+          "cost_usd": 1.059145,
+          "unpriced_models": [],
+          "skipped_lines": 0,
+          "by_type": {
+            "main": {
+              "agents": 1,
+              "turns": 19,
+              "input": 38,
+              "output": 13474,
+              "cache_read": 1207966,
+              "cache_write": 68490,
+              "cost_usd": 1.059145
+            }
+          }
+        },
+        "pricing_date": "2026-11-21"
+      },
+      "tokens": {
+        "main": 1289968,
+        "subagents": 0
+      },
+      "tracker_calls": {
+        "total": 105,
+        "read": 53,
+        "write": 36,
+        "error": 16
+      }
+    },
+    {
+      "case": "pm-session-batch",
+      "run": 3,
+      "variant": {
+        "plugin_dir": "issue-flow (issue/120-opus-escalation at 251b5eb)",
+        "git_sha": "251b5ebee5f1a7ec8cdcbfb15d3972336ff2705e",
+        "version": "0.20.0"
+      },
+      "effort": "medium",
+      "ok": true,
+      "score": 1.0,
+      "graders": [
+        {
+          "type": "gh_log",
+          "passed": true,
+          "detail": "21 expected, 10 forbidden"
+        },
+        {
+          "type": "gh_log",
+          "passed": true,
+          "detail": "3 expected, 0 forbidden"
+        },
+        {
+          "type": "file",
+          "passed": true,
+          "detail": ".eval/send-back-52.md matches /exits 1 when the count is 0/"
+        },
+        {
+          "type": "llm",
+          "passed": true,
+          "detail": "2/2 votes: PASS: The plans for batch #71 (#61, #62, #67, #68) and epic #65 (#69, #70) each name files, first-written tests, and build order, and the specific questions on #63 and #64 ask for the wrong-count file and command output or the exact output format, with #63 made ready after its answer was recorded."
+        }
+      ],
+      "deterministic": {
+        "passed": 3,
+        "total": 3
+      },
+      "llm": {
+        "passed": 1,
+        "total": 1
+      },
+      "cost_usd": 1.1209926,
+      "judge_cost_usd": 0.003006,
+      "usage": {
+        "input": 40,
+        "output": 14043,
+        "cache_read": 1333903,
+        "cache_write": 71649
+      },
+      "model_usage": {
+        "claude-opus-5-5": {
+          "inputTokens": 40,
+          "outputTokens": 14043,
+          "cacheReadInputTokens": 1333903,
+          "cacheCreationInputTokens": 71649,
+          "webSearchRequests": 0,
+          "costUSD": 1.1209926,
+          "contextWindow": 1000000,
+          "maxOutputTokens": 128000,
+          "thinkingTokens": 3809,
+          "cacheCreationEphemeral5mInputTokens": 0,
+          "cacheCreationEphemeral1hInputTokens": 71649,
+          "canonicalModel": "claude-opus-5-5",
+          "provider": "firstParty",
+          "costBasis": "list"
+        }
+      },
+      "turns": 21,
+      "duration_s": 157.867,
+      "wall_s": 158.473,
+      "session_id": "2d50fdd5-8cc5-4131-a54e-f665b945657f",
+      "transcript": null,
+      "model": "claude-opus-5-5",
+      "error": null,
+      "sandbox": null,
+      "agents": {
+        "agents": [
+          {
+            "type": "main",
+            "id": "2d50fdd5-8cc5-4131-a54e-f665b945657f",
+            "turns": 20,
+            "input": 40,
+            "output": 14043,
+            "cache_read": 1333903,
+            "cache_write": 71649,
+            "model": "claude-opus-5-5",
+            "cost_usd": 1.120993
+          }
+        ],
+        "totals": {
+          "turns": 20,
+          "input": 40,
+          "output": 14043,
+          "cache_read": 1333903,
+          "cache_write": 71649,
+          "cost_usd": 1.120993,
+          "unpriced_models": [],
+          "skipped_lines": 0,
+          "by_type": {
+            "main": {
+              "agents": 1,
+              "turns": 20,
+              "input": 40,
+              "output": 14043,
+              "cache_read": 1333903,
+              "cache_write": 71649,
+              "cost_usd": 1.120993
+            }
+          }
+        },
+        "pricing_date": "2026-11-21"
+      },
+      "tokens": {
+        "main": 1419635,
+        "subagents": 0
+      },
+      "tracker_calls": {
+        "total": 88,
+        "read": 40,
+        "write": 32,
+        "error": 16
+      }
+    }
+  ]
+}
