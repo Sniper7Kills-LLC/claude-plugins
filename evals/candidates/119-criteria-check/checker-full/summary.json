@@ -1,0 +1,317 @@
+{
+  "suite": "checker",
+  "variant": {
+    "plugin_dir": "issue-flow (branch issue/119-criteria-check)",
+    "git_sha": "24331401198e1889848c0d159bbf05ddb670411e",
+    "version": "0.20.0"
+  },
+  "effort": "medium",
+  "started": "20261122T001828Z",
+  "finished": "20261122T002828Z",
+  "partial": false,
+  "models": [
+    "claude-haiku-5-5",
+    "claude-sonnet-5-5"
+  ],
+  "total_cost_usd": 1.115472,
+  "runs": 30,
+  "suite_means": {
+    "runs": 30,
+    "ok_rate": 1.0,
+    "mean_score": 1.0,
+    "score_range": [
+      1.0,
+      1.0
+    ],
+    "hidden_pass_rate": null,
+    "mean_cost_usd": 0.0372,
+    "cost_range": [
+      0.0212,
+      0.0774
+    ],
+    "mean_turns": 2.7667,
+    "mean_duration_s": 19.758,
+    "duration_range": [
+      13.2,
+      30.8
+    ],
+    "mean_main_tokens": 109280.0333,
+    "mean_subagent_tokens": 44626.2333,
+    "mean_subagent_turns": 4.8,
+    "mean_agent_cost_usd": 0.0372,
+    "mean_tracker_calls": null,
+    "errors": 0
+  },
+  "cases": {
+    "checker-full-easy-low-stock-boundary": {
+      "runs": 3,
+      "ok_rate": 1.0,
+      "mean_score": 1.0,
+      "score_range": [
+        1.0,
+        1.0
+      ],
+      "hidden_pass_rate": null,
+      "mean_cost_usd": 0.0261,
+      "cost_range": [
+        0.0228,
+        0.0298
+      ],
+      "mean_turns": 3.0,
+      "mean_duration_s": 15.5327,
+      "duration_range": [
+        13.6,
+        17.1
+      ],
+      "mean_main_tokens": 117295.0,
+      "mean_subagent_tokens": 33409.3333,
+      "mean_subagent_turns": 4.3333,
+      "mean_agent_cost_usd": 0.0261,
+      "mean_tracker_calls": null,
+      "errors": 0
+    },
+    "checker-full-easy-negative-qty": {
+      "runs": 3,
+      "ok_rate": 1.0,
+      "mean_score": 1.0,
+      "score_range": [
+        1.0,
+        1.0
+      ],
+      "hidden_pass_rate": null,
+      "mean_cost_usd": 0.0216,
+      "cost_range": [
+        0.0212,
+        0.022
+      ],
+      "mean_turns": 2.6667,
+      "mean_duration_s": 14.123,
+      "duration_range": [
+        13.2,
+        14.6
+      ],
+      "mean_main_tokens": 108740.0,
+      "mean_subagent_tokens": 21766.6667,
+      "mean_subagent_turns": 3.0,
+      "mean_agent_cost_usd": 0.0216,
+      "mean_tracker_calls": null,
+      "errors": 0
+    },
+    "checker-full-hard-error-lines": {
+      "runs": 3,
+      "ok_rate": 1.0,
+      "mean_score": 1.0,
+      "score_range": [
+        1.0,
+        1.0
+      ],
+      "hidden_pass_rate": null,
+      "mean_cost_usd": 0.0342,
+      "cost_range": [
+        0.0335,
+        0.0351
+      ],
+      "mean_turns": 2.3333,
+      "mean_duration_s": 19.3513,
+      "duration_range": [
+        19.2,
+        19.5
+      ],
+      "mean_main_tokens": 102948.0,
+      "mean_subagent_tokens": 25970.0,
+      "mean_subagent_turns": 3.0,
+      "mean_agent_cost_usd": 0.0342,
+      "mean_tracker_calls": null,
+      "errors": 0
+    },
+    "checker-full-hard-location": {
+      "runs": 3,
+      "ok_rate": 1.0,
+      "mean_score": 1.0,
+      "score_range": [
+        1.0,
+        1.0
+      ],
+      "hidden_pass_rate": null,
+      "mean_cost_usd": 0.0389,
+      "cost_range": [
+        0.0354,
+        0.0446
+      ],
+      "mean_turns": 2.6667,
+      "mean_duration_s": 21.56,
+      "duration_range": [
+        19.9,
+        24.1
+      ],
+      "mean_main_tokens": 102547.6667,
+      "mean_subagent_tokens": 39118.0,
+      "mean_subagent_turns": 4.3333,
+      "mean_agent_cost_usd": 0.0389,
+      "mean_tracker_calls": null,
+      "errors": 0
+    },
+    "checker-full-large-hard-one-discount": {
+      "runs": 3,
+      "ok_rate": 1.0,
+      "mean_score": 1.0,
+      "score_range": [
+        1.0,
+        1.0
+      ],
+      "hidden_pass_rate": null,
+      "mean_cost_usd": 0.0612,
+      "cost_range": [
+        0.0454,
+        0.0738
+      ],
+      "mean_turns": 2.6667,
+      "mean_duration_s": 26.224,
+      "duration_range": [
+        19.8,
+        30.6
+      ],
+      "mean_main_tokens": 102749.0,
+      "mean_subagent_tokens": 70681.6667,
+      "mean_subagent_turns": 6.0,
+      "mean_agent_cost_usd": 0.0612,
+      "mean_tracker_calls": null,
+      "errors": 0
+    },
+    "checker-full-large-locate-repeated-sku": {
+      "runs": 3,
+      "ok_rate": 1.0,
+      "mean_score": 1.0,
+      "score_range": [
+        1.0,
+        1.0
+      ],
+      "hidden_pass_rate": null,
+      "mean_cost_usd": 0.0632,
+      "cost_range": [
+        0.054,
+        0.0774
+      ],
+      "mean_turns": 3.0,
+      "mean_duration_s": 26.4343,
+      "duration_range": [
+        23.7,
+        30.8
+      ],
+      "mean_main_tokens": 110999.3333,
+      "mean_subagent_tokens": 91449.3333,
+      "mean_subagent_turns": 7.6667,
+      "mean_agent_cost_usd": 0.0632,
+      "mean_tracker_calls": null,
+      "errors": 0
+    },
+    "checker-full-large-medium-report-midnight": {
+      "runs": 3,
+      "ok_rate": 1.0,
+      "mean_score": 1.0,
+      "score_range": [
+        1.0,
+        1.0
+      ],
+      "hidden_pass_rate": null,
+      "mean_cost_usd": 0.0372,
+      "cost_range": [
+        0.034,
+        0.0414
+      ],
+      "mean_turns": 3.0,
+      "mean_duration_s": 20.8323,
+      "duration_range": [
+        19.7,
+        22.7
+      ],
+      "mean_main_tokens": 110270.0,
+      "mean_subagent_tokens": 52606.0,
+      "mean_subagent_turns": 6.0,
+      "mean_agent_cost_usd": 0.0372,
+      "mean_tracker_calls": null,
+      "errors": 0
+    },
+    "checker-full-medium-csv-format": {
+      "runs": 3,
+      "ok_rate": 1.0,
+      "mean_score": 1.0,
+      "score_range": [
+        1.0,
+        1.0
+      ],
+      "hidden_pass_rate": null,
+      "mean_cost_usd": 0.0304,
+      "cost_range": [
+        0.0274,
+        0.0341
+      ],
+      "mean_turns": 3.0,
+      "mean_duration_s": 18.234,
+      "duration_range": [
+        17.7,
+        18.7
+      ],
+      "mean_main_tokens": 110355.3333,
+      "mean_subagent_tokens": 32836.3333,
+      "mean_subagent_turns": 4.0,
+      "mean_agent_cost_usd": 0.0304,
+      "mean_tracker_calls": null,
+      "errors": 0
+    },
+    "checker-full-medium-money-refactor": {
+      "runs": 3,
+      "ok_rate": 1.0,
+      "mean_score": 1.0,
+      "score_range": [
+        1.0,
+        1.0
+      ],
+      "hidden_pass_rate": null,
+      "mean_cost_usd": 0.0332,
+      "cost_range": [
+        0.0303,
+        0.0375
+      ],
+      "mean_turns": 2.6667,
+      "mean_duration_s": 19.3373,
+      "duration_range": [
+        18.7,
+        19.9
+      ],
+      "mean_main_tokens": 109397.3333,
+      "mean_subagent_tokens": 47135.6667,
+      "mean_subagent_turns": 5.6667,
+      "mean_agent_cost_usd": 0.0332,
+      "mean_tracker_calls": null,
+      "errors": 0
+    },
+    "checker-full-medium-price-parse": {
+      "runs": 3,
+      "ok_rate": 1.0,
+      "mean_score": 1.0,
+      "score_range": [
+        1.0,
+        1.0
+      ],
+      "hidden_pass_rate": null,
+      "mean_cost_usd": 0.0258,
+      "cost_range": [
+        0.0215,
+        0.0311
+      ],
+      "mean_turns": 2.6667,
+      "mean_duration_s": 15.9513,
+      "duration_range": [
+        13.6,
+        18.2
+      ],
+      "mean_main_tokens": 117498.6667,
+      "mean_subagent_tokens": 31289.3333,
+      "mean_subagent_turns": 4.0,
+      "mean_agent_cost_usd": 0.0258,
+      "mean_tracker_calls": null,
+      "errors": 0
+    }
+  }
+}

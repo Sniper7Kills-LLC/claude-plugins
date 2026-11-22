@@ -29,6 +29,7 @@ token counts per run. The operator decided on 2026-11-21 to use our own runner o
 | `evals/worker/<case>/reference.patch` | A reference solution. A test proves that the hidden tests pass with it. |
 | `evals/worker/_fixture/` | The small project that the cases tagged `small` start from. |
 | `evals/worker/_fixture_large/` | The large project that the cases tagged `large` start from (Sniper7Kills-LLC/claude-plugins#117). |
+| `evals/checker/<case>/case.json` | One criteria-checker case (Sniper7Kills-LLC/claude-plugins#119). The checker suite is below. |
 | `evals/results/` | Run results. Git ignores this directory. |
 | `evals/baselines/<version>/` | Committed baseline run records and summaries, for example `0.20.0/pm/`. |
 | `evals/candidates/<issue>-<slug>/<suite>/` | Committed results of a candidate change, measured against a baseline, for example `109-sonnet-worker/worker/`. |
@@ -44,7 +45,7 @@ python3 scripts/run-evals.py --plugin-dir issue-flow --suite pm
 | Flag | Effect |
 |---|---|
 | `--plugin-dir <path>` | The plugin directory to test. It must contain `.claude-plugin/plugin.json`. |
-| `--suite pm\|worker` | The suite: the directory under `evals/`. |
+| `--suite pm\|worker\|checker` | The suite: the directory under `evals/`. |
 | `--case <glob>` | Run only the cases whose name matches the glob. |
 | `--tag <tag>` | Run only the cases that carry the tag, for example `c1-gate`. |
 | `--runs N` | Runs per case. Without it, each case uses its own `runs` value. |
@@ -240,6 +241,8 @@ the `effort` of its agent definition or, when there is none, at the default of i
 | `disallowed_tools` | no | Tools the run cannot use, passed to `--disallowedTools`. |
 | `model` | no | The model of the run, when `--main-model` is not given. |
 | `docs_paths` | no | Globs of the documentation files that the brief's `docs` practice lets the worker change. `diff_scope` always allows them. |
+| `patch` | no | A patch file, relative to the case. The runner applies it on `patch_branch`, commits it, and pushes the branch to `origin`. `repo/` stays on `main`. Each `{head_sha}` in the prompt becomes the SHA of that commit. |
+| `patch_branch` | with `patch` | The branch that holds the patch commit. The runner refuses a `patch` without it (exit 2). |
 
 ### Graders
 
@@ -266,6 +269,8 @@ changes `score`, not `ok`.
   entries must match in the order given.
 - No `forbid` entry may match any call. A call that the fake refused also counts, because
   it shows the decision.
+- An entry with `kind` and no `cmd` matches every call of that kind. For example,
+  `{"kind": "write"}` in `forbid` refuses every tracker write.
 
 **`file`** (deterministic) passes when the file exists in `repo/` and its text matches the
 regular expression.
@@ -610,6 +615,10 @@ swap on #51, and #63 made ready after the merge. They forbid any claim, launch o
 of #52. A `file` grader reads the send-back message for #52. The `llm` grader judges the
 plans and the triage questions.
 
+The case forbids every spawn, so the prompt gives the criteria checker's verdict for #51
+(C1 step 1c) in place of a spawn. Without it, the PM of Sniper7Kills-LLC/claude-plugins#119
+held #51 at step 1c in 3 of 3 runs.
+
 In this test, `gh pr merge` changes only the tracker, and the remote holds no commits of
 the workers. The prompt tells the PM so, and tells it to skip the C1 step 4b check of the
 landed message.
@@ -788,6 +797,72 @@ passes every case.
 8. Run the case once on the current release, with a cost ceiling. A case that the current
    release fails in 2 of 3 runs is a bad case: fix the case, not the finding.
 
+## The checker suite
+
+The checker suite measures the `criteria-checker` agent (Sniper7Kills-LLC/claude-plugins#119).
+The PM spawns the checker at the C1 gate, before it merges a member. The checker gets the
+acceptance criteria and the branch, never the worker's verdict, and returns `met`, `unmet`
+or `unclear` for each criterion.
+
+```bash
+python3 scripts/run-evals.py --plugin-dir issue-flow --suite checker --tag full --max-cost-usd 10
+python3 scripts/run-evals.py --plugin-dir issue-flow --suite checker --tag partial --max-cost-usd 10
+```
+
+### How a checker case runs
+
+1. The runner copies the fixture of a worker case, applies a patch on the worker's branch
+   (for example `issue/7-stock-file-errors`), commits it, and pushes it to `origin`. The
+   sandbox repo stays on `main`, as a PM checkout does.
+2. The main session is a dispatcher on Haiku. It spawns `issue-flow:criteria-checker` with
+   `isolation: "worktree"` and a brief that names the branch, the commit SHA
+   (`{head_sha}`), `origin/main`, the test command and the criteria, quoted from the
+   worker case's `tracker.json`.
+3. The checker gets its model from `agents/criteria-checker.md` of the plugin under test.
+4. The dispatcher writes the checker's final message to `.eval/checker-verdict.json`.
+
+`cost_usd` includes the checker. The checker's share is the Sonnet entry of `model_usage`.
+
+### The checker cases
+
+| Cases | Patch | Runs | The checker must |
+|---|---|---|---|
+| `checker-full-<worker case>`, tag `full` | The worker case's `reference.patch` | 3 | Find every criterion `met`. A full patch passes the hidden tests, so any other status is a false alarm. |
+| `checker-partial-hard-error-lines`, tag `partial` | `partial.patch`: `reference.patch` of `worker-hard-error-lines` without its `inventory/cli.py` section | 5 | Find criterion 2 `unmet`. |
+
+There is one `full` case for each worker case with hidden tests, so 10. The partial patch
+is the failure of batch #115: `items.load` raises `StockFileError`, and the worker's own
+test passes, but the command line still prints a traceback. 3 of the 4 hidden tests fail
+on it.
+
+### The checker graders
+
+**`checker_verdict`** (deterministic) reads `.eval/checker-verdict.json`.
+
+```json
+{"type": "checker_verdict", "issue": 7, "expect": "all-met"}
+{"type": "checker_verdict", "issue": 7, "expect": "unmet", "criteria": [2]}
+```
+
+- The verdict must name the issue, and `headSha` must be the patch commit (7 to 40 hex
+  characters, a prefix of the full SHA).
+- `criteria` needs one entry for each acceptance criterion of the issue. Each `status` is
+  `met`, `unmet` or `unclear`, and each entry needs evidence. `testsRun` must not be empty.
+- `expect: all-met` passes when every status is `met`.
+- `expect: unmet` passes when each criterion that `criteria` lists, counted from 1, is
+  `unmet`. `unclear` does not count. The other criteria can have any status.
+
+**`refs_unchanged`** (deterministic) passes when no branch of `origin` changed, and no
+branch that the runner made in `repo/` moved. The checker is read-only. A harness worktree
+adds a branch of its own, so a new local branch is allowed.
+
+Each case also has a `gh_log` grader that forbids `{"kind": "write"}`.
+
+`python3 scripts/test-checker-cases.py` tests the suite, the graders and the agent's
+return contract, with a fake `claude`. It also proves that `partial.patch` is the reference
+patch without `inventory/cli.py`, that the fixture tests pass on it, and that the hidden
+tests fail on it.
+
 ## Usage report per agent
 
 `issue-flow/scripts/usage.py` reports the tokens, the turns and the estimated cost of each
@@ -822,7 +897,8 @@ is an estimate at the prices in `issue-flow/scripts/pricing.json`. `cost_usd` fr
 ## Tests
 
 `python3 scripts/test-worker-cases.py` tests the worker suite and its graders, as the
-reference check above describes.
+reference check above describes. `python3 scripts/test-checker-cases.py` tests the checker
+suite and its graders.
 
 `python3 scripts/test-eval-compare.py` tests the decision rules on synthetic results, on
 both sides of each threshold. `python3 scripts/test-eval-baseline.py` tests

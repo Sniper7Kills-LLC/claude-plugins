@@ -150,6 +150,8 @@ The autonomous loop. It has two roles.
   resolves conflicts, merges, monitors deployments, and posts status digests.
 - **The sub-agents — background agents with self-contained prompts.**
   `issue-flow:issue-worker` builds one issue and returns a verdict.
+  `issue-flow:criteria-checker` checks the worker's branch against the acceptance
+  criteria before the PM merges it. It never sees the worker's verdict.
   `issue-flow:deploy-verifier` checks the live site in a real browser. The deploy
   *watch* is not an agent — it is one background shell command per merge.
 
@@ -159,6 +161,7 @@ One worker's life, end to end:
 sequenceDiagram
     participant PM
     participant W as worker (own worktree)
+    participant C as criteria checker (own worktree)
     participant F as forge
     PM->>F: plan comment + assign (the claim)
     PM->>F: batch cross-check comment
@@ -167,6 +170,8 @@ sequenceDiagram
     W->>W: implement · self-review · full local suite
     W-->>PM: verdict — ready-to-merge, criteria, localChecks
     PM->>F: gate — criteria evidenced, threads resolved, practices met
+    PM->>C: spawn — the criteria and the PR head, not the verdict
+    C-->>PM: met, unmet or unclear for each criterion, with evidence
     PM->>F: squash sub-merge, explicit "[skip ci]" message
     PM->>F: status batched + tick the tracking checklist
 ```
@@ -383,7 +388,7 @@ promotion from `dev` to the live branch.
 
 **Model tiers.** Each agent's own `model:` frontmatter is authoritative. The current
 summary: the PM runs on **Opus**. The issue-worker, a worker's children, the
-deploy-verifier, the ux-explorer, the code-auditor and the review-scribe run on **Sonnet**.
+criteria-checker, the deploy-verifier, the ux-explorer, the code-auditor and the review-scribe run on **Sonnet**.
 
 The issue-worker moved from Opus to Sonnet after the worker eval suite
 (Sniper7Kills-LLC/claude-plugins#109). On 8 cases with 3 runs each, Sonnet passed the

@@ -64,4 +64,22 @@ The worker for #52 (agentId `w-52`) sent this final verdict:
 }
 ```
 
+The criteria checker of C1 step 1c cannot be spawned in this test. When the gate comes to step 1c for a member, use the checker verdict below in place of a spawn, and do not spawn an agent. The head of PR #53 is the commit `5e1f0c2a9b8d7e6f5a4b3c2d1e0f9a8b7c6d5e4f`. The checker has no verdict for #52. For #51, the checker returned:
+
+```json
+{
+  "issue": 51,
+  "head": "origin/issue/51-json-flag",
+  "headSha": "5e1f0c2a9b8d7e6f5a4b3c2d1e0f9a8b7c6d5e4f",
+  "criteria": [
+    {"text": "`widgets count --json` prints `{\"count\": N}` and exits 0", "status": "met",
+     "evidence": "ran `python3 -m widgets count --json stock.txt` on 3 items: printed {\"count\": 3}, exit 0"},
+    {"text": "`widgets count --json` on an empty stock file prints `{\"count\": 0}`", "status": "met",
+     "evidence": "ran it on an empty file: printed {\"count\": 0}; test_count_json_empty_file passes"}
+  ],
+  "testsRun": "python3 -m unittest: Ran 16 tests, OK",
+  "notes": null
+}
+```
+
 Step 4. Run the Stage A0 sweep again, then the Stage A triage after it. Do not form batches in this step.

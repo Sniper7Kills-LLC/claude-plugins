@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Run the issue-flow eval cases on headless `claude -p` and grade each run.
 
-    python3 scripts/run-evals.py --plugin-dir issue-flow --suite pm [--case <glob>]
+    python3 scripts/run-evals.py --plugin-dir issue-flow --suite pm|worker|checker [--case <glob>]
         [--tag <tag>] [--runs N] [--out <dir>] [--max-cost-usd X] [--main-model <id>]
         [--effort low|medium|high|xhigh|max] [--keep] [--evals-dir <dir>]
 
@@ -103,10 +103,13 @@ def load_cases(evals_dir, suite, case_glob=None, tag=None):
                 case["prompt"] = handle.read()
         case["tracker_path"] = os.path.join(case_dir, case.get("tracker", "tracker.json"))
         case["fixture_path"] = os.path.join(case_dir, case["fixture"]) if case.get("fixture") else None
+        case["patch_path"] = os.path.join(case_dir, case["patch"]) if case.get("patch") else None
         if not os.path.isfile(case["tracker_path"]):
             raise CaseError(f"{path}: tracker file {case['tracker_path']} is missing")
         if case["fixture_path"] and not os.path.isdir(case["fixture_path"]):
             raise CaseError(f"{path}: fixture directory {case['fixture_path']} is missing")
+        if case["patch_path"] and not os.path.isfile(case["patch_path"]):
+            raise CaseError(f"{path}: patch file {case['patch_path']} is missing")
         cases.append(case)
     return cases
 
@@ -127,6 +130,8 @@ def validate_case(case, path):
         raise CaseError(f"{path}: 'docs_paths' must be a list of path globs")
     if all(grader["type"] == "llm" for grader in case["graders"]):
         raise CaseError(f"{path}: a case needs at least one deterministic grader; an llm grader is only a second score")
+    if "patch" in case and not (isinstance(case["patch"], str) and isinstance(case.get("patch_branch"), str)):
+        raise CaseError(f"{path}: a 'patch' needs a 'patch_branch' to commit it on")
 
 
 # ---------------------------------------------------------------- sandbox
@@ -166,12 +171,32 @@ def build_sandbox(case):
     git(repo, "remote", "add", "origin", origin)
     for branch in case.get("branches", []):
         git(repo, "branch", branch)
+    if case.get("patch_path"):
+        # The work under review: one commit on its own branch, as a worker would push it.
+        git(repo, "checkout", "-q", "-b", case["patch_branch"])
+        git(repo, "apply", case["patch_path"])
+        git(repo, "add", "-A")
+        git(repo, "-c", "commit.gpgsign=false", "commit", "-q", "-m", "work under review")
+        git(repo, "checkout", "-q", "main")
     git(repo, "push", "-q", "origin", "--all")
     git(repo, "fetch", "-q", "origin")
     git(repo, "remote", "set-head", "origin", "main")
     shutil.copyfile(case["tracker_path"], os.path.join(sandbox, "tracker.json"))
     os.makedirs(os.path.join(sandbox, "gh-config"))
     return sandbox, repo
+
+
+def refs_of(path, pattern="refs/heads"):
+    """Return {ref: sha} for the branches of a repo."""
+    lines = git(path, "for-each-ref", "--format=%(refname) %(objectname)", pattern).splitlines()
+    return dict(line.split() for line in lines)
+
+
+def start_state(case, sandbox, repo):
+    """What a grader compares with after the run: the patch head and the branches as the runner left them."""
+    head = git(repo, "rev-parse", f"refs/heads/{case['patch_branch']}") if case.get("patch_path") else None
+    return {"head_sha": head, "start_refs": refs_of(os.path.join(sandbox, "origin.git")),
+            "start_local_refs": refs_of(repo)}
 
 
 def host_env_kept(name):
@@ -255,7 +280,10 @@ def log_text(entry):
 
 
 def matches(spec, entry):
-    if entry.get("cmd") != spec.get("cmd"):
+    # A spec with only a `kind` (for example `write`) matches every call of that kind.
+    if "kind" in spec and entry.get("kind") != spec["kind"]:
+        return False
+    if ("cmd" in spec or "kind" not in spec) and entry.get("cmd") != spec.get("cmd"):
         return False
     # No re.M here: the args text holds the body lines too, and `^` must anchor at the issue number.
     if "args" in spec and not re.search(spec["args"], log_text(entry)):
@@ -266,7 +294,7 @@ def matches(spec, entry):
 
 
 def describe(spec):
-    parts = [spec.get("cmd", "?")]
+    parts = [spec.get("cmd") or f"any {spec.get('kind', '?')} call"]
     if "args" in spec:
         parts.append(f"args /{spec['args']}/")
     if "body" in spec:
@@ -290,7 +318,7 @@ def grade_gh_log(grader, ctx):
     for spec in grader.get("forbid", []):
         for entry in ctx["gh_log"]:
             if matches(spec, entry):
-                problems.append(f"forbidden {spec['cmd']} (seq {entry['seq']}: {' '.join(map(str, entry['argv']))})")
+                problems.append(f"forbidden {describe(spec)} (seq {entry['seq']}: {' '.join(map(str, entry['argv']))})")
     if problems:
         return False, "; ".join(problems), 0.0
     return True, f"{len(grader.get('expect', []))} expected, {len(grader.get('forbid', []))} forbidden", 0.0
@@ -521,9 +549,75 @@ def grade_diff_scope(grader, ctx):
     return True, detail, 0.0
 
 
+# ---------------------------------------------------------------- checker graders
+
+CHECKER_VERDICT_PATH = ".eval/checker-verdict.json"
+# The keys and statuses of the return contract in issue-flow/agents/criteria-checker.md.
+CHECKER_KEYS = ("issue", "head", "headSha", "criteria", "testsRun", "notes")
+CHECKER_STATUSES = ("met", "unmet", "unclear")
+
+
+def grade_checker_verdict(grader, ctx):
+    """The checker's verdict follows its contract, names the head it checked, and gives the expected statuses.
+
+    `expect: all-met` passes when every criterion is `met`. `expect: unmet` passes when each
+    criterion that `criteria` lists (counted from 1) is `unmet`; `unclear` does not count.
+    """
+    verdict, reason = read_verdict(os.path.join(ctx["repo"], grader.get("path", CHECKER_VERDICT_PATH)))
+    if verdict is None:
+        return False, reason, 0.0
+    with open(ctx["case"]["tracker_path"]) as handle:
+        expected = acceptance_criteria(json.load(handle), grader["issue"])
+    problems = []
+    if str(verdict.get("issue", "")).lstrip("#") != str(grader["issue"]):
+        problems.append(f"issue {verdict.get('issue')!r}, expected {grader['issue']}")
+    head, sha = str(verdict.get("headSha") or ""), ctx.get("head_sha") or ""
+    if not (re.fullmatch(r"[0-9a-f]{7,40}", head) and sha.startswith(head)):
+        problems.append(f"headSha {verdict.get('headSha')!r} is not the head under review {sha[:12]}")
+    if not str(verdict.get("testsRun") or "").strip():
+        problems.append("testsRun is empty")
+    criteria = [c for c in verdict.get("criteria") or [] if isinstance(c, dict)]
+    if len(criteria) != len(expected):
+        problems.append(f"criteria has {len(criteria)} entries for {len(expected)} acceptance criteria")
+    statuses = [c.get("status") for c in criteria]
+    for index, criterion in enumerate(criteria, start=1):
+        if criterion.get("status") not in CHECKER_STATUSES:
+            problems.append(f"criterion {index} status {criterion.get('status')!r} is not one of {list(CHECKER_STATUSES)}")
+        if not str(criterion.get("evidence") or "").strip():
+            problems.append(f"criterion {index} has no evidence")
+    if grader.get("expect") == "all-met" and any(status != "met" for status in statuses):
+        problems.append(f"expected every criterion met, got {statuses}")
+    if grader.get("expect") == "unmet":
+        for number in grader.get("criteria", []):
+            got = statuses[number - 1] if number <= len(statuses) else None
+            if got != "unmet":
+                problems.append(f"criterion {number} is {got!r}, expected 'unmet'")
+    if problems:
+        return False, "; ".join(problems), 0.0
+    return True, f"statuses {statuses} on {head[:8]}", 0.0
+
+
+def grade_refs_unchanged(grader, ctx):
+    """No branch of origin changed, and no local branch that the runner made moved: the agent wrote no commit."""
+    problems = []
+    now = refs_of(os.path.join(ctx["sandbox"], "origin.git"))
+    if now != ctx["start_refs"]:
+        moved = sorted(ref for ref in set(now) | set(ctx["start_refs"]) if now.get(ref) != ctx["start_refs"].get(ref))
+        problems.append(f"origin refs changed: {', '.join(moved)}")
+    local = refs_of(ctx["repo"])
+    # A harness worktree adds a branch of its own, so only the branches that existed at the start count.
+    moved = sorted(ref for ref, sha in ctx["start_local_refs"].items() if local.get(ref) != sha)
+    if moved:
+        problems.append(f"local refs moved: {', '.join(moved)}")
+    if problems:
+        return False, "; ".join(problems), 0.0
+    return True, f"{len(now)} origin ref(s) unchanged", 0.0
+
+
 # Other suites add grader types here; each returns (passed, detail, cost_usd).
 GRADERS = {"gh_log": grade_gh_log, "file": grade_file, "llm": grade_llm,
-           "hidden_tests": grade_hidden_tests, "verdict": grade_verdict, "diff_scope": grade_diff_scope}
+           "hidden_tests": grade_hidden_tests, "verdict": grade_verdict, "diff_scope": grade_diff_scope,
+           "checker_verdict": grade_checker_verdict, "refs_unchanged": grade_refs_unchanged}
 
 
 # ---------------------------------------------------------------- one run
@@ -552,6 +646,7 @@ def main_model(result, requested):
 def run_case(case, run_number, args, variant, budget_left, run_dir):
     """Run one case once and return its record."""
     sandbox, repo = build_sandbox(case)
+    state = start_state(case, sandbox, repo)
     # A run in bypassPermissions mode can write its plugin files; it gets a copy of its own.
     plugin = os.path.join(sandbox, "plugin")
     shutil.copytree(args.plugin_dir, plugin, symlinks=True, ignore=shutil.ignore_patterns(".git"))
@@ -559,6 +654,9 @@ def run_case(case, run_number, args, variant, budget_left, run_dir):
     model = args.main_model or case.get("model")
     # A worker brief names the plugin under test as its pluginRoot.
     prompt = case["prompt"].replace("{plugin_dir}", plugin)
+    if state["head_sha"]:
+        # A checker brief names the exact commit under review, and the runner made that commit just now.
+        prompt = prompt.replace("{head_sha}", state["head_sha"])
     claude_args = ["-p", prompt, "--plugin-dir", plugin, *isolation_args(),
                    "--permission-mode", "bypassPermissions", "--output-format", "json",
                    "--effort", args.effort]
@@ -594,7 +692,7 @@ def run_case(case, run_number, args, variant, budget_left, run_dir):
 
     result = result or {}
     ctx = {"sandbox": sandbox, "repo": repo, "gh_log": read_jsonl(os.path.join(sandbox, "gh-log.jsonl")),
-           "final": result.get("result") or "", "judge_env": sandbox_env(sandbox), "case": case}
+           "final": result.get("result") or "", "judge_env": sandbox_env(sandbox), "case": case, **state}
     graders, judge_cost = [], 0.0
     for grader in case["graders"]:
         try:
@@ -667,7 +765,7 @@ def write_results(out, results):
 def main(argv=None):
     parser = argparse.ArgumentParser(description="Run the issue-flow eval cases on claude -p.")
     parser.add_argument("--plugin-dir", required=True, help="the issue-flow plugin directory to test")
-    parser.add_argument("--suite", required=True, help="pm or worker")
+    parser.add_argument("--suite", required=True, help="pm, worker or checker")
     parser.add_argument("--case", help="only the cases whose name matches this glob")
     parser.add_argument("--tag", help="only the cases that carry this tag")
     parser.add_argument("--runs", type=int, help="runs per case; overrides the case's own count")
